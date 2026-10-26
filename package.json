@@ -1,0 +1,21 @@
+{
+  "name": "relay-platform",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/poc-web",
+    "services/poc-api",
+    "services/api",
+    "packages/ui",
+    "packages/domain",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "start:poc": "npm start --workspace @relay/poc-api",
+    "test": "node --test packages/ui/test/*.test.cjs packages/domain/test/*.test.cjs packages/contracts/test/*.test.cjs services/api/test/*.test.cjs services/poc-api/test/*.test.cjs",
+    "test:web": "npm test --workspace @relay/poc-web && npm test --workspace @relay/ui",
+    "test:api": "npm test --workspace @relay/poc-api",
+    "test:policy": "npm test --workspace @relay/api-policy",
+    "test:contracts": "npm test --workspace @relay/contracts"
+  }
+}

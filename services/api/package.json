@@ -1,0 +1,13 @@
+{
+  "name": "@relay/api-policy",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/policy.cjs",
+  "scripts": {
+    "test": "node --test test/*.test.cjs ../../packages/domain/test/*.test.cjs"
+  },
+  "dependencies": {
+    "@relay/domain": "0.1.0",
+    "@relay/contracts": "0.1.0"
+  }
+}

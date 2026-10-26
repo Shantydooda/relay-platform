@@ -1,0 +1,1 @@
+{"name":"@relay/domain","version":"0.1.0","private":true,"main":"src/marketplace.cjs","scripts":{"test":"node --test test/*.test.cjs"}}
