@@ -38,6 +38,8 @@ npm run test:contracts
 
 API tests open ephemeral loopback ports and use disposable databases. They do not send emails or mutate the running app. [Implemented API and runbook](services/poc-api/README.md).
 
+Initial extraction validation: **30 backend/domain/contract/UI tests pass**, plus the independent frontend syntax check. This count excludes the old workspace's simulated-marketplace and static-demo-output tests; it is not a reduction in tested production behavior. No hosted-provider test has passed yet because those services are not configured.
+
 ## Staging decisions
 
 - Approved providers: **Supabase** for managed auth/Postgres, **Render** for hosting, **Resend** for SMTP when a verified domain is available.
