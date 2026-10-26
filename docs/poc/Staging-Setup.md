@@ -2,6 +2,8 @@
 
 27 October 2026. **Not yet provisioned or deployed.** Supabase/Render/Resend are approved. Budget is free services only; no paid resources or domain purchase are authorized. US East is provisional. No domain is owned yet; provider login/access and administrator/tester identities remain outstanding. The existing public `.site` stays a separate demo; its hosting identity and audience must not change.
 
+Implementation update: [the managed staging service](../../services/staging-api/README.md), Postgres migration, verification/recovery UI and Free Render blueprint are prepared for review. **50 local tests pass.** This is source preparation, not a claim that provider accounts, hooks, email or hosted staging are configured. Supabase and Render were still showing sign-in pages in the accessible in-app browser at the last check.
+
 ## Proposed stack
 
 - Supabase: a dedicated **staging** project for managed email/password authentication and hosted Postgres.

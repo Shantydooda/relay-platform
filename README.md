@@ -1,6 +1,6 @@
 # Relay platform
 
-Production-bound Relay POC source, separated from the published browser demo. This repository starts with real local accounts, server sessions and durable task storage. **Hosted managed authentication and Postgres are not integrated yet.**
+Production-bound Relay POC source, separated from the published browser demo. It includes real local accounts/tasks and a **managed Supabase/Postgres staging integration prepared for review**. No hosted staging environment has been provisioned or verified yet.
 
 The approved ivory public landing design, animated assistants and chat-first signup entry are included. Marketplace bidding, external agents, payments and delivery are not simulated in this app. A posted task is a durable request, not a dispatched job.
 
@@ -15,7 +15,7 @@ npm run start:poc
 
 Open `http://127.0.0.1:4180`. If the original POC is already running on that port, stop it or run this copy with `RELAY_POC_PORT=4181 npm run start:poc`. Each checkout has its own `.poc-data/relay.sqlite`; no accounts or task records were copied into this repository.
 
-This launcher intentionally accepts only loopback requests and refuses production mode. Do not deploy it to Render or remove the guard. The next slice introduces a hosted service using managed auth and Postgres, with its own verified environment configuration.
+This local launcher intentionally accepts only loopback requests and refuses production mode. Do not deploy it to Render or remove the guard. The separate `services/staging-api` launcher uses managed auth and Postgres and requires verified provider configuration. [Managed staging setup and security boundaries](services/staging-api/README.md).
 
 ## Packages
 
@@ -23,6 +23,8 @@ This launcher intentionally accepts only loopback requests and refuses productio
 |---|---|
 | `apps/poc-web` | Current account/task frontend |
 | `services/poc-api` | Real local HTTP auth, sessions and task storage |
+| `services/staging-api` | Managed Supabase auth, encrypted opaque sessions and Postgres adapter; not deployed |
+| `supabase/migrations` | Postgres tenant policies, signup hook and transactional task commands |
 | `packages/ui` | Presentation components, public landing and design tokens |
 | `packages/domain` | Marketplace money/approval/acceptance policy primitives; not live payments |
 | `packages/contracts` | Draft production transaction contract; not the implemented POC API |
@@ -34,11 +36,12 @@ npm run test:web
 npm run test:api
 npm run test:policy
 npm run test:contracts
+npm run test:staging
 ```
 
 API tests open ephemeral loopback ports and use disposable databases. They do not send emails or mutate the running app. [Implemented API and runbook](services/poc-api/README.md).
 
-Initial extraction validation: **30 backend/domain/contract/UI tests pass**, plus the independent frontend syntax check. This count excludes the old workspace's simulated-marketplace and static-demo-output tests; it is not a reduction in tested production behavior. No hosted-provider test has passed yet because those services are not configured.
+Validation: **50 backend/domain/contract/UI/Postgres tests pass**, plus the independent frontend syntax check. This count excludes the old workspace's simulated-marketplace and static-demo-output tests. Managed provider responses are fixtures; SQL/grant/RLS tests execute the actual migration on embedded Postgres with stand-in auth tables. Real hosted delivery, recovery and multi-connection tests remain open because the provider environment is not configured.
 
 ## Staging decisions
 

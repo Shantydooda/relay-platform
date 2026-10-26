@@ -4,13 +4,13 @@ const { randomUUID } = require('node:crypto');
 const { readFile } = require('node:fs/promises');
 const { resolve } = require('node:path');
 const { HttpError, fail } = require('./security.cjs');
-const { createStore } = require('./store.cjs');
 const PUBLIC = resolve(__dirname,'../../../apps/poc-web/public');
 const TOKENS = resolve(__dirname,'../../../packages/ui/src/tokens.css');
 const UI = resolve(__dirname,'../../../packages/ui/src');
 const assets = {
   '/':['index.html','text/html; charset=utf-8'],
   '/app.js':['app.js','text/javascript; charset=utf-8'],
+  '/managed-auth.js':['managed-auth.js','text/javascript; charset=utf-8'],
   '/styles.css':['styles.css','text/css; charset=utf-8'],
   '/tokens.css':[TOKENS,'text/css; charset=utf-8'],
   '/ui.js':[resolve(UI,'components.cjs'),'text/javascript; charset=utf-8'],
@@ -43,13 +43,16 @@ async function jsonBody(req) {
 function cookieToken(req,name) {
   return (req.headers.cookie||'').split(';').map(p=>p.trim()).find(p=>p.startsWith(`${name}=`))?.slice(name.length+1);
 }
-function createApp({db,origin,now=Date.now,logger=console}) {
+function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now,logger=console}) {
   const expected = new URL(origin);
   if (!['http:','https:'].includes(expected.protocol)||expected.pathname!=='/'||expected.search||expected.hash||expected.username||expected.password) throw new Error('Invalid application origin');
-  const store=createStore(db,now),secure=expected.protocol==='https:';
+  const managed=mode==='managed-staging';
+  if(!['local-only','managed-staging'].includes(mode))throw new Error('Unknown server mode');
+  if(managed&&(!providedStore||expected.protocol!=='https:'))throw new Error('Managed staging requires HTTPS and an explicit managed store');
+  const store=providedStore||require('./store.cjs').createStore(db,now),secure=expected.protocol==='https:';
   const cookieName=secure?'__Host-relay_poc_session':'relay_poc_session';
   function sessionCookie(value,clear=false) {
-    return `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${clear?0:43200}${secure?'; Secure':''}`;
+    return `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${clear?0:managed?3600:43200}${secure?'; Secure':''}`;
   }
   const server=http.createServer(async(req,res)=>{
     const requestId=randomUUID();
@@ -66,9 +69,10 @@ function createApp({db,origin,now=Date.now,logger=console}) {
       if(req.headers.host!==expected.host) fail(403,'INVALID_HOST','This host is not permitted.');
       if(req.headers['sec-fetch-site']==='cross-site') fail(403,'CROSS_SITE','Cross-site requests are not permitted.');
       const url=new URL(req.url,origin),path=url.pathname,method=req.method;
-      if(method==='GET'&&path==='/health') return send(200,{status:'ok',service:'relay-account-task-poc',storage:'sqlite',mode:'local-only'});
-      if(method==='GET'&&Object.hasOwn(assets,path)) {
-        const [file,type]=assets[path];
+      if(method==='GET'&&path==='/health') return send(200,{status:'ok',service:'relay-account-task-poc',storage:managed?'postgres':'sqlite',mode});
+      if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed});
+      if(method==='GET'&&(Object.hasOwn(assets,path)||(managed&&path==='/auth/confirm'))) {
+        const [file,type]=assets[path==='/auth/confirm'?'/':path];
         const content=await readFile(resolve(PUBLIC,file));
         res.writeHead(200,{'Content-Type':type});return res.end(content);
       }
@@ -79,26 +83,37 @@ function createApp({db,origin,now=Date.now,logger=console}) {
       if(method==='POST'&&(path==='/api/auth/register'||path==='/api/auth/login')) {
         const body=await jsonBody(req);
         const token=path.endsWith('register')?await store.register(body,ip,raw):await store.login(body,ip,raw);
+        if(token&&typeof token==='object'&&token.verificationRequired)return send(200,token);
         res.setHeader('Set-Cookie',sessionCookie(token));
-        const actor=store.principal(token);
+        const actor=await store.principal(token);
         return send(path.endsWith('register')?201:200,{user:actor.user,memberships:actor.memberships,csrf:actor.csrf});
       }
-      const actor=store.principal(raw);
-      if(method==='GET'&&path==='/api/me') return send(200,{user:actor.user,memberships:actor.memberships,csrf:actor.csrf});
+      if(managed&&method==='POST'&&['/api/auth/recover','/api/auth/resend'].includes(path))return send(200,await store.emailAction(path.endsWith('recover')?'recover':'resend',await jsonBody(req),ip));
+      if(managed&&method==='POST'&&path==='/api/auth/verify'){
+        const result=await store.verify(await jsonBody(req),ip,raw);
+        res.setHeader('Set-Cookie',sessionCookie(result.raw));
+        const actor=await store.principal(result.raw,{allowRecovery:true});
+        return send(200,{user:actor.user,memberships:actor.memberships,csrf:actor.csrf,recoveryRequired:result.recoveryRequired});
+      }
+      const actor=await store.principal(raw,{allowRecovery:['/api/me','/api/auth/reset','/api/auth/logout'].includes(path)});
+      if(method==='GET'&&path==='/api/me') return send(200,{user:actor.user,memberships:actor.memberships,csrf:actor.csrf,recoveryRequired:!!actor.recoveryRequired});
       if(mutation) store.csrf(actor,req.headers['x-csrf-token']);
       if(method==='POST'&&path==='/api/auth/logout') {
-        await jsonBody(req);store.logout(actor);res.setHeader('Set-Cookie',sessionCookie('',true));return send(200,{ok:true});
+        await jsonBody(req);await store.logout(actor);res.setHeader('Set-Cookie',sessionCookie('',true));return send(200,{ok:true});
+      }
+      if(managed&&method==='POST'&&path==='/api/auth/reset'){
+        const result=await store.reset(actor,await jsonBody(req));res.setHeader('Set-Cookie',sessionCookie('',true));return send(200,result);
       }
       if(method==='PATCH'&&path==='/api/me/workspace') {
-        store.workspace(actor,await jsonBody(req));return send(200,{ok:true});
+        await store.workspace(actor,await jsonBody(req));return send(200,{ok:true});
       }
-      if(method==='GET'&&path==='/api/tasks') return send(200,{tasks:store.list(actor,url.searchParams.get('tenantId'))});
-      if(method==='POST'&&path==='/api/tasks') return send(201,store.createTask(actor,await jsonBody(req),req.headers['idempotency-key']));
+      if(method==='GET'&&path==='/api/tasks') return send(200,{tasks:await store.list(actor,url.searchParams.get('tenantId'))});
+      if(method==='POST'&&path==='/api/tasks') return send(201,await store.createTask(actor,await jsonBody(req),req.headers['idempotency-key']));
       const match=path.match(/^\/api\/tasks\/([0-9a-f-]{36})(?:\/(post|cancel|messages))?$/);
       if(match) {
         const [,id,action]=match;
-        if(method==='GET'&&!action) return send(200,store.detail(actor,id));
-        if((method==='PATCH'&&!action)||(method==='POST'&&action)) return send(200,store.mutateTask(actor,id,action||'edit',await jsonBody(req),req.headers['idempotency-key']));
+        if(method==='GET'&&!action) return send(200,await store.detail(actor,id));
+        if((method==='PATCH'&&!action)||(method==='POST'&&action)) return send(200,await store.mutateTask(actor,id,action||'edit',await jsonBody(req),req.headers['idempotency-key']));
       }
       fail(404,'NOT_FOUND','Endpoint not found.');
     } catch(error) {
