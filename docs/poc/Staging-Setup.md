@@ -12,7 +12,7 @@ The stack is approved, but these are not created resources. Final region, provid
 
 ## Needed from the founder
 
-1. Sign in to the approved provider dashboards yourself; do not paste passwords or secret keys into chat. The local GitHub CLI currently needs reauthentication before repository creation/push can proceed.
+1. Sign in to the approved provider dashboards yourself; do not paste passwords or secret keys into chat. GitHub CLI was reconnected with explicit founder approval. The private [relay-platform repository](https://github.com/Shantydooda/relay-platform) now contains the tested, sanitized POC source.
 2. Confirm the final data region. Free-only is approved; do not upgrade, add a payment method or enable paid add-ons. No provider terms or billing commitments have been accepted in this pass.
 3. Supply the administrator/tester email addresses and an owned domain, or approve starting the app on a provider subdomain. The sending domain still needs verification for reliable auth email. Supply the DNS provider/access route when records are ready to review.
 
