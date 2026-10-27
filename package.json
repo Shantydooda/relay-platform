@@ -6,13 +6,16 @@
     "apps/poc-web",
     "services/poc-api",
     "services/api",
+    "services/staging-api",
     "packages/ui",
     "packages/domain",
     "packages/contracts"
   ],
   "scripts": {
     "start:poc": "npm start --workspace @relay/poc-api",
-    "test": "node --test packages/ui/test/*.test.cjs packages/domain/test/*.test.cjs packages/contracts/test/*.test.cjs services/api/test/*.test.cjs services/poc-api/test/*.test.cjs",
+    "start:staging": "node services/staging-api/src/server.cjs",
+    "test": "node --test packages/ui/test/*.test.cjs packages/domain/test/*.test.cjs packages/contracts/test/*.test.cjs services/api/test/*.test.cjs services/poc-api/test/*.test.cjs services/staging-api/test/*.test.cjs",
+    "test:staging": "npm test --workspace @relay/staging-api",
     "test:web": "npm test --workspace @relay/poc-web && npm test --workspace @relay/ui",
     "test:api": "npm test --workspace @relay/poc-api",
     "test:policy": "npm test --workspace @relay/api-policy",
