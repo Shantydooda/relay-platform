@@ -6,18 +6,12 @@ const retries=new Map();
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date=value=>new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const examples=['Find 20 UK SaaS companies with websites and source links. Deliver a CSV.','Create a 30-second launch video for my product.','Build a landing page for my new business.'];
-class ApiError extends Error { constructor(message,status,code){super(message);this.status=status;this.code=code;} }
+const ApiError=RelayRequest.ApiError;
 async function api(path,{method='GET',body,key}={}) {
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+  let waiting=false;
   try {
-    const res=await fetch(path,{method,credentials:'same-origin',signal:controller.signal,headers:{...(body?{'Content-Type':'application/json'}:{}),...(state.account?.csrf?{'X-CSRF-Token':state.account.csrf}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});
-    const data=await res.json();
-    if(!res.ok)throw new ApiError(data.error?.message||'The request failed.',res.status,data.error?.code);
-    return data;
-  } catch(error) {
-    if(error instanceof ApiError)throw error;
-    throw new Error('Connection interrupted. Your text is still here. Try again; the same request will not create a duplicate.');
-  } finally {clearTimeout(timeout);}
+    return await RelayRequest.request(path,{method,managed:state.authMode==='managed',onSlow(){waiting=true;notice.textContent='Staging is taking a little longer. Free hosting may be waking up. Please keep this tab open.';},credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{}),...(state.account?.csrf?{'X-CSRF-Token':state.account.csrf}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  } finally {if(waiting)notice.textContent='';}
 }
 async function command(path,method,body) {
   const signature=JSON.stringify([path,method,body]);
@@ -56,6 +50,7 @@ async function savePrompt(){
 }
 async function run(operation,source){
   if(state.busy)return;state.busy=true;notice.textContent='';
+  source?.querySelectorAll('.form-error,.error').forEach(element=>{element.textContent='';element.classList.remove('error');});
   const buttons=[...root.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
   try {await operation();}
   catch(error){showError(error,source);}

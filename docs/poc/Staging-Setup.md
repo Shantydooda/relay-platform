@@ -20,6 +20,14 @@ Implementation update: [the managed staging service](../../services/staging-api/
 
 ## Proposed stack
 
+## Email acceptance debugging
+
+The first verification email and a later resend were recorded as Delivered by Resend. Gmail's mail server returned a successful SMTP response. This is delivery evidence, not proof that the recipient saw the inbox message or completed verification.
+
+The founder reported a `CROSS_SITE` response when opening the email link. The fetch-metadata guard was incorrectly blocking all external navigation before rendering the public callback page. The fix permits only top-level document GET navigation to `/` and `/auth/confirm`; cross-site API reads, verification/reset POSTs and embedded callback fetches remain blocked. GET does not consume a verification token or issue a session. Regression tests cover these boundaries.
+
+The prior frontend timeout was 12 seconds while Render Free advertises wakeups of 50 seconds or more. Managed requests now wait up to 75 seconds and show a slow-response notice, with no automatic mutation replay. Email transport failures explicitly report uncertainty and suggest checking the inbox before resending; they no longer promise duplicate prevention for email. Retry clears the previous inline error. Three browser-request tests cover slow startup, timeout/no replay, non-JSON proxy responses and JSON rate-limit errors. All 50 existing tests and frontend checks passed before release. A live external-link acceptance check remains required after deployment.
+
 - Supabase: a dedicated **staging** project for managed email/password authentication and hosted Postgres.
 - Render: a separate HTTPS application service connected to a private source repository/approved branch. Never deploy the local SQLite launcher to ephemeral hosted storage.
 - Resend: custom SMTP for verification, invitation and password-reset email from an owned, verified sending domain.

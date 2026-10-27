@@ -11,6 +11,7 @@ const assets = {
   '/':['index.html','text/html; charset=utf-8'],
   '/app.js':['app.js','text/javascript; charset=utf-8'],
   '/managed-auth.js':['managed-auth.js','text/javascript; charset=utf-8'],
+  '/request.js':['request.js','text/javascript; charset=utf-8'],
   '/styles.css':['styles.css','text/css; charset=utf-8'],
   '/tokens.css':[TOKENS,'text/css; charset=utf-8'],
   '/ui.js':[resolve(UI,'components.cjs'),'text/javascript; charset=utf-8'],
@@ -67,8 +68,12 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
     const send=(status,body)=>{ res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(body)); };
     try {
       if(req.headers.host!==expected.host) fail(403,'INVALID_HOST','This host is not permitted.');
-      if(req.headers['sec-fetch-site']==='cross-site') fail(403,'CROSS_SITE','Cross-site requests are not permitted.');
       const url=new URL(req.url,origin),path=url.pathname,method=req.method;
+      // Email links and external entry may render a public page, but never
+      // consume a token or read account data. Verification remains a same-origin POST.
+      const publicNavigation=method==='GET'&&(path==='/'||(managed&&path==='/auth/confirm'))
+        &&req.headers['sec-fetch-mode']==='navigate'&&req.headers['sec-fetch-dest']==='document';
+      if(req.headers['sec-fetch-site']==='cross-site'&&!publicNavigation) fail(403,'CROSS_SITE','Cross-site requests are not permitted.');
       if(method==='GET'&&path==='/health') return send(200,{status:'ok',service:'relay-account-task-poc',storage:managed?'postgres':'sqlite',mode});
       if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed});
       if(method==='GET'&&(Object.hasOwn(assets,path)||(managed&&path==='/auth/confirm'))) {

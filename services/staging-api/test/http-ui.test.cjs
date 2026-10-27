@@ -36,14 +36,24 @@ test('HTTP wiring supports verification, recovery, CSRF and async stores without
   const server=createApp({origin:'https://relay.example',mode:'managed-staging',store,logger:{error:()=>assert.fail('Unexpected internal error')}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
-  async function request(path,body,cookie,csrf){
+  async function request(path,body,cookie,csrf,extraHeaders={}){
     return new Promise((resolve,reject)=>{
-      const req=http.request(`http://127.0.0.1:${server.address().port}${path}`,{method:body?'POST':'GET',headers:{Host:'relay.example',Origin:'https://relay.example',...(body?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{}),...(csrf?{'X-CSRF-Token':csrf}:{})}},res=>{
+      const req=http.request(`http://127.0.0.1:${server.address().port}${path}`,{method:body?'POST':'GET',headers:{Host:'relay.example',Origin:'https://relay.example',...(body?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{}),...(csrf?{'X-CSRF-Token':csrf}:{}),...extraHeaders}},res=>{
         const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,text:Buffer.concat(chunks).toString()}));
       });req.on('error',reject);req.end(body?JSON.stringify(body):undefined);
     });
   }
   const config=await request('/api/config');assert.equal(JSON.parse(config.text).authMode,'managed');
+  const navigation={'Sec-Fetch-Site':'cross-site','Sec-Fetch-Mode':'navigate','Sec-Fetch-Dest':'document',Origin:'https://mail.example'};
+  const emailLanding=await request('/auth/confirm',null,null,null,navigation);
+  assert.equal(emailLanding.status,200);assert.match(emailLanding.headers['content-type'],/text\/html/);assert.equal(emailLanding.headers['set-cookie'],undefined);
+  assert.match(emailLanding.text,/\/request.js/);
+  assert.equal((await request('/request.js')).status,200);
+  assert.equal((await request('/',null,null,null,navigation)).status,200);
+  assert.equal((await request('/api/me',null,'opaque-session',null,navigation)).status,403);
+  assert.equal((await request('/auth/confirm',null,null,null,{...navigation,'Sec-Fetch-Mode':'cors','Sec-Fetch-Dest':'empty'})).status,403);
+  assert.equal((await request('/api/auth/verify',{tokenHash:'test',type:'email'},null,null,navigation)).status,403);
+  assert.equal((await request('/api/auth/verify',{tokenHash:'test',type:'email'},null,null,{Origin:'https://mail.example'})).status,403);
   const signup=await request('/api/auth/register',{name:'Member'});assert.equal(signup.status,200);assert.equal(signup.headers['set-cookie'],undefined);
   const email=await request('/api/auth/recover',{email:'member@example.test'});assert.equal(email.status,200);
   const verified=await request('/api/auth/verify',{tokenHash:'test',type:'recovery'});
