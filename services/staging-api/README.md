@@ -1,6 +1,6 @@
 # Managed staging service
 
-**Application deployed on Free Render with hosted Supabase Postgres and signup hook; authenticated acceptance tests and email delivery remain pending.** This service replaces local password hashing/SQLite with Supabase Auth and Postgres. The original localhost POC and published demo are unchanged. See the [provisioning record](../../docs/poc/Staging-Setup.md). Resend custom SMTP and the templates below are configured without a paid upgrade. Live delivery and recovery tests remain pending; the domainless sender is restricted to the Resend account-owner email, so do not admit broader testers yet.
+**Application deployed on Free Render with hosted Supabase Postgres and signup hook; first-user signup, email verification, password reset, returning login and basic task persistence checked live; broader acceptance testing remains open.** This service replaces local password hashing/SQLite with Supabase Auth and Postgres. The original localhost POC and published demo are unchanged. See the [provisioning record](../../docs/poc/Staging-Setup.md). Resend custom SMTP and the templates below are configured without a paid upgrade. First-user delivery and recovery completed; the domainless sender is restricted to the Resend account-owner email, so do not admit broader testers yet.
 
 ## Runtime and deployment
 
