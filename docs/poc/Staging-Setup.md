@@ -1,8 +1,17 @@
 # Private hosted staging — setup handoff
 
-27 October 2026. **Not yet provisioned or deployed.** Supabase/Render/Resend are approved. Budget is free services only; no paid resources or domain purchase are authorized. US East is provisional. No domain is owned yet; provider login/access and administrator/tester identities remain outstanding. The existing public `.site` stays a separate demo; its hosting identity and audience must not change.
+27 October 2026. **Database provisioned; application not deployed.** Supabase/Render/Resend are approved. Budget is free services only; no paid resources or domain purchase are authorized. The founder created `relay-staging` on Supabase Free in East US (North Virginia). No domain is owned yet; administrator/tester identities and email delivery configuration remain outstanding. The existing public `.site` stays a separate demo; its hosting identity and audience must not change.
 
-Implementation update: [the managed staging service](../../services/staging-api/README.md), Postgres migration, verification/recovery UI and Free Render blueprint are prepared for review. **50 local tests pass.** This is source preparation, not a claim that provider accounts, hooks, email or hosted staging are configured. Supabase and Render were still showing sign-in pages in the accessible in-app browser at the last check.
+Implementation update: [the managed staging service](../../services/staging-api/README.md), Postgres migration, verification/recovery UI and Free Render blueprint are prepared for review. **50 local tests pass.** Both provider dashboards are accessible. This does not establish that hosted application or email acceptance tests pass.
+
+## Hosted provisioning record
+
+- Supabase project: `pjnhmlhaabjqqifjixio`, `relay-staging`, Free, `us-east-1`; dashboard reports Healthy.
+- Executed `supabase/migrations/202610270001_accounts_tasks.sql` in the dedicated project's SQL Editor; result: `Success. No rows returned`. SHA-256: `ff2937144fc5ef89ad7794a897c67cf761101f1f6144e56453f1c8869e0f9b74`.
+- SQL Editor query record: `2ab89286-0551-45b7-8318-3c073a977368`. This is a manual application record, not a Supabase CLI migration-history entry. Do not rerun the initial non-idempotent migration.
+- `Before User Created` hook visibly ENABLED with `public.relay_before_user_created`. Email confirmation is ON, anonymous sign-ins OFF, and only the Email provider is enabled. The invitation table has no admitted testers yet.
+- The current Free dashboard disables email-template editing without custom SMTP; its other option is a Pro upgrade. Our fragment-hash confirmation/reset templates are therefore **not configured**. Do not use default links with the current callback implementation, disable verification, or mark registration ready. Custom SMTP (or a separately reviewed email-hook implementation) is required first.
+- Render workspace `Relay` is accessible. New Web Service setup awaits GitHub connection; no service, application hostname or secrets are configured. Keep the repository private and request repository-scoped access only.
 
 ## Proposed stack
 
@@ -69,4 +78,4 @@ Render Free services can sleep and lose their local filesystem on restart, so ho
 
 Without a verified sender domain, use only provider-authorized email recipients during the technical test. Do not add testers as provider-organization members just to bypass email restrictions: that grants infrastructure access, not ordinary product membership. Broader email verification/reset testing waits for approved sender configuration.
 
-No region has been provisioned. Supabase and Render both offer Virginia, but choosing US infrastructure does not by itself remove obligations tied to the business and its users. [European Commission scope guidance](https://commission.europa.eu/law/law-topic/data-protection/information-business-and-organisations/application-gdpr_en)
+Supabase is provisioned in North Virginia; Render Virginia remains the intended matching region. Choosing US infrastructure does not by itself remove obligations tied to the business and its users. [European Commission scope guidance](https://commission.europa.eu/law/law-topic/data-protection/information-business-and-organisations/application-gdpr_en)
