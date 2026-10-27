@@ -10,7 +10,7 @@ Required server environment values (configure in Render, never commit):
 
 | Variable | Purpose |
 |---|---|
-| `RELAY_APP_ORIGIN` | Exact HTTPS staging origin, no path/wildcard |
+| `RELAY_APP_ORIGIN` | Exact HTTPS staging origin, no path/wildcard. On Render only, may be omitted to use the host-provided `RENDER_EXTERNAL_URL`; request headers are never used. |
 | `SUPABASE_URL` | Dedicated staging project's hosted `.supabase.co` URL |
 | `SUPABASE_PUBLISHABLE_KEY` | Project public API key used with individual user JWTs |
 | `SUPABASE_SECRET_KEY` | Server-only key for invitation checks, opaque session records and auth administration |
@@ -62,4 +62,4 @@ Turn off email click tracking for these links. Test the actual rendered emails, 
 
 Remaining before a team rollout: actual provider configuration/delivery evidence, multi-connection races, independent auth/security review, restore exercises, session cleanup/retention and revocation retry operations, fuller rate/abuse controls, pagination, durable pre-auth drafts, MFA and longer-lived refresh handling. The one-hour staging session policy is intentionally conservative. Do not call this a completed production authentication system.
 
-Sources checked: [Supabase signup hook](https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook), [email templates](https://supabase.com/docs/guides/auth/auth-email-templates), [session revocation](https://supabase.com/docs/guides/auth/sessions), [Render blueprint specification](https://render.com/docs/blueprint-spec). The official Supabase SDK is pinned at 2.118.0; PGlite 0.5.12 is a development-only test engine. Repeat the suite on Node 24 before deployment; the current development machine uses Node 25.2.1.
+Sources checked: [Supabase signup hook](https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook), [email templates](https://supabase.com/docs/guides/auth/auth-email-templates), [session revocation](https://supabase.com/docs/guides/auth/sessions), [Render blueprint specification](https://render.com/docs/blueprint-spec), [Render host-provided URL](https://render.com/docs/environment-variables). The official Supabase SDK is pinned at 2.118.0; PGlite 0.5.12 is a development-only test engine. All 50 tests passed under Node 24 during staging preparation. The subsequent Render origin fallback passed the 10 managed-auth/config tests, including origin precedence and rejection checks.

@@ -39,6 +39,10 @@ function fixture(){
 test('config requires explicit HTTPS provider settings and valid encryption key',()=>{
   const env={RELAY_APP_ORIGIN:'https://relay-staging.onrender.com',SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'test-publishable',SUPABASE_SECRET_KEY:'test-secret',RELAY_SESSION_KEY:randomBytes(32).toString('base64')};
   assert.equal(loadConfig(env).sessionKey.length,32);
+  assert.equal(loadConfig({...env,RELAY_APP_ORIGIN:'',RENDER:'true',RENDER_EXTERNAL_URL:'https://assigned-staging.onrender.com'}).origin,'https://assigned-staging.onrender.com');
+  assert.equal(loadConfig({...env,RENDER:'true',RENDER_EXTERNAL_URL:'https://other.onrender.com'}).origin,env.RELAY_APP_ORIGIN);
+  assert.throws(()=>loadConfig({...env,RELAY_APP_ORIGIN:'',RENDER_EXTERNAL_URL:'https://untrusted.example'}),/Missing RELAY_APP_ORIGIN/);
+  assert.throws(()=>loadConfig({...env,RELAY_APP_ORIGIN:'',RENDER:'true',RENDER_EXTERNAL_URL:'http://assigned.onrender.com'}),/HTTPS/);
   assert.throws(()=>loadConfig({...env,RELAY_APP_ORIGIN:'http://relay.example'}),/HTTPS/);
   assert.throws(()=>loadConfig({...env,SUPABASE_URL:'https://example.supabase.co.evil.test'}),/hosted Supabase/);
   assert.throws(()=>loadConfig({...env,RELAY_SESSION_KEY:'short'}),/32 random bytes/);

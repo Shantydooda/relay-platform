@@ -11,7 +11,8 @@ Implementation update: [the managed staging service](../../services/staging-api/
 - SQL Editor query record: `2ab89286-0551-45b7-8318-3c073a977368`. This is a manual application record, not a Supabase CLI migration-history entry. Do not rerun the initial non-idempotent migration.
 - `Before User Created` hook visibly ENABLED with `public.relay_before_user_created`. Email confirmation is ON, anonymous sign-ins OFF, and only the Email provider is enabled. The invitation table has no admitted testers yet.
 - The current Free dashboard disables email-template editing without custom SMTP; its other option is a Pro upgrade. Our fragment-hash confirmation/reset templates are therefore **not configured**. Do not use default links with the current callback implementation, disable verification, or mark registration ready. Custom SMTP (or a separately reviewed email-hook implementation) is required first.
-- Render workspace `Relay` is accessible. New Web Service setup awaits GitHub connection; no service, application hostname or secrets are configured. Keep the repository private and request repository-scoped access only.
+- Render workspace `Relay` is accessible and the founder connected only `relay-platform`. New Web Service form prepared as `relay-staging`, Free ($0/month), Virginia, branch `codex/managed-staging-auth`, Node 24, build `npm ci --omit=dev --ignore-scripts`, start `node services/staging-api/src/server.cjs`, health `/health`, auto-deploy Off. No service has been submitted yet; staging-key transfer awaits action-time approval. The application can use Render's host-provided `RENDER_EXTERNAL_URL` without guessing a hostname. No request-header-derived origin is accepted.
+- All 50 tests passed on Node 24 before this configuration step. After adding the Render origin fallback, all 10 managed-auth/config tests passed again, including missing/invalid origins and explicit-origin precedence.
 
 ## Proposed stack
 
