@@ -1,6 +1,6 @@
 # Relay platform
 
-Production-bound Relay POC source, separated from the published browser demo. It includes real local accounts/tasks and a **managed Supabase/Postgres staging integration prepared for review**. No hosted staging environment has been provisioned or verified yet.
+Production-bound Relay POC source, separated from the published browser demo. It includes real local accounts/tasks and a **managed Supabase/Postgres staging environment deployed on free services**. Hosting/database connectivity and anonymous task denial are verified; email delivery, authenticated acceptance tests and security review remain open. [Current provisioning record](docs/poc/Staging-Setup.md).
 
 The approved ivory public landing design, animated assistants and chat-first signup entry are included. Marketplace bidding, external agents, payments and delivery are not simulated in this app. A posted task is a durable request, not a dispatched job.
 
@@ -23,7 +23,7 @@ This local launcher intentionally accepts only loopback requests and refuses pro
 |---|---|
 | `apps/poc-web` | Current account/task frontend |
 | `services/poc-api` | Real local HTTP auth, sessions and task storage |
-| `services/staging-api` | Managed Supabase auth, encrypted opaque sessions and Postgres adapter; not deployed |
+| `services/staging-api` | Managed Supabase auth, encrypted opaque sessions and Postgres adapter; deployed to isolated staging |
 | `supabase/migrations` | Postgres tenant policies, signup hook and transactional task commands |
 | `packages/ui` | Presentation components, public landing and design tokens |
 | `packages/domain` | Marketplace money/approval/acceptance policy primitives; not live payments |
@@ -41,13 +41,13 @@ npm run test:staging
 
 API tests open ephemeral loopback ports and use disposable databases. They do not send emails or mutate the running app. [Implemented API and runbook](services/poc-api/README.md).
 
-Validation: **50 backend/domain/contract/UI/Postgres tests pass**, plus the independent frontend syntax check. This count excludes the old workspace's simulated-marketplace and static-demo-output tests. Managed provider responses are fixtures; SQL/grant/RLS tests execute the actual migration on embedded Postgres with stand-in auth tables. Real hosted delivery, recovery and multi-connection tests remain open because the provider environment is not configured.
+Validation: **50 backend/domain/contract/UI/Postgres tests pass**, plus the independent frontend syntax check. This count excludes the old workspace's simulated-marketplace and static-demo-output tests. Managed provider responses are fixtures; SQL/grant/RLS tests execute the actual migration on embedded Postgres with stand-in auth tables. Real hosted delivery, recovery and multi-connection tests remain open; hosting/database connectivity alone does not validate those flows.
 
 ## Staging decisions
 
 - Approved providers: **Supabase** for managed auth/Postgres, **Render** for hosting, **Resend** for SMTP when a verified domain is available.
 - Budget: **free services only**. No paid plan, payment method, domain purchase or paid add-on is authorized.
-- Region: US East/Virginia is under consideration, not yet provisioned or a compliance conclusion.
+- Region: Supabase North Virginia and Render Virginia are provisioned on Free plans; location alone is not a compliance conclusion.
 - Domain: none owned yet. Start the app on its provider hostname; auth email testing must respect the provider's authorized-recipient restrictions until a sender domain is verified.
 - Access: proposed invite-only membership with verified email. A hidden URL or frontend-only allowlist is insufficient.
 
