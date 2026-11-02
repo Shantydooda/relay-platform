@@ -1,0 +1,36 @@
+'use strict';
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {randomUUID}=require('node:crypto');
+const {openDatabase}=require('../../poc-api/src/database.cjs');
+const {openApplicationDatabase}=require('../src/sqlite.cjs');
+const {createStore}=require('../../poc-api/src/store.cjs');
+const {createUnifiedLocalStore}=require('../../poc-api/src/unified-store.cjs');
+
+test('local cutover preserves real identities, task history and pending choices without overwriting new records',async t=>{
+ const authDb=openDatabase(':memory:'),applicationDb=openApplicationDatabase(':memory:');
+ t.after(()=>{applicationDb.close();authDb.close();});
+ const legacy=createStore(authDb);
+ const raw=await legacy.register({name:'Existing buyer',email:'existing@example.test',password:'isolated migration fixture password',workspace:'buyer'},'fixture');
+ const actor=legacy.principal(raw),key=randomUUID();
+ const task=legacy.createTask(actor,{tenantId:actor.memberships[0].id,title:'Existing task',brief:'Preserve this real brief'},key);
+ legacy.mutateTask(actor,task.taskId,'messages',{expectedVersion:1,body:'Preserve this context'},randomUUID());
+ const builderRaw=await legacy.register({name:'Existing builder',email:'builder@example.test',password:'isolated builder fixture password',workspace:'builder'},'builder');
+ const builder=legacy.principal(builderRaw);
+ const agent=legacy.marketplace.addAgent(builder,{name:'Existing supplier',kind:'general',integration:'api',capabilities:[{category:'Research',task:'Custom research'}]},randomUUID());
+ const capability=legacy.marketplace.agents(builder)[0].capabilities[0];
+ legacy.mutateTask(actor,task.taskId,'post',{expectedVersion:2},randomUUID());
+ const offer=legacy.marketplace.quote(builder,task.taskId,{agentId:agent.agentId,capabilityId:capability.id,expectedVersion:3,amountMinor:100,deliveryMinutes:10,proposal:'Preserve this offer'},randomUUID());
+ legacy.marketplace.accept(actor,task.taskId,{expectedVersion:3,offerId:offer.offerId},randomUUID());
+ const unified=await createUnifiedLocalStore({authDb,applicationDb,localExecution:true});
+ assert.equal(unified.principal(raw).user.id,actor.user.id);
+ assert.equal((await unified.marketplace.work(builder))[0].offerId,offer.offerId);
+ assert.equal((await unified.detail(actor,task.taskId)).task.status,'selected');
+ assert.deepEqual((await unified.detail(actor,task.taskId)).messages,legacy.detail(actor,task.taskId).messages.map(({id,body,authorName,createdAt})=>({id,body,authorName,createdAt})));
+ await assert.rejects(unified.createTask(actor,{tenantId:actor.memberships[0].id,title:'Existing task',brief:'Preserve this real brief'},key),{code:'IDEMPOTENCY_CONFLICT'});
+ await unified.mutateTask(actor,task.taskId,'scope',{expectedVersion:4,title:'Updated after cutover',brief:'New canonical scope'},randomUUID());
+ const restored=await createUnifiedLocalStore({authDb,applicationDb,localExecution:true});
+ assert.equal((await restored.detail(actor,task.taskId)).task.title,'Updated after cutover');
+ assert.equal(legacy.detail(actor,task.taskId).task.title,'Existing task');
+ assert.equal((await restored.list(actor,actor.memberships[0].id)).length,1);
+});

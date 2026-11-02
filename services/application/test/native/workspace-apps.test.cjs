@@ -1,0 +1,35 @@
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
+const { readConfig, adminPool, migrateLocal } = require('../../scripts/local-postgres.cjs');
+const { openLocalPostgres } = require('../../src/postgres.cjs');
+const { createApplication } = require('../../src/service.cjs');
+const { recurringFixture } = require('../helpers/recurring.cjs');
+
+test('native PostgreSQL: app workers compete safely; revocation and restart retain permissions and results', async t => {
+  const config = readConfig(), database = 'relay_apps_test_' + Date.now(), admin = adminPool(config);
+  await admin.query(`CREATE DATABASE ${database} OWNER relay_migrator`);
+  await admin.query(`REVOKE ALL ON DATABASE ${database} FROM PUBLIC`);
+  await admin.query(`GRANT CONNECT ON DATABASE ${database} TO relay_app`);
+  const qa = { ...config, runtime: { ...config.runtime, database }, migrator: { ...config.migrator, database } };
+  let first, second;
+  t.after(async () => { await first?.close(); await second?.close(); await admin.query(`DROP DATABASE ${database}`); await admin.end(); });
+  await migrateLocal(qa);
+  first = await openLocalPostgres(qa.runtime); second = await openLocalPostgres(qa.runtime);
+  const f = await recurringFixture(first.repository), other = createApplication({ ...f.options, repository: second.repository });
+  const tenantId = f.buyer.memberships[0].id;
+  const { sourceId } = await f.app.saveToolSource(f.buyer, { tenantId, name: 'Native test source', content: 'name\nAcme\nAcme' }, randomUUID());
+  const { appId } = await f.app.installApp(f.buyer, f.taskId, { expectedVersion: f.config.expectedVersion, sourceId, expiresDays: 1, consent: 'local-source-read' }, randomUUID());
+  await f.app.controlApp(f.buyer, appId, { expectedVersion: 1, action: 'schedule', calendar: f.config.calendar }, randomUUID());
+  f.setTime('2026-10-29T09:00Z');
+  await Promise.all(Array.from({ length: 6 }, (_, i) => (i % 2 ? other : f.app).reconcileApps()));
+  let view = await other.workspaceApps(f.buyer, tenantId);
+  assert.equal(view.runs.length, 1); assert.equal(view.runs[0].output, 'name\r\nAcme\r\n');
+  await other.revokeToolGrant(f.buyer, view.grants[0].id, { expectedVersion: 1 }, randomUUID());
+  const run = view.runs[0];
+  await assert.rejects(f.app.reviewAppRun(f.buyer, run.id, { expectedVersion: 1, action: 'save', outputHash: run.outputHash }, randomUUID()), { code: 'GRANT_REQUIRED' });
+  await first.close(); first = await openLocalPostgres(qa.runtime);
+  view = await createApplication({ ...f.options, repository: first.repository }).workspaceApps(f.buyer, tenantId);
+  assert.equal(view.grants[0].status, 'revoked'); assert.equal(view.runs[0].status, 'needs_review');
+});

@@ -19,6 +19,7 @@ async function fixture(t){
     create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$;
     grant usage on schema auth to authenticated;grant execute on function auth.uid(),auth.jwt() to authenticated;`);
   await db.exec(readFileSync(resolve(__dirname,'../../../supabase/migrations/202610270001_accounts_tasks.sql'),'utf8'));
+  await db.exec(readFileSync(resolve(__dirname,'../../../supabase/migrations/202611010001_membership_changes.sql'),'utf8'));
   await db.query('insert into auth.users values ($1,$2,now()),($3,$4,now())',[A,'a@example.test',B,'b@example.test']);
   await db.query('insert into auth.sessions values ($1,$2),($3,$4)',[SA,A,SB,B]);
   await db.query('insert into public.relay_invites(email) values ($1),($2)',['a@example.test','b@example.test']);
