@@ -211,7 +211,7 @@ function createExecution(context) {
       for (const file of files) {
         let stored = { ...file };
         if (objectStore) {
-          stored.objectKey = objectStore.put(Buffer.from(file.base64, 'base64'));
+          stored.objectKey = await require('../../storage/src/local-objects.cjs').putWithRetry(objectStore, Buffer.from(file.base64, 'base64'));
           delete stored.base64;
           stored.scan = { status: 'quarantined', reason: 'Awaiting malware scan.' };
           file.scan = stored.scan;

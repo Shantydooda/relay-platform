@@ -7,9 +7,30 @@ const { tmpdir } = require('node:os');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { once } = require('node:events');
-const { localObjects } = require('../../storage/src/local-objects.cjs');
+const { localObjects, putWithRetry } = require('../../storage/src/local-objects.cjs');
 const run = promisify(execFile);
 const modulePath = resolve(__dirname, '../../storage/src/local-objects.cjs');
+test('publication retries yield to lock release, exhaust safely, and do not retry permanent errors', async (t) => {
+  const root = directory(t), store = localObjects(root);
+  const { DatabaseSync } = require('node:sqlite');
+  const lock = new DatabaseSync(join(root, '.writer.sqlite'));
+  t.after(() => lock.close());
+  lock.exec('BEGIN IMMEDIATE');
+  const release = setTimeout(() => lock.exec('ROLLBACK'), 100);
+  t.after(() => clearTimeout(release));
+  const bytes = Buffer.from('retry safely');
+  const key = await putWithRetry(store, bytes);
+  assert.deepEqual(store.read(key), bytes);
+  assert.equal(await putWithRetry(store, bytes), key);
+  lock.exec('BEGIN IMMEDIATE');
+  try {
+    await assert.rejects(putWithRetry(store, Buffer.from('blocked')), {code:'OBJECT_STORAGE_BUSY'});
+    assert.equal(fs.readdirSync(root).filter(name => /^[a-f0-9]{64}$/.test(name)).length, 1);
+  } finally { lock.exec('ROLLBACK'); }
+  let calls = 0;
+  await assert.rejects(putWithRetry({put(){calls++;throw Object.assign(new Error('full'),{code:'OBJECT_STORAGE_LIMIT'});}},bytes), {code:'OBJECT_STORAGE_LIMIT'});
+  assert.equal(calls, 1);
+});
 function directory(t) {
   const root = fs.mkdtempSync(join(tmpdir(), 'relay-physical-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

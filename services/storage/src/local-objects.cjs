@@ -148,4 +148,15 @@ function localObjects(directory, { maxBytes = 1024 ** 3 } = {}) {
   }
   return { root, put, read, recoverUploads };
 }
-module.exports = { localObjects, digest };
+// Retry only lock admission failures. Capacity, integrity and filesystem errors
+// must reach the caller unchanged. Content-addressed publication is replay-safe.
+async function putWithRetry(store, bytes) {
+  for (let attempt = 0; ; attempt++) {
+    try { return store.put(bytes); }
+    catch (error) {
+      if (error.code !== 'OBJECT_STORAGE_BUSY' || attempt === 5) throw error;
+      await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
+}
+module.exports = { localObjects, digest, putWithRetry };

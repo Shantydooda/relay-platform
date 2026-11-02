@@ -99,10 +99,11 @@ test('inspection tolerates concurrent publication and delayed reference commits'
       run(process.execPath, [
         '-e',
         `
-    const store=require(process.argv[1]).localObjects(process.argv[2]);
+    const {localObjects,putWithRetry}=require(process.argv[1]);
+    const store=localObjects(process.argv[2]);
     (async()=>{ for(let i=0;i<8;i++) {
       const bytes=Buffer.from(process.argv[3]+':'+i);
-      console.log(JSON.stringify({key:store.put(bytes),size:bytes.length}));
+      console.log(JSON.stringify({key:await putWithRetry(store,bytes),size:bytes.length}));
       await new Promise(resolve=>setTimeout(resolve,30));
     } })();
   `,
