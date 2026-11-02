@@ -56,6 +56,13 @@ body.workspace-open .workspace-identity {
   padding: 4px 10px 8px;
 }
 
+body.workspace-open .workspace-identity:has(.chat-character.face) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
 body.workspace-open .brand {
   color: var(--relay-text);
   font-size: 28px;

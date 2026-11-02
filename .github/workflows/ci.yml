@@ -94,6 +94,14 @@ jobs:
       - name: Install the locked dependency graph
         run: npm ci
 
+      - name: Install PostgreSQL utilities
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql postgresql-client
+
+      - name: Bootstrap isolated load-test database
+        run: npm run db:local:setup
+
       - name: Run the ${{ matrix.mode }} profile
         env:
           RELAY_LOAD_SECONDS: '60'

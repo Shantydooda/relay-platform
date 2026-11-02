@@ -102,11 +102,9 @@ function header() {
   const navigationOpen = root.querySelector('.workspace-navigation')?.open ?? !globalThis.matchMedia?.('(max-width: 760px)').matches;
   const recent = builderSide ? [] : [...state.tasks]
     .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)).slice(0, 5);
-  const workspaceName = builderSide ? 'Builder workspace'
-    : state.account.memberships?.find(item => item.id === state.tenantId)?.name || 'Personal workspace';
 
   return `<aside class="workspace-header" aria-label="Workspace sidebar">
-    <div class="workspace-identity"><button class="brand" data-action="home" aria-label="Relay home">relay</button>${company ? `<button class="company-identity" data-action="buyer-nav" data-tab="business" aria-label="Company workspace: ${escape(company.name)}. Your role: ${escape(workspaceRoleLabel(company.role))}"><span class="company-identity-icon">${navigationIcon('business')}</span><span><small>Company workspace</small><strong>${escape(company.name)}</strong><small>${escape(workspaceRoleLabel(company.role))}</small></span></button>` : `<span class="workspace-caption">${escape(workspaceName)}</span>`}</div>
+    <div class="workspace-identity"><button class="brand" data-action="home" aria-label="Relay home">relay</button>${company ? `<button class="company-identity" data-action="buyer-nav" data-tab="business" aria-label="Company workspace: ${escape(company.name)}. Your role: ${escape(workspaceRoleLabel(company.role))}"><span class="company-identity-icon">${navigationIcon('business')}</span><span><small>Company workspace</small><strong>${escape(company.name)}</strong><small>${escape(workspaceRoleLabel(company.role))}</small></span></button>` : builderSide ? `<span class="workspace-caption">Builder workspace</span>` : relayCharacter('face')}</div>
     <details class="workspace-navigation" ${navigationOpen ? 'open' : ''}>
       <summary>Workspace menu</summary>
       <nav aria-label="${builderSide ? 'Builder' : 'Buyer'} navigation">

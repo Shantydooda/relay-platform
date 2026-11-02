@@ -8,6 +8,8 @@ const {text}=require('../../../packages/ui/src/components.cjs');
 function fixture(role='employee') {
  const state={account:{user:{id:'user',name:'Taylor',workspace:'buyer'},memberships:[{id:'personal',name:'Taylor',role:'owner'},{id:'company',company:true,name:'Northstar',role}]},tenantId:'company',tasks:[],buyerTab:'request'};
  const ctx=vm.createContext({state,escape:text,root:{querySelector:()=>null}});
+ const buyerSource=fs.readFileSync(path.join(__dirname,'../public/buyer-flow.js'),'utf8');
+ vm.runInContext(buyerSource.slice(buyerSource.indexOf('function relayCharacter('),buyerSource.indexOf('function activityCard(')),ctx);
  const source=fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
  vm.runInContext(source.slice(source.indexOf('function navigationIcon('),source.indexOf('function composer(')),ctx);
  return {state,render:name=>vm.runInContext(name+'()',ctx)};

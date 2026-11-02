@@ -2049,6 +2049,18 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
 .chat-character-blink {
   opacity: 0;
 }
+.workspace-identity .chat-character.face {
+  display: inline-flex;
+  width: 30px;
+  height: 24px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 50%;
+}
+.chat-character.face svg {
+  width: 100%;
+  height: 100%;
+}
 .execution-milestones {
   display: flex;
   flex-wrap: wrap;
@@ -2078,6 +2090,9 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
 @media (prefers-reduced-motion: no-preference) {
   .chat-character-blink {
     animation: chat-blink 7s linear 2;
+  }
+  .chat-character.face .chat-character-blink {
+    animation-iteration-count: infinite;
   }
   @keyframes chat-blink {
     0%,

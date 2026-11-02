@@ -332,7 +332,7 @@ function recurringPlan(plan) {
 
 // Shared conversation identity and honest activity states, not simulated agent output.
 function relayCharacter(size = 'small') {
-  return `<span class="chat-character ${size}" aria-hidden="true"><svg viewBox="60 100 650 610" focusable="false"><image href="/assets/relay-assistants.png" width="2172" height="724"/><g class="chat-character-blink"><ellipse cx="460" cy="354" rx="16" ry="19" fill="#c8bdb5"/><ellipse cx="554" cy="353" rx="16" ry="19" fill="#dfd7cf"/></g></svg></span>`;
+  return `<span class="chat-character ${size}" aria-hidden="true"><svg viewBox="${size === 'face' ? '345 215 260 185' : '60 100 650 610'}" focusable="false"><image href="/assets/relay-assistants.png" width="2172" height="724"/><g class="chat-character-blink"><ellipse cx="460" cy="354" rx="16" ry="19" fill="#c8bdb5"/><ellipse cx="554" cy="353" rx="16" ry="19" fill="#dfd7cf"/></g></svg></span>`;
 }
 function activityCard(title, description, active = false) {
   return `<section class="live-activity ${active ? 'is-working' : ''}" role="status"><div class="activity-heading">${relayCharacter()}<strong>${escape(title)}</strong>${active ? '<span class="activity-spinner" aria-hidden="true"></span>' : ''}</div><p>${escape(description)}</p></section>`;
