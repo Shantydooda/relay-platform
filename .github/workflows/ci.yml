@@ -62,6 +62,9 @@ jobs:
       - name: Install the locked dependency graph
         run: npm ci
 
+      - name: Bootstrap isolated CI database
+        run: npm run db:local:setup
+
       - name: Exercise migrations, concurrency, restart and recovery
         run: npm run test:postgres
 
