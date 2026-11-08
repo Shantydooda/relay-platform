@@ -14,8 +14,8 @@ test('buyer agent market preserves offer approval and hosting visibly requires a
   assert.match(market, /Request builder/);
   assert.match(shell, /preferredAgentId/);
   assert.match(apps, /Pro or Business required/);
-  assert.match(apps, /Billing is disconnected on localhost/);
-  assert.match(apps, /Localhost simulates the hosting control plane/);
+  assert.match(apps, /Hosting subscriptions use local fixtures; checkout is not enabled/);
+  assert.match(apps, /Local worker execution is active/);
   assert.match(apps, /subscription_hold/);
   assert.match(apps, /deprovision/);
   assert.match(apps, /\/host/);
@@ -40,6 +40,7 @@ test('agent market renders the dense category rail, filters and qualified cards 
   };
   const context = {
     state,
+    location: { origin: 'http://127.0.0.1:4180', hash: '#market' },
     escape: value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])),
     date: value => new Date(value).toISOString(),
   };
@@ -51,8 +52,9 @@ test('agent market renders the dense category rail, filters and qualified cards 
   assert.match(html, /Source discovery/);
   assert.match(html, /Request builder/);
   assert.match(html, /Request agent/);
-  assert.match(html, /Capabilities & evidence/);
-  assert.match(html, /&lt;Relay test&gt;/);
+  assert.match(html, /View profile &amp; evidence/);
+  assert.doesNotMatch(html, /&lt;Relay test&gt;/, 'full evidence belongs on the profile, not duplicated in the card');
+  assert.match(context.market.storefront('agent-1'), /&lt;Relay test&gt;/);
   assert.match(html, /&lt;Source Scout&gt;/);
   assert.doesNotMatch(html, /<Source Scout>/);
 });

@@ -1,6 +1,13 @@
 'use strict';
 const root=document.querySelector('#app');
 const notice=document.querySelector('#notice');
+function applyAppearance(value) {
+  const theme = value === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.appearance = theme;
+  try { localStorage.setItem('relay.appearance', theme); } catch {}
+  return theme;
+}
+try { applyAppearance(localStorage.getItem('relay.appearance')); } catch { applyAppearance('dark'); }
 function createClientState() {
   return {
     account: null, auth: null, authMode: 'local', confirmation: null,
@@ -8,7 +15,7 @@ function createClientState() {
     features: null, connected: false, motionPaused: false, busy: false,
     tasks: [], detail: null, offers: [], schedules: [], executionQueue: null,
     agents: [], opportunities: [], work: [], quotes: [], agentCatalog: [],
-    workspaceApps: null, drive: null, payments: null, spendingHistory: null,
+    workspaceApps: null, drive: null, attio: null, attioReview: null, attioReceipts: [], attioSending: false, payments: null, spendingHistory: null,
     companyBudget: null, team: null, teamHistory: null,
     tenantId: null, invitationPreview: null, teamInviteToken: null,
     teamInviteLink: null, teamHistoryBefore: null, teamRemoval: null,
@@ -16,7 +23,8 @@ function createClientState() {
     editingTitleTouched: false, addingAgent: false, agentDraft: null,
     agentIntroPart: 'profile', setupAgentId: null, setupStage: 2,
     returnAgentId: null, preferredAgent: null, agentMarketQuery: '',
-    agentMarketCategory: 'all', agentMarketType: 'all', taskFilter: 'all',
+    agentMarketCategory: 'All agents', agentMarketType: 'All types', taskFilter: 'all',
+    agentMarketSaved: false, agentDiscovery: null, storefrontAgent: null, acquisitionReport: null, marketLoading: false, marketError: false,
     reviewOffer: null, reviewStart: false, reviewChatRequest: false,
     recoveryOpen: false, recoveryData: null, recoveryAfter: '',
     operationsBacklog: null, operationsBacklogUser: null,
@@ -26,7 +34,7 @@ function createClientState() {
     sendingMessage: false, builderReplyDirty: false, followExecution: false,
     renderedScopingReply: null, renderedSubmissionId: null,
     renderedViewKey: null, scrollTarget: null, scrollToLatest: false,
-    spendingFrom: '', spendingTo: '',
+    spendingFrom: '', spendingTo: '', spendingCurrency: 'USD',
   };
 }
 const state=createClientState();
@@ -100,10 +108,10 @@ function header() {
     ? [['dashboard', 'Dashboard'], ['agents', 'Agents'], ['opportunities', 'Opportunities'], ['work', 'Tasks'], ['earnings', 'Earnings'], ['settings', 'Settings']]
     : [['request', 'Request work'], ['tasks', 'My tasks'], ['market', 'Agent market'], ...(state.features?.workspaceApps ? [['apps', 'Apps']] : []), ...(state.features?.recurring ? [['scheduled', 'Scheduled work']] : []), ['business', 'Business workspace'], ['billing', 'History & spend'], ['tools', 'Connected tools']];
   const navigationOpen = root.querySelector('.workspace-navigation')?.open ?? !globalThis.matchMedia?.('(max-width: 760px)').matches;
-  const recent = builderSide ? [] : [...state.tasks]
+  const recent = builderSide ? [] : [...state.tasks].filter(task => !task.orchestrationStep?.supersededBy)
     .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)).slice(0, 5);
 
-  return `<aside class="workspace-header" aria-label="Workspace sidebar">
+  return `<a class="skip-workspace" href="#workspace-main">Skip to workspace</a><aside class="workspace-header" aria-label="Workspace sidebar">
     <div class="workspace-identity"><button class="brand" data-action="home" aria-label="Relay home">relay</button>${company ? `<button class="company-identity" data-action="buyer-nav" data-tab="business" aria-label="Company workspace: ${escape(company.name)}. Your role: ${escape(workspaceRoleLabel(company.role))}"><span class="company-identity-icon">${navigationIcon('business')}</span><span><small>Company workspace</small><strong>${escape(company.name)}</strong><small>${escape(workspaceRoleLabel(company.role))}</small></span></button>` : builderSide ? `<span class="workspace-caption">Builder workspace</span>` : relayCharacter('face')}</div>
     <details class="workspace-navigation" ${navigationOpen ? 'open' : ''}>
       <summary>Workspace menu</summary>
@@ -113,6 +121,7 @@ function header() {
       ${recent.length ? `<section class="recent-conversations" aria-label="Recent conversations"><h2>Recent conversations</h2>${recent.map(task => `<button data-action="task" data-id="${escape(task.id)}" ${state.detail?.task.id === task.id ? 'aria-current="page"' : ''}>${navigationIcon('conversation')}<span>${escape(task.title || 'Untitled task')}</span></button>`).join('')}</section>` : ''}
     </details>
     <div class="account-actions">
+      <button class="appearance-switch" data-action="toggle-appearance" aria-label="Dark mode" title="Toggle light / dark appearance" aria-pressed="${globalThis.document?.documentElement?.dataset.appearance !== 'light'}"><svg class="appearance-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.1A8.5 8.5 0 0 1 10.9 3.5a8.5 8.5 0 1 0 9.6 9.6Z"/></svg><svg class="appearance-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button>
       <button class="workspace-switch" data-action="switch">Switch to ${builderSide ? 'buyer' : 'builder'} workspace</button>
       <details class="account-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span>${escape(user.name)}</span></summary><div class="account-popover"><small>${escape(user.email)}</small><small>Local development · saved on this machine</small>${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}<button data-action="logout">Sign out</button></div></details>
     </div>
@@ -130,11 +139,25 @@ function newTask() {
   const welcome = state.sendingRequest
     ? `<div class="request-pending"><article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p class="offer-details">${escape(state.sendingRequest)}</p></article>${activityCard('Sending your message', 'Starting your private conversation.', true)}</div>`
     : `<div class="request-welcome">${relayCharacter('large')}<h1>${state.preferredAgent ? `What should ${escape(state.preferredAgent.preferenceMode === 'builder' ? state.preferredAgent.operatorName || 'this builder' : state.preferredAgent.name)} do?` : 'What would you like done?'}</h1><p>${state.preferredAgent ? `This request will go directly to ${escape(state.preferredAgent.preferenceMode === 'builder' ? `${state.preferredAgent.operatorName || 'This builder'}’s qualified agents` : state.preferredAgent.name)} for a quote. You still approve the price and scope.` : 'Start a conversation. We’ll work out the details together.'}</p></div>`;
-  return `<section class="request-work">${welcome}<div class="request-dock">${!state.sendingRequest ? exampleButtons() : ''}${composer('request', 'Tell Relay what you need…', state.sendingRequest ? 'Sending…' : 'Send', state.sendingRequest ? '' : state.prompt, 'Enter to send · Shift + Enter for a new line') .replace('<textarea', state.sendingRequest ? '<textarea disabled' : '<textarea').replace('type="submit"', state.sendingRequest ? 'type="submit" disabled' : 'type="submit"')}</div></section>`;
+  return `<section class="request-work">${welcome}${state.preferredAgent?.repeatFromTaskId ? `<p class="hint">New request · add any files and tool access again. <a href="#task=${escape(state.preferredAgent.repeatFromTaskId)}">Back to completed task</a></p>` : ''}<div class="request-dock">${!state.sendingRequest ? exampleButtons() : ''}${composer('request', 'Tell Relay what you need…', state.sendingRequest ? 'Sending…' : 'Send', state.sendingRequest ? '' : state.prompt, 'Enter to send · Shift + Enter for a new line') .replace('<textarea', state.sendingRequest ? '<textarea disabled' : '<textarea').replace('type="submit"', state.sendingRequest ? 'type="submit" disabled' : 'type="submit"')}</div></section>`;
 }
 
 function taskList() { return taskDashboard(); }
-function buyerPage(){if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail)return state.detail.task.status==='draft'&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
+function buyerPage(){if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return RelayOrchestration.page();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
+function focusOfferReview(offerId, reviewing) {
+ const action = reviewing ? 'accept-offer' : 'review-offer';
+ const target = [...root.querySelectorAll('[data-action]')].find(button =>
+   button.dataset.action === action && button.dataset.id === offerId);
+ target?.focus({ preventScroll: true });
+}
+function settleWorkspaceNavigation(changedView) {
+ if (!changedView) return;
+ if (globalThis.matchMedia?.('(max-width: 760px)').matches) {
+   const navigation = root.querySelector('.workspace-navigation');
+   if (navigation) navigation.open = false;
+ }
+ root.querySelector('#workspace-main')?.focus({ preventScroll: true });
+}
 function render(){
  const activeReply=document.activeElement?.id==='message-text'?document.activeElement:null;
  const replySelection=activeReply?{start:activeReply.selectionStart,end:activeReply.selectionEnd}:null;
@@ -144,7 +167,7 @@ function render(){
  const expanded = !changedView ? [...root.querySelectorAll('.canvas details')].filter(item => item.open).map(disclosureKey) : [];
  const history=root.querySelector('.thread-history'),wasNearBottom=!history||history.scrollHeight-history.scrollTop-history.clientHeight<80,oldId=root.querySelector('.buyer-conversation')?.dataset.taskId,scrollTop=history?.scrollTop||0;
  document.body.classList.toggle('workspace-open',!!state.account&&!state.auth);
- root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${activeCompanyMembership()?'company-workspace-active':''}"><div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>${companyWorkspaceBanner()}<main class="canvas">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?builder():buyerPage()}</main></div>`);
+ root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${activeCompanyMembership()?'company-workspace-active':''}"><div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?builder():buyerPage()}</main></div>`);
  if (!changedView) root.querySelectorAll('.canvas details').forEach(item => {
    if (expanded.includes(disclosureKey(item))) item.open = true;
  });
@@ -154,6 +177,7 @@ function render(){
      { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }
    );
  }
+ settleWorkspaceNavigation(changedView);
  if(changedView&&typeof window!=='undefined')window.scrollTo?.(0,0);
  const next=root.querySelector('.thread-history');if(next)next.scrollTop=state.scrollToLatest||oldId!==state.detail?.task.id?next.scrollHeight:scrollTop;state.scrollToLatest=false;
  const submissionId=state.detail?.submissions?.at(-1)?.id;
@@ -172,22 +196,47 @@ function render(){
 function showError(error,form){
   if(error.status===401&&state.account){if(typeof RelaySupplier==='object')RelaySupplier.clear();resetClientSession({auth:'login'});retries.clear();render();}
   const target=form?.isConnected?form.querySelector('.form-error,.error,[role=alert]'):null;
-  if(target){target.textContent=error.message;target.classList.add('error');}else{notice.textContent=error.message;}
+  if (target) {
+    target.textContent = error.message;
+    target.classList.add('error');
+    target.tabIndex = -1;
+    target.focus();
+  } else {
+    notice.textContent = error.message;
+  }
 }
 async function refresh(id=state.detail?.task.id, nextState=state, background=false){
   const state=nextState;
   state.filePreview=null;
   state.account=await api('/api/me');
+  if(typeof RelayAgentMarket === 'object' && RelayAgentMarket.storefrontId() && state.account.user.workspace === 'buyer') state.buyerTab='market';
   if(state.account.recoveryRequired){state.auth='reset';state.tasks=[];state.detail=null;return;}
   if(state.features?.notifications&&!background)try{await RelayNotifications.load();}catch{state.notificationError='Updates could not load. Try Refresh.';}
   if(state.features?.unifiedBackend)state.payments=await api('/api/payments/status');
   if(state.recoveryOpen&&state.payments?.recoveryAccess){state.recoveryData=await api('/api/payments/recovery?after='+encodeURIComponent(state.recoveryAfter||''));if(state.operationsBacklogUser!==state.account.user.id||!state.operationsBacklog){state.operationsBacklog=await api('/api/operations/backlog');state.operationsBacklogUser=state.account.user.id;}}
   const tenant=state.account.memberships.find(m=>m.id===state.tenantId)||state.account.memberships[0];
   state.tenantId=tenant?.id;
-  state.spendingHistory = state.features?.unifiedBackend && state.buyerTab === 'billing' && tenant ? await api('/api/payments/history?tenantId='+encodeURIComponent(tenant.id)+'&from='+encodeURIComponent(state.spendingFrom||'')+'&to='+encodeURIComponent(state.spendingTo||'')) : null;
+  if (!background) state.spendingHistory = state.features?.unifiedBackend && state.buyerTab === 'billing' && tenant ? await api('/api/payments/history?tenantId='+encodeURIComponent(tenant.id)+'&from='+encodeURIComponent(state.spendingFrom||'')+'&to='+encodeURIComponent(state.spendingTo||'')+'&currency='+encodeURIComponent(state.spendingCurrency||'USD')) : null;
   if(state.features?.recurring){state.schedules=tenant?(await api('/api/schedules?tenantId='+encodeURIComponent(tenant.id))).schedules:[];state.executionQueue=await api('/api/execution-queue');}
   if(state.features?.workspaceApps)state.workspaceApps=tenant?await api('/api/workspace-apps?tenantId='+encodeURIComponent(tenant.id)):null;
-  if(state.buyerTab==='market'&&state.account.user.workspace!=='builder')state.agentCatalog=(await api('/api/agent-market')).agents;
+  if(state.buyerTab==='market'&&state.account.user.workspace!=='builder'){
+    clearTimeout(RelayAgentMarket.searchTimer);
+    const revision=RelayAgentMarket.searchRevision=(RelayAgentMarket.searchRevision||0)+1;
+    const query=RelayAgentMarket.query(), owner=state.account.user.id;
+    const discovery=await api(query);
+    if(revision===RelayAgentMarket.searchRevision&&state.account?.user.id===owner&&query===RelayAgentMarket.query()){
+      state.agentDiscovery=discovery;state.agentCatalog=discovery.agents;state.marketLoading=false;state.marketError=false;
+    }
+  }
+  if (!background) state.acquisitionReport = state.account.user.workspace === 'builder' && state.setupAgentId ? await api('/api/agents/'+state.setupAgentId+'/acquisition') : null;
+  state.storefrontAgent = null;
+  const profileId = typeof RelayAgentMarket === 'object' ? RelayAgentMarket.storefrontId() : null;
+  if (profileId) {
+    try { state.storefrontAgent = (await api('/api/agent-market/' + profileId)).agent; }
+    catch (error) { if (error.status !== 404) throw error; }
+  }
+
+  state.attio = state.features?.attioDelivery && tenant?.role === 'owner' ? await api('/api/attio/status?tenantId='+encodeURIComponent(tenant.id)) : null;
   state.drive=state.features?.driveConnections && tenant?.role==='owner' ? await api('/api/drive/status?tenantId='+encodeURIComponent(tenant.id)) : null;
   state.team=tenant?.company&&state.buyerTab==='business'?await api('/api/teams/'+tenant.id):null;
   state.teamHistory=state.team?.role==='owner'?await api('/api/teams/'+tenant.id+'/history?before='+encodeURIComponent(state.teamHistoryBefore||'')):null;
@@ -198,6 +247,14 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
     state.agents=a.agents;state.opportunities=o.tasks;state.work=w.tasks;state.quotes=q.offers;state.detail=null;state.offers=[];
   }else{
     if(id){state.detail=await api(`/api/tasks/${id}`);if(state.tenantId!==state.detail.task.tenantId){state.tenantId=state.detail.task.tenantId;if(state.features?.workspaceApps)state.workspaceApps=await api('/api/workspace-apps?tenantId='+encodeURIComponent(state.tenantId));state.tasks=(await api('/api/tasks?tenantId='+encodeURIComponent(state.tenantId))).tasks;}}else state.detail=null;
+    const taskMember = state.account.memberships.find(member => member.id === state.tenantId);
+    state.attioReceipts = id && state.features?.attioDelivery && taskMember?.role === 'owner'
+      ? (await api(`/api/tasks/${id}/delivery-destinations`)).receipts : [];
+    // A task deep link may switch workspace after the initial tool-status fetch.
+    if (id && tenant?.id !== state.tenantId) {
+      state.attio = state.features?.attioDelivery && taskMember?.role === 'owner' ? await api('/api/attio/status?tenantId='+encodeURIComponent(state.tenantId)) : null;
+      state.drive = state.features?.driveConnections && taskMember?.role === 'owner' ? await api('/api/drive/status?tenantId='+encodeURIComponent(state.tenantId)) : null;
+    }
     state.offers=id&&state.authMode==='local'?(await api(`/api/tasks/${id}/offers`)).offers:[];
   }
 }
@@ -209,7 +266,7 @@ async function savePrompt() {
   try {
     const result = await command('/api/tasks', 'POST', {
       tenantId: state.tenantId || state.account.memberships[0].id,
-      title: brief.slice(0, 120), brief, ...(state.preferredAgent?{preferredAgentId:state.preferredAgent.id,preferenceMode:state.preferredAgent.preferenceMode || 'agent'}:{})
+      title: brief.slice(0, 120), brief, ...(state.preferredAgent?.repeatFromTaskId ? {repeatFromTaskId:state.preferredAgent.repeatFromTaskId,expectedSourceVersion:state.preferredAgent.expectedSourceVersion} : {}), ...(state.preferredAgent?{preferredAgentId:state.preferredAgent.id,preferenceMode:state.preferredAgent.preferenceMode || 'agent',discoverySource:state.preferredAgent.discoverySource || 'unspecified'}:{})
     });
     state.prompt = '';
     state.preferredAgent = null;
@@ -229,23 +286,81 @@ async function savePrompt() {
 }
 
 let actionRevision = 0;
+async function recoverUnavailableTask(error) {
+  if (![403, 404].includes(error.status) || !state.detail?.task.id) return false;
+  const taskId = state.detail.task.id;
+  const revision = actionRevision;
+  try {
+    await api(`/api/tasks/${taskId}`);
+    return false; // An action can be forbidden while the task remains readable.
+  } catch (readError) {
+    if (![403, 404].includes(readError.status)) throw readError;
+  }
+  if (actionRevision !== revision || state.detail?.task.id !== taskId) return false;
+  state.detail = null;
+  state.offers = [];
+  state.tasks = [];
+  state.team = null;
+  state.teamHistory = null;
+  state.companyBudget = null;
+  state.spendingHistory = null;
+  state.reviewOffer = null;
+  state.reviewStart = false;
+  state.editing = false;
+  state.filePreview = null;
+  delete state.messageDrafts[taskId];
+  state.buyerTab = 'tasks';
+  location.hash = 'tasks';
+  // Clear the unavailable content even if reloading the remaining workspace fails.
+  render();
+  await refresh(null);
+  render();
+  notice.textContent = 'This task is no longer available to your account. Ask your workspace administrator to check its status before retrying an action.';
+  return true;
+}
 async function run(operation,source){
   if(state.busy)return;actionRevision++;state.busy=true;notice.textContent='';
   source?.querySelectorAll('.form-error,.error').forEach(element=>{element.textContent='';element.classList.remove('error');});
   const buttons=[...root.querySelectorAll('button')].map(button=>({button,disabled:button.disabled}));
   buttons.forEach(({button})=>button.disabled=true);
   try {await operation();}
-  catch(error){showError(error,source);}
+  catch(error){
+    try { if (!await recoverUnavailableTask(error)) showError(error,source); }
+    catch (refreshError) { showError(refreshError); }
+  }
   finally {state.busy=false;buttons.forEach(({button,disabled})=>{if(button.isConnected)button.disabled=disabled;});}
 }
 root.addEventListener('submit',event=>{
   event.preventDefault();const form=event.target,data=new FormData(form);
   run(async()=>{
     if(typeof RelaySupplier==='object'&&form.id!=='supplier-credential')RelaySupplier.clear();
-    if(form.id==='spending-filter'){
-      const from=data.get('from')||'',to=data.get('to')||'';
-      const report=await api('/api/payments/history?tenantId='+encodeURIComponent(state.tenantId)+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to));
-      state.spendingFrom=from;state.spendingTo=to;state.spendingHistory=report;render();
+    if(form.id==='orchestration-create'){
+      const steps=[...form.querySelectorAll('[data-plan-step]')].map((_,i)=>({
+        title:data.get('title-'+i),brief:data.get('brief-'+i),criteria:data.get('criteria-'+i),budgetMinor:Math.round(Number(data.get('budget-'+i))*100),
+        dependencies:String(data.get('dependencies-'+i)).trim()?String(data.get('dependencies-'+i)).split(',').map(n=>Number(n.trim())-1):[]
+      }));
+      await command('/api/tasks/'+form.dataset.id+'/orchestrate','POST',{expectedVersion:Number(form.dataset.version),budgetMinor:Math.round(Number(data.get('total'))*100),steps});
+      await refresh(form.dataset.id);render();notice.textContent='Plan created. Review and start each step separately.';
+    }else if(form.dataset.planRecovery){
+      await command('/api/tasks/'+state.detail.task.id+'/recover-plan','POST',{expectedVersion:state.detail.task.version,stepId:form.dataset.planRecovery,expectedStepVersion:Number(form.dataset.version),reason:data.get('reason'),confirm:data.get('confirm')?'reset-affected-steps':''});
+      await refresh();render();notice.textContent='Fresh steps created. Review inputs, handovers and offers again.';
+    }else if(form.dataset.handover){
+      await command('/api/tasks/'+form.dataset.handover+'/handover','POST',{expectedVersion:Number(form.dataset.version),sourceTaskId:form.dataset.source,submissionId:form.dataset.submission,notes:data.get('notes'),fileId:data.get('fileId')||null,consent:data.get('consent')?'share-with-step-supplier':''});
+      await refresh();render();notice.textContent='Handover saved for this downstream step.';
+    }else if(form.id==='portfolio-add'){
+      const source=data.get('source');
+      await command('/api/agents/'+form.dataset.id+'/portfolio','POST',{
+        expectedVersion:Number(form.dataset.version),kind:source==='owned'?'owned':'relay-task',
+        taskId:source==='owned'?null:source,title:data.get('title'),summary:data.get('summary'),sample:data.get('sample'),
+        consent:data.get('consent')?'redacted-sharing-rights':''});
+      await refresh();render();notice.textContent=source==='owned'?'Example saved. It appears when your listing is published.':'Permission requested. The example stays private until the customer approves.';
+    }else if(form.id==='agent-listing'){
+      await command('/api/agents/'+form.dataset.id+'/listing','PATCH',{expectedVersion:Number(form.dataset.version),status:data.get('status')});
+      await refresh();render();notice.textContent='Listing visibility saved. Existing work and bidding rules are unchanged.';
+    }else if(form.id==='spending-filter'){
+      const from=data.get('from')||'',to=data.get('to')||'',currency=data.get('currency')||'USD';
+      const report=await api('/api/payments/history?tenantId='+encodeURIComponent(state.tenantId)+'&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to)+'&currency='+encodeURIComponent(currency));
+      state.spendingFrom=from;state.spendingTo=to;state.spendingCurrency=currency;state.spendingHistory=report;render();
     }else if(form.dataset.supplierMessage || form.dataset.changePropose) {
       const id=form.dataset.supplierMessage || form.dataset.changePropose;
       const work=state.work.find(item=>item.id===id);
@@ -329,32 +444,39 @@ root.addEventListener('submit',event=>{
     }else if(form.id==='task-input'){
       const task=state.detail.task;
       await command(`/api/tasks/${task.id}/input`,'POST',{expectedVersion:task.version,filename:data.get('file').name,base64:await csvFileBase64(data.get('file')),notes:data.get('notes')});
-      await refresh();render();notice.textContent='CSV saved with the new scope. Prior offers need updating.';
+      await refresh();render();notice.textContent=task.status==='draft'?'CSV attached. Review your updated brief before requesting work.':'CSV saved with the new scope. Prior offers need updating.';
     }else if(form.id==='supplier-credential'){
       await RelaySupplier.issue(form,data);
     }else if(form.id==='execution-cancel'){
       await command(`/api/tasks/${state.detail.task.id}/cancel-execution`,'POST',{expectedVersion:state.detail.task.version,reason:data.get('reason')});
       await refresh();render();
     }else if(form.id==='delivery-revision'){
-      const task=state.detail.task;
-      await command(`/api/tasks/${task.id}/request-revision`,'POST',{expectedVersion:task.version,submissionId:form.dataset.id,notes:data.get('notes')});
-      state.followExecution=true;await refresh();state.scrollTarget='.delivery-submission:last-of-type';render();
+      await RelayExecution.requestRevision(form, data.get('notes'));
     }else if(form.id==='agent'){
       if(state.agentIntroPart!=='capabilities'){captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();return;}
       const rows=[...form.querySelectorAll('.capability-row')];
       const result=await command('/api/agents','POST',{name:data.get('name'),purpose:data.get('purpose'),domain:data.get('domain'),kind:data.get('kind'),integration:'api',capabilities:rows.map(r=>({category:r.querySelector('[name=category]').value,task:r.querySelector('[name=capability]').value}))});
       state.addingAgent=false;state.agentDraft=null;sessionStorage.removeItem(agentDraftKey());state.setupAgentId=result.agentId;state.setupStage=2;location.hash=`agent=${result.agentId}&step=2`;await refresh();render();notice.textContent='Profile saved. Choose how your runtime will connect.';
     }else if(['agent-connection','agent-rules','agent-profile'].includes(form.id)){
-      const agent=state.agents.find(a=>a.id===form.dataset.id),rules=agent.rules;
-      await command(`/api/agents/${agent.id}`,'PATCH',{...(form.id==='agent-profile'?{name:data.get('name'),purpose:data.get('purpose'),domain:data.get('domain'),kind:data.get('kind')}:{}),integration:form.id==='agent-connection'?data.get('integration'):agent.integration,automaticRequested:form.id==='agent-rules'?data.get('automatic')==='on':rules.automaticRequested,minimumPayout:form.id==='agent-rules'?Math.round(Number(data.get('minimum'))*100):rules.minimumPayout,concurrency:form.id==='agent-rules'?Number(data.get('concurrency')):rules.concurrency,expectedVersion:rules.version,setupStage:form.id==='agent-profile'?2:3});
-      state.setupStage=form.id==='agent-rules'?3:2;location.hash=`agent=${agent.id}&step=${state.setupStage}`;await refresh();render();notice.textContent=form.id==='agent-connection'?'Method saved. Connect your runtime below, then continue to Demonstrate.':state.agents.find(item=>item.id===agent.id)?.rules.automaticEnabled?'Local automatic bidding is active. Commercial readiness is still incomplete.':'Operating preferences saved. Review the connection and bidding status above.';
+      const agent = state.agents.find(item => item.id === form.dataset.id);
+      const configuration = RelaySupplier.configuration(agent, form, data);
+      await command(`/api/agents/${agent.id}`, 'PATCH', configuration);
+      state.setupStage = configuration.setupStage;
+      location.hash = `agent=${agent.id}&step=${state.setupStage}`;
+      await refresh();
+      render();
+      notice.textContent = form.id === 'agent-connection'
+        ? 'Method saved. Connect your runtime below, then continue to Demonstrate.'
+        : state.agents.find(item => item.id === agent.id)?.rules.automaticEnabled
+          ? 'Local automatic bidding is active. Commercial readiness is still incomplete.'
+          : 'Operating preferences saved. Review the connection and bidding status above.';
     }else if(form.dataset.quote){
       const capabilityId=data.get('capabilityId');if(!capabilityId)throw new Error('Choose the capability supporting this offer.');const agent=state.agents.find(a=>a.capabilities.some(c=>c.id===capabilityId));
-      await command(`/api/tasks/${form.dataset.quote}/offers`,'POST',{agentId:agent.id,capabilityId,expectedVersion:Number(form.dataset.version),amountMinor:Math.round(Number(data.get('price'))*100),deliveryMinutes:Number(data.get('minutes')),proposal:data.get('proposal')});
+      await command(`/api/tasks/${form.dataset.quote}/offers`,'POST',{agentId:agent.id,capabilityId,expectedVersion:Number(form.dataset.version),amountMinor:Math.round(Number(data.get('price'))*100),currency:data.get('currency')||'USD',deliveryMinutes:Number(data.get('minutes')),proposal:data.get('proposal')});
       state.builderTab='quotes';await refresh();render();notice.textContent='Offer sent to the buyer.';
     }else if(form.id==='message'){
       const task=state.detail.task;
-      const scoping=state.features?.scoping&&['draft','posted','selected'].includes(task.status);
+      const scoping=state.features?.scoping&&!task.orchestrationStep&&!task.orchestrationPlan&&['draft','posted','selected'].includes(task.status);
       state.sendingMessage = String(data.get('brief'));
       state.messageDrafts[task.id] = state.sendingMessage;
       state.scrollToLatest = true;
@@ -374,6 +496,27 @@ root.addEventListener('submit',event=>{
 root.addEventListener('click',event=>{
   const button=event.target.closest('[data-action]');if(!button)return;
   const action=button.dataset.action;
+  if(action==='plan-add-step'){
+    const container=root.querySelector('[data-plan-steps]');const count=container?.children.length||0;
+    if(container&&count<8)container.insertAdjacentHTML('beforeend',RelayOrchestration.row(count));
+    if(count>=7)button.disabled=true;
+    return;
+  }
+  if(action==='plan-complete'){
+    run(async()=>{await command('/api/tasks/'+button.dataset.id+'/complete-plan','POST',{expectedVersion:Number(button.dataset.version)});await refresh();render();});return;
+  }
+  if (action === 'portfolio-decision') {
+    run(async()=>{
+      await command('/api/portfolio/'+button.dataset.id,'PATCH',{expectedVersion:Number(button.dataset.version),action:button.dataset.decision});
+      await refresh();render();notice.textContent='Sharing permission updated.';
+    });
+    return;
+  }
+  if (action === 'toggle-appearance') {
+    const light = applyAppearance(document.documentElement.dataset.appearance === 'light' ? 'dark' : 'light') === 'light';
+    button.setAttribute('aria-pressed', String(!light));
+    return;
+  }
   if(action==='task-filter'){state.taskFilter=button.dataset.filter;render();root.querySelector('.task-filters [aria-pressed="true"]')?.focus({preventScroll:true});return;}
   if(action==='schedule-example'){
     state.prompt=RelayRecurring.examples[Number(button.dataset.example)] || '';
@@ -383,14 +526,33 @@ root.addEventListener('click',event=>{
     field?.setSelectionRange(state.prompt.length,state.prompt.length);
     return;
   }
-  if(action==='market-category'){state.agentMarketCategory=button.dataset.category;render();return;}
+  if(action==='market-saved'){state.agentMarketSaved=!state.agentMarketSaved;render();RelayAgentMarket.search(root);return;}
+  if(action==='market-more'){RelayAgentMarket.load(root,true);return;}
+  if(action==='market-retry'){RelayAgentMarket.search(root);return;}
+  if(action==='market-category'){RelayAgentMarket.selectCategory(root,button.dataset.category);return;}
   if(action==='market-request-agent'||action==='market-request-builder'){RelayAgentMarket.choose(button.dataset.id,action.endsWith('builder')?'builder':'agent');return;}
   if(action==='review-chat-request'){state.reviewChatRequest=true;render();return;}
   if(action==='keep-chatting'){state.reviewChatRequest=false;render();return;}
   if(['buyer-nav','builder-tab','switch','home','logout'].includes(action))state.recoveryOpen=false;
   run(async()=>{
     if(typeof RelaySupplier==='object'&&!['download-supplier-config','hide-supplier-key','refresh'].includes(action))RelaySupplier.clear();
-    if(action.startsWith('notification-')){await RelayNotifications.click(button);}
+    if(action==='repeat-hire'){
+      const sourceId=state.detail?.task.id;
+      if(!sourceId)return;
+      await refresh(sourceId);
+      const repeat=state.detail.repeatHire, source=state.detail.task;
+      if(!repeat?.available){render();return;}
+      state.tenantId=source.tenantId;
+      state.preferredAgent={id:repeat.agentId,name:repeat.name,preferenceMode:'agent',discoverySource:'repeat-hire',repeatFromTaskId:source.id,expectedSourceVersion:source.version};
+      state.prompt='';state.detail=null;state.buyerTab='request';location.hash='';render();
+      document.querySelector('#request-text')?.focus();
+    }
+    else if(action==='market-save'){
+      try {
+        await command('/api/agent-market/'+button.dataset.id+'/saved','PATCH',{saved:button.dataset.saved!=='true',expectedVersion:Number(button.dataset.version)});
+      } finally { await refresh();render(); }
+    }
+    else if(action.startsWith('notification-')){await RelayNotifications.click(button);}
     else if(action.startsWith('app-')){await RelayApps.click(button);}
     else if(action==='approval-next'||action==='approval-first'){state.budgetAfter=action==='approval-next'?state.companyBudget.nextCursor:'';await refresh(null);render();}
     else if(action==='scan-file'){
@@ -415,6 +577,17 @@ root.addEventListener('click',event=>{
     }
     else if(action==='schedule-control'){
       await command('/api/schedules/'+button.dataset.id,'POST',{expectedVersion:Number(button.dataset.version),action:button.dataset.operation});await refresh(null);render();
+    }
+    else if(action==='builder-task'){
+      state.setupAgentId=null;
+      state.addingAgent=false;
+      state.builderTab='work';
+      location.hash='';
+      await refresh();
+      if (/^[0-9a-f-]{36}$/.test(button.dataset.id)) {
+        state.scrollTarget='[data-notification-task="'+button.dataset.id+'"]';
+      }
+      render();
     }
     else if(action==='builder-payment-review'){
       state.recoveryOpen=false;state.builderTab='earnings';state.setupAgentId=null;state.addingAgent=false;
@@ -464,16 +637,32 @@ root.addEventListener('click',event=>{
     else if(action==='builder'){state.intent='builder';state.auth='signup';render();}
     else if(action==='example'){const field=root.querySelector('#request-text,textarea#request');if(field){field.value=examples[Number(button.dataset.example)];state.prompt=field.value;field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});field.focus({preventScroll:true});}}
     else if(action==='focus-prompt'){const field=root.querySelector('textarea#request');if(field){field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});field.focus({preventScroll:true});}}
-    else if(action==='toggle-motion'){state.motionPaused=!state.motionPaused;root.querySelector('.lp-cast')?.classList.toggle('lp-motion-paused',state.motionPaused);button.setAttribute('aria-pressed',String(state.motionPaused));button.textContent=state.motionPaused?'Play characters':'Pause characters';}
+    else if(action==='toggle-motion'){state.motionPaused=!state.motionPaused;root.querySelector('.lp-cast')?.classList.toggle('lp-motion-paused',state.motionPaused);button.setAttribute('aria-pressed',String(state.motionPaused));button.textContent=state.motionPaused?'Play animations':'Pause animations';}
     else if(action==='logout'){
       await api('/api/auth/logout',{method:'POST',body:{}});
       resetClientSession();
       retries.clear();location.hash='';render();
     }
     else if(action==='switch'){const workspace=state.account.user.workspace==='buyer'?'builder':'buyer';await api('/api/me/workspace',{method:'PATCH',body:{workspace}});await refresh(null);state.reviewOffer=null;state.setupAgentId=null;state.addingAgent=false;state.editing=false;location.hash='';render();}
-    else if(action==='spending-export'){RelayPayments.exportCsv();}
+    else if(action==='spending-export'){await RelayPayments.exportCsv();}
+    else if(action==='spending-page'){const current=state.spendingHistory;state.spendingHistory=await api('/api/payments/history?tenantId='+encodeURIComponent(current.tenantId)+'&snapshot='+encodeURIComponent(current.snapshotId)+'&page='+encodeURIComponent(button.dataset.page));render();}
     else if(action==='spending-all'){state.spendingFrom='';state.spendingTo='';await refresh(null);render();}
-    else if(action==='buyer-nav'){state.buyerTab=button.dataset.tab;state.detail=null;state.editing=false;state.reviewStart=false;state.reviewOffer=null;if(state.buyerTab!=='request')state.preferredAgent=null;location.hash=['tasks','market','scheduled','apps','tools','billing'].includes(state.buyerTab)?state.buyerTab:'';await refresh(null);render();}
+    else if(action==='buyer-nav'){
+      state.buyerTab=button.dataset.tab;
+      if(state.buyerTab==='business' && typeof RelayTeams==='object'){
+        state.tenantId=RelayTeams.entryTenant(state.account.memberships,state.tenantId);
+        state.budgetAfter='';
+        state.teamHistoryBefore='';
+      }
+      state.detail=null;
+      state.editing=false;
+      state.reviewStart=false;
+      state.reviewOffer=null;
+      if(state.buyerTab!=='request')state.preferredAgent=null;
+      location.hash=['tasks','market','scheduled','apps','tools','billing'].includes(state.buyerTab)?state.buyerTab:'';
+      await refresh(null);
+      render();
+    }
     else if(action==='task'){state.reviewStart=false;state.editing=false;await refresh(button.dataset.id);state.buyerTab=state.detail.task.status==='draft'?'request':'tasks';location.hash=`${state.detail.task.status==='draft'?'chat':'task'}=${button.dataset.id}`;render();}
     else if(action==='builder-tab'){state.setupAgentId=null;state.addingAgent=false;location.hash='';state.builderTab=button.dataset.tab;await refresh();render();}
     else if(action==='add-agent'){state.setupAgentId=null;state.addingAgent=true;state.agentIntroPart='profile';location.hash='agent-new';try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}render();}
@@ -481,13 +670,13 @@ root.addEventListener('click',event=>{
     else if(action==='edit-introduction'){state.agentIntroPart='profile';render();}
     else if(action==='stop-agent'||action==='close-agent'){state.addingAgent=false;state.setupAgentId=null;state.builderTab='agents';location.hash='';render();}
     else if(action==='readiness-account'){state.returnAgentId=button.dataset.id;state.setupAgentId=null;state.builderTab='settings';location.hash='';render();}
-    else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);location.hash=`agent=${a.id}&step=${state.setupStage}`;render();}
+    else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);location.hash=`agent=${a.id}&step=${state.setupStage}`;if(action==='open-agent')await refresh(null);render();}
     else if(action==='add-capability'){document.querySelector('#capability-rows').insertAdjacentHTML('beforeend',capabilityRow());captureAgentDraft(document.getElementById('agent'));}
     else if(action==='remove-capability'){if(document.querySelectorAll('.capability-row').length>1){button.closest('.capability-row').remove();captureAgentDraft(document.getElementById('agent'));}else notice.textContent='Keep at least one capability.';}
     else if(action==='connect-runtime'||action==='disconnect-runtime'){
       const agent=state.agents.find(item=>item.id===button.dataset.id);
       await command(`/api/agents/${agent.id}/${action==='connect-runtime'?'connect-local':'disconnect'}`,'POST',{expectedVersion:agent.version});
-      await refresh();render();notice.textContent=action==='connect-runtime'?'Runtime launched. Check connection, then enable local automatic bidding in stage 3.':'Runtime disconnected and credential revoked.';
+      await refresh();render();notice.textContent=action==='connect-runtime'?'Runtime launched. Check connection, then save your quoting rules in Connect or Demonstrate.':'Runtime disconnected and credential revoked.';
     }
     else if(action==='authorize-local'){
       const task=state.detail.task;
@@ -501,12 +690,20 @@ root.addEventListener('click',event=>{
     }
     else if(action==='hide-start'){state.reviewStart=false;render();}
     else if(action==='review-start'){state.reviewStart=true;state.scrollTarget='.start-review';render();}
-    else if(action==='review-offer'||action==='close-review'){state.reviewOffer=action==='review-offer'?button.dataset.id:null;state.scrollTarget=action==='review-offer'?'.offer-confirm':null;render();}
+    else if(action==='review-offer'||action==='close-review'){
+      const reviewing = action === 'review-offer';
+      const offerId = reviewing ? button.dataset.id : state.reviewOffer;
+      state.reviewOffer = reviewing ? offerId : null;
+      state.scrollTarget = reviewing ? '.offer-confirm' : null;
+      render();
+      focusOfferReview(offerId, reviewing);
+    }
     else if(action==='accept-offer'){
       await command(`/api/tasks/${state.detail.task.id}/select`,'POST',{offerId:button.dataset.id,expectedVersion:state.detail.task.version});
       state.reviewOffer=null;await refresh();
       const needsApproval=state.detail.approval&&state.detail.approval.status!=='approved';
       state.reviewStart=!needsApproval;state.scrollTarget=needsApproval?'[aria-label="Company approval"]':'.start-review';render();
+      root.querySelector('#workspace-main')?.focus({ preventScroll: true });
       notice.textContent=needsApproval?'Offer selected. Request fresh company approval below before starting.':'Offer selected. Review the remaining start requirements in this conversation. No charge or execution authorized.';
     }
     else if(action==='edit'||action==='stop-edit'){state.editing=action==='edit';state.editingTitleTouched=false;render();}
@@ -519,6 +716,11 @@ root.addEventListener('click',event=>{
   },button.closest('form,.panel'));
 });
 root.addEventListener('input',event=>{if(event.target.closest('form#edit')){if(event.target.name==='title')state.editingTitleTouched=true;if(event.target.name==='brief'&&!state.editingTitleTouched){const title=event.target.form.querySelector('[name=title]');title.value=event.target.value.trim().split(/[\n.!?]/)[0].slice(0,120);}}if(event.target.id==='message-text'&&state.detail)state.messageDrafts[state.detail.task.id]=event.target.value;});
+root.addEventListener('click', event => {
+  if (!event.target.closest('.skip-workspace')) return;
+  event.preventDefault();
+  root.querySelector('#workspace-main')?.focus();
+});
 root.addEventListener('keydown',event=>{
   if (event.target.tagName !== 'TEXTAREA' || event.key !== 'Enter' || event.isComposing) return;
   const chat = ['request', 'message'].includes(event.target.form?.id);
@@ -540,6 +742,7 @@ async function boot(){
       }
     }
     const invite=location.hash.match(/^#team-invite=([A-Za-z0-9_-]{43})$/);if(invite){state.teamInviteToken=invite[1];state.buyerTab='business';history.replaceState(null,'',location.pathname);}
+    if(typeof RelayAgentMarket === 'object' && RelayAgentMarket.storefrontId())state.buyerTab='market';
     if(['#market','#scheduled','#apps','#tools'].includes(location.hash))state.buyerTab=location.hash.slice(1);
     if(location.hash==='#billing')state.buyerTab='billing';
     if(location.hash==='#payment-recovery')state.recoveryOpen=true;
@@ -578,7 +781,12 @@ async function pollWorkspace() {
       render();
     }
   } catch(error) {
-    if(error.status===401&&actionRevision===revision&&state.renderedViewKey===view&&!state.busy)showError(error);
+    if(actionRevision===revision&&state.renderedViewKey===view&&!state.busy) {
+      if(error.status===401)showError(error);
+      else if ([403,404].includes(error.status)) {
+        try { await recoverUnavailableTask(error); } catch (refreshError) { showError(refreshError); }
+      }
+    }
     // Transient polling failures retry on the next interval without flashing UI.
   } finally { workspacePolling = false; }
 }
@@ -624,22 +832,30 @@ root.addEventListener('input', event => {
 // Filter in place to preserve search focus and avoid rebuilding the workspace.
 root.addEventListener('input', event => {
   if (event.target.matches('[data-tool-search]')) RelayApps.filterTools(root);
+  if (event.target.matches('[data-agent-market-search]')) {
+    state.agentMarketQuery = event.target.value;
+    RelayAgentMarket.search(root, true);
+  }
 });
 root.addEventListener('change', event => {
   if (event.target.matches('[data-tool-category]')) RelayApps.filterTools(root);
-  if (event.target.matches('[data-agent-market-search]')) { state.agentMarketQuery = event.target.value; render(); const input = root.querySelector('[data-agent-market-search]'); input?.focus({preventScroll:true}); input?.setSelectionRange(input.value.length, input.value.length); }
-  if (event.target.matches('[data-agent-market-type]')) { state.agentMarketType = event.target.value; render(); }
+  if (event.target.matches('[data-agent-market-type]')) {
+    state.agentMarketType = event.target.value;
+    RelayAgentMarket.search(root);
+  }
 });
 
 root.addEventListener('toggle', event => {
   if (event.target.matches('.notification-menu')) state.notificationsOpen = event.target.open;
 }, true);
 root.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && root.querySelector('.notification-menu[open]')) {
-    state.notificationsOpen = false;
-    root.querySelector('.notification-menu').open = false;
-    root.querySelector('.notification-menu summary').focus();
-  }
+  if (event.key !== 'Escape') return;
+  const menu = event.target.closest('.account-menu[open], .notification-menu[open]');
+  if (!menu) return;
+  event.preventDefault();
+  if (menu.matches('.notification-menu')) state.notificationsOpen = false;
+  menu.open = false;
+  menu.querySelector('summary')?.focus();
 });
 let notificationPolling = false;
 setInterval(async () => {
@@ -677,3 +893,14 @@ setInterval(() => {
     node.textContent = `${seconds}s elapsed`;
   }
 }, 1000);
+
+// Storefront links are local authenticated routes; browser Back restores discovery.
+if (typeof window === 'object') window.addEventListener('hashchange', event => {
+  const profile = RelayAgentMarket.storefrontId();
+  const returning = location.hash === '#market' && new URL(event.oldURL).hash.startsWith('#storefront=');
+  if ((!profile && !returning) || !state.account || state.auth) return;
+  state.buyerTab = 'market';
+  if (returning && state.account.user.workspace === 'builder') { state.setupAgentId=null;state.addingAgent=false;state.builderTab='agents'; }
+  state.detail = null;
+  run(async () => { await refresh(null); render(); root.querySelector('#workspace-main')?.focus(); });
+});

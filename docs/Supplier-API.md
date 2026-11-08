@@ -164,6 +164,146 @@ accept themselves. Observe the cancellation event and abandon the previous lease
 when the buyer accepts revised terms; wait for a newly authorized assignment.
 Prices are local unpaid test amounts. See Local-Marketplace.md for scope limits.
 
+SDK transport correction (3 November 2026): `message` and `proposeChange` now
+pass the transport endpoint allowlist as well as the server router. Previously
+the SDK rejected these documented commands before sending them. An isolated
+loopback HTTP regression exercises the actual supplier router with a fixture
+application adapter: lost-response retries preserve payload and idempotency key,
+stale proposals fail without retry, and missing keys never reach the server.
+This checks transport/router compatibility, not a new independent supplier
+qualification or real financial settlement. Existing server authorization and
+buyer approval requirements remain authoritative.
+
 ## Local model-backed reference (1 November 2026)
 
 A separate optional Qwen3 8B supplier now uses this SDK for assessed link extraction, automatic bids, execution, files and revisions. See [Model-Supplier.md](Model-Supplier.md) for setup, explicit supported scope, failure behavior and the disposable real-model evaluation. It is not a default Relay-operated competitor and does not enable commercial payments or general web research.
+
+## Existing API onboarding — 4 November 2026
+
+The Connect step now explains the operator-run adapter path and exposes the same
+persisted quoting controls as Demonstrate. Suppliers can opt into automatic local
+test quotes, save a minimum quote in USD and limit simultaneous execution before
+connecting. Saving rules in Connect stays on Connect. Refresh and API/SDK method
+changes retain the saved limits. The minimum is a floor rather than a fixed price
+or a guaranteed net payout; the adapter computes each quote and checks task fit.
+
+The in-product guide covers input mapping, private provider credentials,
+authorized assignment claims, durable background provider job IDs, results and
+revisions. It explicitly states that a no-code endpoint connector is unavailable
+and research qualification cannot be inferred from a reference CSV test.
+PRD v0.54 section 18 records these product boundaries and unvalidated economics.
+
+QA: 98 web/shared tests and 13 application/supplier tests passed (SQLite and
+Postgres-compatible adapters). Added checks cover preserved credentials,
+below-floor rejection, bidding opt-out, exact 2,575-cent persistence and no task
+execution from quoting. Browser QA used a disposable native PostgreSQL fixture:
+specialist introduction, custom research capability, $25.75 floor/two-task limit,
+saving while disconnected, refresh, SDK selection and separate assessment status.
+No external provider was contacted. No native concurrency suite or full
+accessibility audit was rerun for this presentation increment. Stripe remains
+disconnected; published demo and staging were not changed.
+
+## Existing API end-to-end browser rehearsal — 4 November 2026
+
+Used isolated native PostgreSQL on localhost:4183 and a separate deterministic
+HTTP provider on localhost:4184. The operator-run adapter used the supplier SDK
+and called the provider for actual link extraction; no third-party API was
+contacted and no external URLs were visited. This demonstrates the adapter path,
+not compatibility with the real-estate builder's API.
+
+Browser sequence: introduce specialist/capability, save $12.50 minimum and one
+active task, issue/download scoped credential, start adapter, check heartbeat,
+complete offline-link assessment and its revision, buyer posts a matching brief,
+automatic $12.50 quote with assessment evidence, select, explicitly authorize
+unpaid execution, preview delivery, request descending-order revision, download
+and accept delivery 2. Builder sees the same accepted task and both submissions;
+payout remains zero. Actual ClamAV checks gated acceptance and downloads. Provider
+received two assessment calls and two execution calls (original and revision),
+with no task-execution call before authorization. Downloaded JSON contained two
+unique links in the requested descending order.
+
+Fixed three disconnected paths:
+- Connect has an explicit heartbeat check and a connected-only assessment action.
+- Saving a connection method persists the displayed Connect stage. Method changes
+  clearly explain existing key revocation; quoting-only edits preserve credentials.
+- A scan/supplier update while writing revision notes can make the task version
+  stale. Conflict recovery refreshes once, restores notes only for the same
+  submission, and requires explicit resubmission. It never auto-replays the
+  consequential action. Browser-tested with a concurrent supplier message.
+
+Validation: 101 web/shared UI tests and 33 native PostgreSQL checks passed.
+Regression tests cover setup-stage/configuration preservation, heartbeat handoff,
+revision conflict note recovery, changed submissions and authorization failures.
+The native suite covers supplier HTTP execution, restarts and concurrent storage.
+Desktop visual inspection completed; no full mobile or assistive-technology
+rehearsal in this pass. Disposable services/data were shut down after QA.
+Original localhost:4180 stays running; Stripe, staging and demo remain unchanged.
+
+### Local read-access diagnostics — 4 November 2026
+
+Builder setup now links to the SDK's `check-connection.cjs` command. Using the
+private downloaded config, it reads bounded opportunity, assignment and event
+pages and reports fixed recovery guidance for rejected credentials, permissions,
+throttling, unavailable servers or incompatible payloads. It issues no heartbeat
+or consequential commands and emits no private response bodies. Runtime identity,
+qualification, saved quoting rules and end-to-end execution still need separate
+verification. See `packages/supplier-sdk/README.md` for invocation and boundaries.
+
+QA includes real disposable localhost HTTP, credential header handling, no-write
+requests, malformed responses, empty feeds, denied access, throttling, private
+config rejection and redacted output. Browser automation remains unavailable in
+this session, so the new onboarding disclosure and outstanding keyboard/mobile
+walkthrough must still be checked live. Stripe, demo and staging are unchanged.
+
+### PostgreSQL-backed diagnostic lifecycle review — 4 November 2026
+
+Extended the existing independent-process CSV supplier rehearsal to exercise the
+connection diagnostic against the actual local HTTP router and PostgreSQL-backed
+application, not only transport fixtures. Both the library and CLI pass before
+worker startup without changing agent metadata. After key rotation, the previous
+key fails with fixed credential guidance and CLI exit 1, while the replacement key
+passes. Disconnecting the replacement key then rejects diagnostic access. The
+same rehearsal still completes bidding, authorized execution, scanned delivery,
+acceptance and application/worker restart. This is our reference supplier, not an
+independently operated third-party supplier.
+
+Full local release check `6163dac7-068e-44da-bd8a-c4c51bb95a61` passed with an
+unchanged source fingerprint during execution: 364 backend, 107 web/UI, 33 native
+PostgreSQL and 2 load tests (506 total; none failed or skipped). This evidence note
+was added after the run. Localhost health remains PostgreSQL/local-only. Review
+found no new product defect in this increment. Browser inventory was reachable,
+but tab control still returned `browser.user is unavailable`; live keyboard,
+mobile and onboarding-disclosure QA remain open. No Stripe connection, hosted
+change or icebox expansion. Independent security/payment/operations review and
+real-provider validation remain release gates.
+
+## Local parent-plan handovers
+
+Execution claims now optionally include `handoffs`, an array of buyer-approved
+upstream excerpts. Each item identifies `sourceTaskId`, `submissionId`,
+`submissionVersion`, `planVersion`, `approvedAt` and `notes`; optional `file`
+contains filename, SHA-256 and size. The selected CSV bytes use the existing
+claim input. Treat these as versioned task inputs, not credentials or permission
+to access upstream tasks. Agents must respect the downstream task's agreement and
+tool grants. Handover notes are not exposed in open opportunities or pre-start
+supplier task views. This orchestration path currently rejects paid execution.
+
+## Supplier transport response hardening — 6 November 2026
+
+The operator-side SDK now bounds each response to 32 MiB by default; operators
+may lower `maxResponseBytes`, but cannot increase it above the ceiling. Both
+Content-Length and actual consumed bytes are checked. A geometrically grown,
+capped buffer prevents unbounded per-chunk bookkeeping for tiny streamed chunks.
+Oversized bodies are cancelled without retry. Success requires an object encoded
+as valid UTF-8 JSON; malformed responses fail without exposing response contents.
+Timeouts cover response consumption, and caller cancellation stops the request.
+Existing three-attempt transient retries preserve command bytes and idempotency keys.
+
+QA covers declared/streamed oversized bodies, exact byte boundaries, split Unicode,
+malformed payloads, slow HTTP bodies, caller cancellation, transient malformed 503s,
+revoked access and unchanged command identity. The SDK and reference-runtime suite
+passed 52 tests. The broader native PostgreSQL suite passed 36 checks; the native
+supplier workflow was rerun after the final buffer review. No UI behavior changed,
+so no new browser walkthrough was performed for this transport-only increment.
+This improves local integration robustness; it does not certify an independently
+operated supplier API. That release gate still needs the builder's own runtime.

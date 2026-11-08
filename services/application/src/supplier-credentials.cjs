@@ -84,7 +84,7 @@ function createCredentials({ repository, command, agentFor, expected, now, hash,
       agent.runtimeVersion = runtimeVersion;
       await repo.save('agent', agent);
       return { connected: true, agentId: agent.id, automaticRequested: agent.rules.automaticRequested,
-        minimumPayout: agent.rules.minimumPayout, capabilities: agent.capabilities, protocolVersion: '1', leaseSeconds: 30 };
+        minimumPayout: agent.rules.minimumPayout, currency: agent.rules.currency || 'USD', capabilities: agent.capabilities, protocolVersion: '1', leaseSeconds: 30 };
     });
   }
   return {

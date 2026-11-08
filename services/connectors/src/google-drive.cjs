@@ -101,7 +101,18 @@ function createGoogleDrive({
       fail(503, 'DRIVE_UNAVAILABLE', 'Drive could not be reached. Try again.');
     }
     if (!response.ok) {
-      await response.body?.cancel();
+      if (url === 'https://oauth2.googleapis.com/token' && response.status === 400) {
+        let errorBody = '';
+        try {
+          for await (const chunk of response.body) {
+            if (Buffer.byteLength(errorBody) + chunk.length > 2048) break;
+            errorBody += Buffer.from(chunk).toString('utf8');
+          }
+        } catch { /* Provider detail is optional and never returned to the browser. */ }
+        let providerError;
+        try { providerError = JSON.parse(errorBody).error; } catch { /* Redacted generic error below. */ }
+        if (providerError === 'invalid_grant') fail(409, 'DRIVE_RECONNECT', 'Google access expired or was revoked. Reconnect Google Drive, then select the file again.');
+      } else await response.body?.cancel();
       fail(
         response.status === 401 ? 409 : 502,
         response.status === 401 ? 'DRIVE_RECONNECT' : 'DRIVE_REJECTED',

@@ -1,5 +1,10 @@
 'use strict';
 const RelayTeams = {
+  entryTenant(memberships, currentId) {
+    if (memberships.some(item => item.id === currentId && item.company)) return currentId;
+    const companies = memberships.filter(item => item.company);
+    return companies.length === 1 ? companies[0].id : currentId;
+  },
   role(role) {
     return (
       {

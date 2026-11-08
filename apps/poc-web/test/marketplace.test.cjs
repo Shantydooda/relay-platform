@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test');const assert=require('node:assert/strict');const {readFileSync}=require('node:fs');const {resolve}=require('node:path');const vm=require('node:vm');const {text}=require('../../../packages/ui/src/components.cjs');
-function ui(){const state={authMode:'local',detail:{task:{status:'posted',version:2,scopeVersion:1}},offers:[],agents:[],work:[],quotes:[],opportunities:[],builderTab:'agents'};const ctx=vm.createContext({state,escape:text,date:()=> 'Date',Intl,Date});for(const file of ['supplier-ui.js','marketplace.js','buyer-flow.js'])vm.runInContext(readFileSync(resolve(__dirname,'../public',file),'utf8'),ctx);return {state,ctx};}
+function ui(){const state={authMode:'local',detail:{task:{status:'posted',version:2,scopeVersion:1}},offers:[],agents:[],work:[],quotes:[],opportunities:[],builderTab:'agents'};const ctx=vm.createContext({state,location:{origin:'http://127.0.0.1:4180'},escape:text,date:()=> 'Date',Intl,Date});for(const file of ['supplier-ui.js','marketplace.js','buyer-flow.js'])vm.runInContext(readFileSync(resolve(__dirname,'../public',file),'utf8'),ctx);return {state,ctx};}
 test('offer review escapes supplier content, requires explicit selection and does not authorize work',()=>{
  const {state,ctx}=ui();state.offers=[{id:'offer',agentName:'<img onerror=bad>',agentType:'specialist',operatorName:'A',amountMinor:7500,deliveryMinutes:45,proposal:'</article><script>bad</script>',capability:'Custom task',taskVersion:2,scopeVersion:1,expiresAt:Date.now()+100000}];
  let html=vm.runInContext('offerCards()',ctx);assert.doesNotMatch(html,/<img onerror|<script>/);assert.match(html,/Not currently assessed/);assert.match(html,/Review offer/);assert.doesNotMatch(html,/data-action="accept-offer"/);
@@ -35,7 +35,7 @@ test('local guidance distinguishes price questions and hypothetical changes from
 test('new-agent refresh restores only the authenticated account draft after identity is loaded',async()=>{
  const app={innerHTML:'',addEventListener(){},querySelector(){return null;}},notice={textContent:''},seen=[];
  const draft={part:'capabilities',name:'Restored agent',purpose:'Research',kind:'general',domain:'',capabilities:[{category:'Custom',task:'Open-ended task'}]};
- const document={body:{classList:{toggle(){}}},querySelector(selector){return selector==='#app'?app:notice;}};
+ const document={documentElement:{dataset:{}},body:{classList:{toggle(){}}},querySelector(selector){return selector==='#app'?app:notice;}};
  const payloads={'/api/config':{authMode:'local'},'/api/me':{user:{id:'account-one',name:'A',email:'a@example.test',workspace:'builder'},memberships:[]},'/api/agents':{agents:[]},'/api/opportunities':{tasks:[]},'/api/work':{tasks:[]},'/api/quotes':{offers:[]}};
  const ctx=vm.createContext({document,Intl,Date,location:{hash:'#agent-new',pathname:'/'},sessionStorage:{getItem(key){seen.push(key);return key==='relay-agent-draft:account-one'?JSON.stringify(draft):null;}},RelayRequest:{request:async path=>payloads[path]},setInterval(){},URLSearchParams,console});
  for(const file of ['marketplace.js','buyer-flow.js','app.js'])vm.runInContext(readFileSync(resolve(__dirname,'../public',file),'utf8'),ctx);
@@ -315,4 +315,152 @@ test('reply progress distinguishes waiting and working and offers stop without p
  assert.match(html,/Waiting for capacity/);assert.match(html,/data-reply-start/);assert.match(html,/data-action="cancel-reply"/);assert.doesNotMatch(html,/data-action="post"/);
  state.detail.task.scoping.phase='working';html=vm.runInContext('scopingReview(state.detail.task)',ctx);assert.match(html,/Working on your reply/);
  state.detail.task.scoping={status:'cancelled',error:'Saved'};html=vm.runInContext('scopingReview(state.detail.task)',ctx);assert.match(html,/Retry reply/);assert.doesNotMatch(html,/cancel-reply/);
+});
+
+test('builder dashboard links each active task to its own delivery card',()=>{
+  const {state,ctx}=ui();
+  state.builderTab='dashboard';
+  state.work=[{id:'task-one',title:'First task',status:'running',agentName:'CSV'},{id:'task-two',title:'Second task',status:'buyer_review',agentName:'CSV'}];
+  const html=vm.runInContext('builder()',ctx);
+  assert.match(html,/data-action="builder-task" data-id="task-one">View task/);
+  assert.match(html,/data-action="builder-task" data-id="task-two">View task/);
+});
+
+test('download names identify each file and escape supplier-controlled filenames', () => {
+  const { ctx } = ui();
+  vm.runInContext(readFileSync(resolve(__dirname, '../public/execution-ui.js'), 'utf8'), ctx);
+  ctx.file = { id: 'file', filename: 'report "final".csv', mime: 'text/csv', size: 10 };
+  const html = vm.runInContext("RelayExecution.file('task','submission',file)", ctx);
+  assert.match(html, /aria-label="Download report &quot;final&quot;\.csv"/);
+  ctx.file.filename = 'evidence.json';
+  assert.match(vm.runInContext("RelayExecution.file('task','submission',file)", ctx), /aria-label="Download evidence.json"/);
+});
+
+test('form errors receive keyboard focus; detached forms use the live notice instead', () => {
+  const source = readFileSync(resolve(__dirname, '../public/app.js'), 'utf8');
+  let focused = 0;
+  const target = { classList: { add() {} }, focus() { focused++; } };
+  const notice = {};
+  const ctx = vm.createContext({ state: {}, notice });
+  vm.runInContext(source.slice(source.indexOf('function showError('), source.indexOf('async function refresh(')), ctx);
+  ctx.showError({ message: 'Please try again.' }, { isConnected: true, querySelector: () => target });
+  assert.equal(target.textContent, 'Please try again.');
+  assert.equal(target.tabIndex, -1);
+  assert.equal(focused, 1);
+  ctx.showError({ message: 'Session changed.' }, { isConnected: false });
+  assert.equal(notice.textContent, 'Session changed.');
+  assert.equal(focused, 1);
+});
+
+test('existing API onboarding exposes persisted quoting rules without claiming a connection', () => {
+  const {state, ctx} = ui();
+  state.features = {localExecution: true};
+  ctx.agent = {id:'agent',name:'Research API',integration:'api',capabilities:[],rules:{automaticRequested:true,minimumPayout:2575,concurrency:2},readiness:{}};
+  state.setupStage = 2;
+  const html = vm.runInContext('agentSetup(agent)',ctx);
+  assert.match(html,/Connect your existing service/);
+  assert.match(html,/Already have an API/);
+  assert.match(html,/no-code endpoint connector is not available/);
+  assert.equal((html.match(/id="agent-rules"/g)||[]).length,1);
+  assert.match(html,/data-setup-stage="2"/);
+  assert.match(html,/value="25.75"/);
+  assert.match(html,/name="concurrency"[^>]*value="2"/);
+  assert.match(html,/Your preference is saved/);
+  assert.match(html,/Automatic bidding inactive/);
+  assert.match(html,/Not ready for paid work/);
+  state.setupStage = 3;
+  const review = vm.runInContext('agentSetup(agent)',ctx);
+  assert.equal((review.match(/id="agent-rules"/g)||[]).length,1);
+  assert.match(review,/data-setup-stage="3"/);
+});
+
+test('connection and rule saves preserve the visible setup stage and unrelated limits', () => {
+  const {ctx} = ui();
+  const configuration = vm.runInContext('RelaySupplier.configuration',ctx);
+  const agent = {integration:'api',rules:{version:7,automaticRequested:true,minimumPayout:1250,concurrency:2}};
+  const data = new Map([['integration','sdk'],['minimum','25.75'],['concurrency','3']]);
+  const connection = configuration(agent,{id:'agent-connection',dataset:{}},data);
+  assert.equal(connection.setupStage,2);
+  assert.equal(connection.integration,'sdk');
+  assert.equal(connection.minimumPayout,1250);
+  assert.equal(connection.automaticRequested,true);
+  const rules = configuration(agent,{id:'agent-rules',dataset:{setupStage:'2'}},data);
+  assert.equal(rules.setupStage,2);
+  assert.equal(rules.integration,'api');
+  assert.equal(rules.minimumPayout,2575);
+  assert.equal(rules.automaticRequested,false);
+  assert.equal(rules.expectedVersion,7);
+  assert.equal(configuration(agent,{id:'agent-rules',dataset:{setupStage:'3'}},data).setupStage,3);
+});
+
+test('supplier connection check and assessment handoff reflect real heartbeat state', () => {
+  const {state,ctx} = ui(); state.features = {localExecution:true};
+  ctx.agent = {id:'agent',integration:'api',runtime:{transport:'supplier-api',connected:false}};
+  let html=vm.runInContext('RelaySupplier.connection(agent)',ctx);
+  assert.match(html,/Check connection/);
+  assert.doesNotMatch(html,/Continue to capability test/);
+  ctx.agent.runtime.connected=true;
+  html=vm.runInContext('RelaySupplier.connection(agent)',ctx);
+  assert.match(html,/Continue to capability test/);
+  assert.match(html,/data-action="agent-step" data-id="agent" data-step="3"/);
+});
+
+test('revision conflicts refresh once, retain notes for the same submission and never auto-replay', async () => {
+  const {state,ctx}=ui(); state.detail.task.id='task'; state.detail.task.version=4;
+  let calls=0, refreshes=0, renders=0, message='';
+  const input={value:''}, details={open:false};
+  const form={dataset:{id:'submission'},querySelector:()=>input,closest:()=>details};
+  ctx.root={querySelector:()=>form};ctx.notice={};
+  ctx.command=async()=>{calls++;throw Object.assign(new Error('changed'),{code:'VERSION_CONFLICT'});};
+  ctx.refresh=async()=>{refreshes++;};ctx.render=()=>{renders++;};ctx.showError=error=>{message=error.message;};
+  vm.runInContext(readFileSync(resolve(__dirname,'../public/execution-ui.js'),'utf8'),ctx);
+  ctx.form=form;
+  await vm.runInContext("RelayExecution.requestRevision(form, 'Sort links descending')",ctx);
+  assert.equal(calls,1);assert.equal(refreshes,1);assert.equal(renders,1);
+  assert.equal(input.value,'Sort links descending');assert.equal(details.open,true);
+  assert.match(message,/submit your revision again/);
+  const replacement={dataset:{id:'new-submission'},querySelector:()=>{throw Error('must not alter new delivery');}};
+  ctx.root.querySelector=()=>replacement;
+  await vm.runInContext("RelayExecution.requestRevision(form, 'Old notes')",ctx);
+  assert.equal(calls,2);assert.match(ctx.notice.textContent,/delivery changed/);
+  ctx.command=async()=>{throw Object.assign(new Error('Access removed'),{code:'FORBIDDEN'});};
+  await assert.rejects(vm.runInContext("RelayExecution.requestRevision(form, 'Old notes')",ctx),/Access removed/);
+  assert.equal(refreshes,2);
+});
+
+
+test('company funding and start controls require current approval without hiding payment recovery', () => {
+ const { state, ctx } = ui();
+ vm.runInContext(readFileSync(resolve(__dirname, '../public/payments-ui.js'), 'utf8'), ctx);
+ state.payments = { configured: true };
+ ctx.task = { id: 'company-task', version: 2, selectedOfferId: 'changed-offer', companyApprovalRequired: true, approvalStatus: 'stale' };
+ for (const status of ['stale', 'pending', 'declined', null]) {
+  ctx.task.approvalStatus = status;
+  let html = vm.runInContext('RelayPayments.task(task, null)', ctx);
+  assert.doesNotMatch(html, /Fund with test payment/);
+  assert.match(html, /fresh company approval|Waiting for your reviewer/);
+  html = vm.runInContext('RelayPayments.task(task, {status:"funded",amountMinor:700})', ctx);
+  assert.doesNotMatch(html, /Start funded sandbox task/);
+  assert.match(html, /Check payment status|Request full test refund/);
+ }
+ ctx.task.approvalStatus = 'approved';
+ assert.match(vm.runInContext('RelayPayments.task(task, null)', ctx), /Fund with test payment/);
+ ctx.task.companyApprovalRequired = false;
+ ctx.task.approvalStatus = null;
+ assert.match(vm.runInContext('RelayPayments.task(task, null)', ctx), /Fund with test payment/);
+});
+
+test('acquisition displays exact saved totals with local-work definitions and an authenticated sharing link', () => {
+  const {state,ctx}=ui();
+  state.acquisitionReport={agentId:'agent',asOf:1,totals:{requests:5,quoted:4,selected:3,delivered:2},rows:[{source:'builder-link',requests:5,quoted:4,selected:3,delivered:2}]};
+  const html=vm.runInContext("agentAcquisition({id:'agent'})",ctx);
+  assert.match(html, /#storefront=agent\?source=builder/);
+  assert.match(html, /not paying-customer counts/);
+  assert.match(html, /your own agents’ offers/);
+  assert.match(html, /Older selections without supplier evidence are excluded/);
+  assert.match(html, /not verified referrals/);
+  assert.match(html, /<td>5<\/td><td>4<\/td><td>3<\/td><td>2<\/td>/);
+  assert.match(html, /role="region" aria-label="Acquisition totals by source" tabindex="0"/);
+  state.acquisitionReport=null;
+  assert.doesNotMatch(vm.runInContext("agentAcquisition({id:'agent'})",ctx), /<strong>0<\/strong>/, 'missing report must not pretend to be zero');
 });

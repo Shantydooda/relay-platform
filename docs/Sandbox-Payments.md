@@ -90,3 +90,139 @@ Five isolated browser scenarios cover delayed funding, refund and payout checks,
 Fixed a shared-state bug where a successfully retrieved failed refund/payout could leave its reconciliation job scheduled. Terminal failures now atomically enter review during indexing and remain in review when the worker finishes. This also backfills previously saved failures. Regression tests exercise recovery through real application commands and compare both participants' payment views, with no new provider mutation calls. Browser fixtures seed payment checkpoints in disposable storage; they do not prove real Stripe behavior or a full execution lifecycle for every seeded task.
 
 Core regression: 138 passed. Frontend: 20 passed, plus five shared UI reruns. Native PostgreSQL checks cover concurrent recovery and backup restoration. Mobile and actual provider validation remain outstanding. No demo/staging changes or real transactions.
+
+## Local Stripe test connection — 5 November 2026
+
+The founder authorized connecting Stripe for localhost testing. The existing
+account's **Test mode sandbox** is connected; live business activation and its
+country selection were not changed. A CLI-created claimable sandbox was also
+provisioned, but Stripe required an activated parent to claim it. It remains
+unused, is not connected to Relay, and expires on 12 November 2026. Do not confuse
+its temporary credentials with the active account's permanent test credentials.
+
+Local credentials and launch helpers are owner-only files under ignored
+`.poc-data/stripe-local/`. No credentials were added to application source, hosted
+staging, demo, GitHub or frontend configuration. The existing adapter still rejects
+live keys. The existing webhook verifier rejects live events and invalid signatures.
+
+From the repository root, run in separate terminals:
+
+```sh
+node .poc-data/stripe-local/run.cjs server
+node .poc-data/stripe-local/run.cjs listener
+```
+
+Stop the existing server before starting another on port 4180. The helper pins
+loopback port 4180 and reads only the local test key/signing secret. The listener
+uses official `@stripe/cli` 1.55.8 installed at `/tmp/relay-stripe-cli`; reinstall
+that tool in the same location if temporary files are cleared. Its output is
+private because Stripe emits the signing secret on startup. No public tunnel or
+hosted webhook destination was created. Both processes must be running for local
+webhook delivery; plain `npm run start:local` without environment credentials leaves
+Stripe disconnected. Review/refresh the signing secret if the CLI identity changes.
+
+Provider smoke QA: actual Stripe test Checkout creation, same-key replay returning
+the same session, awaiting-payment and expiry checks through Relay's adapter; a
+simulated USD 1.00 PaymentIntent succeeded and was fully refunded through the
+adapter; a decline test card failed as expected. Stripe Dashboard shows one failed
+and one refunded USD 1.00 test payment. The expiry and refund events reached
+`/api/webhooks/stripe` with verified signatures and HTTP 200. These standalone
+provider smoke objects are not funded Relay tasks or synthetic ledger records.
+
+29 payment, reconciliation and recovery regression tests passed using isolated
+fixtures. Browser evidence: `/tmp/relay-stripe-test-payments.png`. The local Relay
+session expired during UI verification, so signed-in Relay UI confirmation remains
+pending login. Full buyer funding → execution → delivery → Connect transfer/payout
+QA remains open; this connection and provider smoke test do not close that gate.
+No real money, real card/bank details, deployment, demo or staging changes.
+
+### Connect and funded delivery rehearsal — 5 November 2026
+
+Using an isolated localhost fixture on port 4183, hosted Stripe test Connect
+onboarding completed with Stripe-provided test identity and bank details. Relay
+confirmed recipient readiness and manual payouts. A USD 1.00 Checkout payment
+succeeded, funding was reconciled, and the connected CSV runtime processed a real
+fixture file and delivered it; the buyer accepted that delivery. The builder
+earnings view correctly remained pending, with zero paid.
+
+Transfer failed: the German platform settled the charge in EUR, while the current
+adapter requests USD transfers. No transfer or payout was completed. The adapter
+now blocks funding before Checkout creation unless both accounts have USD default
+settlement currency. This is a conservative restriction, not multi-currency or FX
+support. A compatible settlement setup or explicit currency-aware settlement is
+still required to finish end-to-end payout QA. The earlier funded fixture remains
+isolated and unresolved; no ledger state was rewritten to claim success.
+
+New Connect accounts now use Accounts v2 (2026-10-28.endive), with v1 interop for
+onboarding links and manual payout settings. Creation and settings use separate,
+stable idempotency keys. Unresolved legacy creation operations require reconciliation
+before changing API generations, avoiding duplicate recipient creation.
+
+All 34 payment/reconciliation/recovery regression tests passed. The full local
+verification run c98a89a5-231d-4968-bd70-21a640cf4793 timed out during its backend
+stage and is not green; source also changed during that run. The isolated flow used
+explicit canonical reconciliation, not the main port 4180 webhook listener, so an
+automatic webhook-driven funded-task/payout rehearsal remains open. Localhost 4180
+was restarted with these fixes; demo and staging were not changed.
+
+Browser evidence: `/tmp/relay-test-funded-delivery.png` and
+`/tmp/relay-test-builder-payout-pending.png`.
+
+### Currency-aware sandbox settlement (2026-11-05)
+
+Individual one-off offers and runtime quoting rules support explicit USD or EUR.
+Legacy records remain USD. The accepted offer fixes the currency for Checkout,
+refunds, transfers, payouts and ledger movements. Changing an agent's quoting
+currency requires a fresh compatible offer before execution. Company budgets,
+recurring work and orchestration remain USD-only; no FX conversion is implemented.
+Funding requires matching platform and recipient settlement currencies, and the
+transfer adapter also checks the charge's actual settlement currency before writing.
+
+History, CSV snapshots and builder earnings separate currencies. CSV pages must
+match the snapshot currency and totals; they cannot be combined across currencies.
+A real EUR sandbox Checkout and full refund were reconciled, and a second runtime
+EUR task produced and accepted an actual normalized CSV. Transfer/payout completion
+and automatic webhook evidence must be recorded separately after provider testing.
+The earlier USD fixture is preserved for recovery review, not relabeled as EUR.
+
+The complete backend suite passed 395 tests with concurrency bounded to two test
+files (272 seconds). The release-check backend deadline is now ten minutes to
+accommodate that measured run; timeouts still fail the check. Focused currency and
+recurring regressions also passed. These checks do not establish live-money readiness.
+
+### Automatic webhook rehearsal — 6 November 2026
+
+Used the existing disposable QA database on localhost:4183, a separate Stripe CLI
+sandbox listener, the production signature verifier, and the production bounded
+payment reconciliation worker. The main PostgreSQL app remains on localhost:4180;
+no demo/staging configuration was changed.
+
+- A new EUR 1.00 Checkout produced a real `checkout.session.completed` event.
+  Stripe CLI delivered it with HTTP 200. The durable inbox scheduled reconciliation,
+  and the background worker confirmed funding with one EUR 100-minor-unit entry.
+  No manual reconciliation command was used for this funding transition.
+- A normal Relay refund command produced real `refund.created` and `refund.updated`
+  events, both delivered with HTTP 200. The worker confirmed the refund; the buyer
+  chat changed from “Refund pending” to “Refund confirmed” without a refresh action.
+- The actual Checkout event was retrieved from the test API and replayed with the
+  local listener secret to exercise duplicates. These are locally signed replays,
+  not a claim of provider redelivery. Both replays were deduplicated. Invalid and
+  stale signatures, live-mode events, and conflicting event IDs were rejected.
+- Repeated the replay after restarting the QA server. The persisted task retained
+  exactly one funding and one refund, each EUR 100 minor units, and one inbox record
+  for the Checkout event. All 36 payment/reconciliation/recovery regressions passed.
+
+The earlier accepted-delivery payout is still incomplete: the connected test
+account has EUR 0 available and EUR 1 pending. Stripe reports availability on
+12 November 2026 at 00:00 UTC (01:00 Europe/Berlin). There is no payout object or
+confirmed payout ledger entry. Existing bounded recovery retries retain the same
+operation; they must not be replaced with a newly invented payout. If recovery
+has escalated or the operation's idempotency window has elapsed by then, use the
+recovery review procedure and inspect provider state before retrying. No promise
+of an unattended payout on that date is made.
+
+Remaining provider gate: actual connected-account payout completion and its
+webhook-driven reconciliation. Funding/refund webhook QA is now verified; this
+is not evidence that the payout gate is complete.
+
+Browser evidence: `/tmp/relay-webhook-refund-confirmed.png`.

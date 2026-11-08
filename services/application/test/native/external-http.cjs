@@ -1,7 +1,10 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { fork } = require('node:child_process');
+const { fork, execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const executeFile = promisify(execFile);
+const { checkConnection } = require('../../../../packages/supplier-sdk/src/diagnostics.cjs');
 const { once } = require('node:events');
 const { writeFileSync, readFileSync, existsSync } = require('node:fs');
 const { join } = require('node:path');
@@ -36,6 +39,34 @@ async function externalHttp({ origin, home, buyer, builder, request, json, event
     assert.equal((await fetch(`${origin}/api/runtime/assignments`, { headers: { Authorization: `Bearer ${issued.token}`, 'X-Relay-Protocol': '1' } })).status, 403);
     const contract = await (await fetch(`${origin}/supplier-openapi.json`)).json();
     assert.equal(contract.info.version, '1.2.0');
+    assert.equal((await request(`/api/agent-market/${agent.agentId}`, buyer)).status, 404);
+    const preview = await json(`/api/agent-market/${agent.agentId}`, builder);
+    assert.equal(preview.agent.ownerPreview, true);
+    assert.equal(preview.agent.listingStatus, 'draft');
+    const listingVersion = (await json('/api/agents', builder)).agents.find(item=>item.id===agent.agentId).version;
+    assert.equal((await request(`/api/agents/${agent.agentId}/listing`, buyer, { expectedVersion: listingVersion, status: 'published' }, 'PATCH')).status, 404);
+    await json(`/api/agents/${agent.agentId}/listing`, builder, { expectedVersion: listingVersion, status: 'published' }, 'PATCH');
+    assert.equal((await json(`/api/agent-market/${agent.agentId}`, buyer)).agent.ownerPreview, false);
+    const discovery = await json('/api/agent-market?limit=1', buyer);
+    assert.ok(discovery.total >= 1);
+    assert.equal(discovery.agents.length, 1);
+    assert.equal((await request('/api/agent-market?limit=0', buyer)).status, 400);
+    assert.equal((await request('/api/agent-market?after=bad', buyer)).status, 400);
+    assert.equal((await json('/api/agent-market?q=NO_MATCH_9234', buyer)).total, 0);
+    // A setup check must not impersonate a running worker or change agent metadata.
+    const beforeCheck = (await json('/api/agents', builder)).agents.find(item => item.id === agent.agentId);
+    const diagnostic = await checkConnection({ origin, token: issued.token });
+    assert.equal(diagnostic.ok, true, diagnostic.message);
+    assert.equal(diagnostic.checks.length, 3);
+    const cli = await executeFile(process.execPath, [
+      join(__dirname, '../../../../packages/supplier-sdk/src/check-connection.cjs'), '--config', configPath
+    ], { timeout: 15000 });
+    assert.match(cli.stdout, /PASS: Opportunity access/);
+    assert.match(cli.stdout, /Read access works/);
+    assert.equal(cli.stderr, '');
+    assert.ok(!cli.stdout.includes(issued.token));
+    const afterCheck = (await json('/api/agents', builder)).agents.find(item => item.id === agent.agentId);
+    assert.deepEqual(afterCheck, beforeCheck, 'diagnostics must not change connection, qualification or quoting metadata');
     launch();
     await eventually(() => json('/api/agents', builder), value => value.agents.some(item => item.id === agent.agentId && item.runtime.connected));
     const task = await json('/api/tasks', buyer, { tenantId: buyer.actor.memberships[0].id, title: 'External CSV processing', brief: 'Normalize CSV supplied with this task and return files.' });
@@ -69,14 +100,42 @@ async function externalHttp({ origin, home, buyer, builder, request, json, event
     const before = (await supplier('/events')).status; assert.equal(before, 200);
     launch();
     await eventually(async () => (await supplier(`/tasks/${task.taskId}`)).json(), value => value.status === 'accepted');
+    const acquisition = await json(`/api/agents/${agent.agentId}/acquisition`, builder);
+    assert.deepEqual(acquisition.totals, { requests: 0, quoted: 0, selected: 0, delivered: 0 }, 'open-market work is not attributed to a storefront');
+    assert.equal((await request(`/api/agents/${agent.agentId}/acquisition`, buyer)).status, 404);
+    const portfolioVersion = (await json('/api/agents', builder)).agents.find(item => item.id === agent.agentId).version;
+    const example = await json(`/api/agents/${agent.agentId}/portfolio`, builder, {
+      expectedVersion: portfolioVersion, kind: 'relay-task', taskId: task.taskId,
+      title: 'CSV cleanup example', summary: 'Removed duplicates', sample: 'Synthetic example: Acme', consent: 'redacted-sharing-rights'
+    });
+    assert.equal((await json(`/api/agent-market/${agent.agentId}`, buyer)).agent.portfolio.length, 0);
+    const review = (await json(`/api/tasks/${task.taskId}`, buyer)).portfolioRequests[0];
+    assert.equal(review.id, example.exampleId);
+    assert.equal(review.canDecide, true);
+    assert.equal((await request(`/api/portfolio/${example.exampleId}`, builder, { expectedVersion: 1, action: 'approve' }, 'PATCH')).status, 404);
+    await json(`/api/portfolio/${example.exampleId}`, buyer, { expectedVersion: 1, action: 'approve' }, 'PATCH');
+    await restart();
+    assert.equal((await json(`/api/agent-market/${agent.agentId}`, buyer)).agent.portfolio[0].sample, 'Synthetic example: Acme');
+    await json(`/api/portfolio/${example.exampleId}`, buyer, { expectedVersion: 2, action: 'revoke' }, 'PATCH');
+    assert.equal((await json(`/api/agent-market/${agent.agentId}`, buyer)).agent.portfolio.length, 0);
     const metadata = (await json('/api/agents', builder)).agents.find(item => item.id === agent.agentId);
     const rotated = await json(`/api/agents/${agent.agentId}/supplier-credentials`, builder, { expectedVersion: metadata.version, expiresInSeconds: 3600 });
     assert.equal((await supplier('/assignments')).status, 401);
     await assert.rejects(sdk.assignments(), error => error.status === 401);
+    const oldKeyCheck = await checkConnection({ origin, token: issued.token });
+    assert.equal(oldKeyCheck.ok, false);
+    assert.equal(oldKeyCheck.checks.length, 1);
+    assert.match(oldKeyCheck.message, /Credential rejected/);
+    assert.equal((await checkConnection({ origin, token: rotated.token })).ok, true);
+    await assert.rejects(executeFile(process.execPath, [
+      join(__dirname, '../../../../packages/supplier-sdk/src/check-connection.cjs'), '--config', configPath
+    ], { timeout: 15000 }), error => error.code === 1 &&
+      /Credential rejected/.test(error.stdout) && !error.stdout.includes(issued.token));
     assert.equal((await supplier('/heartbeat', { runtimeName: 'Rotated reference', runtimeVersion: '1' }, rotated.token)).status, 200);
     const after = (await json('/api/agents', builder)).agents.find(item => item.id === agent.agentId);
     await json(`/api/agents/${agent.agentId}/disconnect`, builder, { expectedVersion: after.version });
     assert.equal((await supplier('/events', null, rotated.token)).status, 401);
+    assert.equal((await checkConnection({ origin, token: rotated.token })).ok, false);
   } finally { await stopWorker(); }
 }
 module.exports = { externalHttp };

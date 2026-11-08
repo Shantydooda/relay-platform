@@ -14,7 +14,8 @@ const blockers = Object.freeze([
 ]);
 function stages() {
   return [
-    { id: 'backend', args: ['test'], timeoutMs: 180000 },
+    // Bounded test concurrency avoids database contention; the complete suite takes about five minutes locally.
+    { id: 'backend', args: ['test'], timeoutMs: 600000 },
     { id: 'web', args: ['run', 'test:web'], timeoutMs: 60000 },
     {
       id: 'postgres-recovery',

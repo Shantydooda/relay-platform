@@ -74,7 +74,7 @@ function createRuntime({ origin, token, fetchImpl = fetch, pollMs = 2000, transp
         if (!capability) continue;
         try {
           await request(`/api/runtime/tasks/${task.id}/offers`, { agentId: agent.agentId, capabilityId: capability.id, expectedVersion: task.version,
-            amountMinor: agent.minimumPayout, deliveryMinutes: 1,
+            amountMinor: agent.minimumPayout, currency: agent.currency || 'USD', deliveryMinutes: 1,
             proposal: 'Local CSV automation: trim cells, remove empty rows and exact duplicate rows, sort rows ascending, and return a CSV plus a JSON report. No external enrichment or AI model. Local testing only; no real money is collected or paid.' });
           onEvent('offer.submitted');
         } catch (error) { if (![404, 409].includes(error.status)) throw error; }

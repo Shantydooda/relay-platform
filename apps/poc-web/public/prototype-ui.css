@@ -869,9 +869,14 @@ button.primary:hover {
   font-size: 11px;
   color: inherit;
 }
+/* The main region receives route focus; interactive controls keep their focus rings. */
+#workspace-main:focus { outline: none; }
 .setup-grid {
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 24px;
+}
+.setup-grid > * {
+  min-width: 0;
 }
 .setup-grid .market-form {
   padding: 32px;
@@ -1101,7 +1106,7 @@ button.primary:hover {
     scrollbar-gutter: auto;
   }
   .setup-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .readiness {
     position: static;
@@ -1234,13 +1239,19 @@ button.primary:hover {
     padding: 24px;
   }
   .setup-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
   }
   .setup-steps button,
   .setup-steps > span {
     font-size: 11px;
-    padding: 10px 12px;
-    gap: 7px;
+    padding: 10px 4px;
+    gap: 5px;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    overflow-wrap: anywhere;
   }
   .auth-layout {
     padding: 28px 20px;
@@ -2054,7 +2065,7 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
   width: 30px;
   height: 24px;
   flex: 0 0 auto;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 50%;
 }
 .chat-character.face svg {
@@ -2093,6 +2104,10 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
   }
   .chat-character.face .chat-character-blink {
     animation-iteration-count: infinite;
+  }
+  .chat-character.face svg {
+    transition: transform 180ms ease-out;
+    transform-origin: center;
   }
   @keyframes chat-blink {
     0%,
@@ -2443,3 +2458,37 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
 .spending-filters label {display:grid; gap:6px; font-size:13px;}
 .spending-filters input {padding:10px; border:1px solid var(--relay-border); border-radius:8px; background:white;}
 .spending-filters .form-error {flex-basis:100%;}
+@media (max-width: 520px) {
+  .spending-filters {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch;}
+  .spending-filters label:first-child {grid-column:1 / -1;}
+  .spending-filters input, .spending-filters select {width:100%; min-width:0; box-sizing:border-box; min-height:44px;}
+  .spending-filters button {min-height:44px;}
+  .spending-filters .form-error {grid-column:1 / -1;}
+}
+
+
+/* Agent acquisition: keep numeric comparisons readable on narrow screens. */
+.acquisition-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.acquisition-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.acquisition-table caption {
+  text-align: left;
+  padding-block: 12px;
+  color: var(--relay-muted);
+}
+.acquisition-table th,
+.acquisition-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--relay-border);
+  text-align: right;
+}
+.acquisition-table th:first-child {
+  text-align: left;
+  min-width: 145px;
+}

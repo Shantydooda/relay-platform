@@ -148,3 +148,83 @@ test('application composition cannot replace managed or local authentication', (
  const command=()=> 'application command',composed=composeIdentity(identity,{createTask:command});
  assert.equal(composed.principal(), 'verified');assert.equal(composed.createTask,command);
 });
+
+for (const adapter of ['sqlite', 'postgres']) {
+  test(`${adapter}: supplier quoting limits persist without rotating credentials and reject unsafe bids`, async t => {
+    const f = await fixture(t, adapter);
+    const current = (await f.app.marketplace.agents(f.builder))[0];
+    const rules = { expectedVersion: current.version, integration: 'api', setupStage: 2,
+      automaticRequested: true, minimumPayout: 2575, concurrency: 2 };
+    await f.app.marketplace.configure(f.builder, f.agentId, rules, randomUUID());
+    const saved = (await f.app.marketplace.agents(f.builder))[0];
+    assert.equal(saved.rules.minimumPayout, 2575);
+    assert.equal(saved.rules.concurrency, 2);
+    assert.equal(saved.setupStage, 2);
+    const principal = await f.app.runtimePrincipal(f.token);
+    await assert.rejects(f.app.marketplace.quote(f.builder, f.taskId, f.quote, randomUUID(), principal), {code:'PRICE_LIMIT'});
+    await f.app.marketplace.configure(f.builder, f.agentId, {...rules, expectedVersion:saved.version, automaticRequested:false}, randomUUID());
+    await assert.rejects(f.app.marketplace.quote(f.builder, f.taskId, {...f.quote,amountMinor:2575}, randomUUID(), principal), {code:'BIDDING_DISABLED'});
+    const disabled = (await f.app.marketplace.agents(f.builder))[0];
+    await f.app.marketplace.configure(f.builder, f.agentId, {...rules,expectedVersion:disabled.version},randomUUID());
+    const offer = await f.app.marketplace.quote(f.builder, f.taskId, {...f.quote,amountMinor:2575},randomUUID(),principal);
+    assert.ok(offer.offerId);
+    assert.equal((await f.app.detail(f.buyer,f.taskId)).task.status,'posted');
+  });
+}
+
+for (const adapter of ['sqlite', 'postgres']) test(`${adapter}: listing lifecycle is owner-only, versioned and independent of existing work`, async t => {
+  const f = await fixture(t, adapter), { app, repository, buyer, builder, stranger, agentId } = f;
+  const current = (await app.marketplace.agents(builder))[0];
+  assert.equal(current.listingStatus, 'draft');
+  assert.equal((await app.marketplace.catalog(buyer)).some(a => a.id === agentId), false);
+  assert.equal((await app.marketplace.listing(builder, agentId)).ownerPreview, true);
+  await assert.rejects(app.marketplace.listing(buyer, agentId), { code: 'NOT_FOUND' });
+  await assert.rejects(app.marketplace.updateListing(stranger, agentId, { status: 'published', expectedVersion: current.version }, randomUUID()));
+  const key = randomUUID(), body = { status: 'published', expectedVersion: current.version };
+  const published = await app.marketplace.updateListing(builder, agentId, body, key);
+  assert.deepEqual(await app.marketplace.updateListing(builder, agentId, body, key), published);
+  assert.equal((await app.marketplace.listing(buyer, agentId)).ownerPreview, false);
+  assert.equal((await app.marketplace.catalog(buyer)).some(a => a.id === agentId), true);
+  await assert.rejects(app.marketplace.updateListing(builder, agentId, body, randomUUID()));
+  const authorization = await selectAndAuthorize(f);
+  const before = await app.detail(buyer, f.taskId);
+  const competing = await Promise.allSettled(['paused','draft'].map(status => app.marketplace.updateListing(builder, agentId, { status, expectedVersion: published.version }, randomUUID())));
+  assert.equal(competing.filter(r => r.status === 'fulfilled').length, 1);
+  await assert.rejects(app.marketplace.listing(buyer, agentId), { code: 'NOT_FOUND' });
+  for (const preferenceMode of ['agent', 'builder']) await assert.rejects(app.createTask(buyer, {
+    tenantId: buyer.memberships[0].id, title: 'New direct request', brief: 'Use this agent.', preferredAgentId: agentId, preferenceMode
+  }, randomUUID()), { code: 'NOT_FOUND' });
+  assert.deepEqual(await app.detail(buyer, f.taskId), before);
+  const job = await app.claim(f.principal, f.taskId, { assignmentId: authorization.assignmentId }, randomUUID());
+  assert.ok(job.leaseToken, 'unpublishing must not stop authorized execution');
+  await repository.transaction('legacy-listing', async repo => { const agent = await repo.get('agent', agentId); delete agent.listingStatus; await repo.save('agent', agent); });
+  assert.equal((await app.marketplace.listing(buyer, agentId)).listingStatus, 'published');
+});
+
+test('individual published profile read does not depend on catalog window and excludes credentials', async t => {
+  const f = await fixture(t);
+  await f.repository.transaction('outside-catalog', async repo => {
+    const source = await repo.get('agent', f.agentId);
+    await repo.save('agent', { ...source, id: 'ffffffff-ffff-ffff-ffff-ffffffffffff', listingStatus: 'published' });
+    for (let i=0;i<101;i++) await repo.save('agent', { ...source, id: `00000000-0000-0000-0000-${String(i).padStart(12,'0')}`, listingStatus: 'published' });
+  });
+  assert.equal((await f.app.marketplace.catalog(f.buyer)).some(a=>a.id==='ffffffff-ffff-ffff-ffff-ffffffffffff'), false);
+  const detail = await f.app.marketplace.listing(f.buyer, 'ffffffff-ffff-ffff-ffff-ffffffffffff');
+  assert.equal(detail.id, 'ffffffff-ffff-ffff-ffff-ffffffffffff');
+  assert.equal(detail.credentialHash, undefined);
+  assert.equal(detail.rules, undefined);
+  await assert.rejects(f.app.marketplace.listing({ ...f.buyer, recoveryRequired: true }, detail.id), { code: 'FORBIDDEN' });
+});
+
+test('runtime quote currency follows rules and changing it invalidates start authorization', async t => {
+  const f = await fixture(t);
+  await assert.rejects(f.app.marketplace.quote(f.builder,f.taskId,{...f.quote,currency:'EUR'},randomUUID(),f.principal),{code:'CURRENCY_UNSUPPORTED'});
+  let agent=(await f.app.marketplace.agents(f.builder))[0];
+  const configure = currency => f.app.marketplace.configure(f.builder,f.agentId,{expectedVersion:agent.version,integration:'api',setupStage:3,automaticRequested:true,minimumPayout:100,concurrency:1,currency},randomUUID());
+  await configure('EUR');
+  const offer=await f.app.marketplace.quote(f.builder,f.taskId,{...f.quote,currency:'EUR'},randomUUID(),f.principal);
+  await f.app.marketplace.accept(f.buyer,f.taskId,{expectedVersion:(await f.app.detail(f.buyer,f.taskId)).task.version,offerId:offer.offerId},randomUUID());
+  agent=(await f.app.marketplace.agents(f.builder))[0];
+  await configure('USD');
+  await assert.rejects(f.app.authorizeLocal(f.buyer,f.taskId,{expectedVersion:(await f.app.detail(f.buyer,f.taskId)).task.version,mode:'local-unpaid'},randomUUID()),{code:'CURRENCY_UNSUPPORTED'});
+});

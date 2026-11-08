@@ -69,3 +69,7 @@ Status, OAuth setup and disconnect are not subject to this allowance. Disconnect
 Live `readAgentTool` requests share the durable workspace Drive allowance with picker/import operations. Admission validates the assignment lease, runtime credential, requester membership and grant, then commits the allowance before opening the provider-read transaction. Provider failure or a later access change still consumes that admitted attempt. Snapshot/local reads do not consume provider allowance. Source version and grant version are bound to admission; a concurrent change rejects with `SOURCE_CHANGED` and requires a fresh attempt. The execution transaction rechecks authority before reading and again before returning bytes. Tool contents are never cached in command receipts.
 
 This is deliberately two sequential transactions, not a nested quota transaction while holding execution locks. Scheduled app runs and live refreshes during attachment/grant snapshot preparation remain outside this allowance and are the next coverage gap. Existing provider concurrency limits still apply to those calls.
+
+## 6 November recovery audit
+
+The existing selected-file connector was retained. Token endpoint `invalid_grant` failures now instruct the owner to reconnect and select the file again, without exposing provider details. Fixture tests cover this path. Neither a local Google configuration nor real consent/Picker validation was available during this audit. See Delivery-Integrations.md for the companion Attio destination and remaining provider acceptance steps.

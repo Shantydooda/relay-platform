@@ -101,7 +101,7 @@ function csvCell(value) {
     text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
-function spendingCsv(report) {
+function spendingCsv(report, { header: includeHeader = true, total: includeTotal = true } = {}) {
   const header = [
     'Row type',
     'Task ID',
@@ -121,14 +121,14 @@ function spendingCsv(report) {
     'Pending refund now',
   ];
   const meta = [
-    'USD',
+    report.currency || 'USD',
     'sandbox',
     report.period.from,
     report.period.to,
     new Date(report.observedAt).toISOString(),
   ];
   const rows = [
-    header,
+    ...(includeHeader ? [header] : []),
     ...report.items.map((item) => [
       'TASK',
       item.id,
@@ -136,16 +136,16 @@ function spendingCsv(report) {
       ...meta,
       ...columns.map((key) => decimal(item[key])),
     ]),
-    [
+    ...(includeTotal ? [[
       'TOTAL',
       '',
       '',
       ...meta,
       ...columns.map((key) => decimal(report.totals[key])),
-    ],
+    ]] : []),
   ];
   return (
-    '\uFEFF' +
+    (includeHeader ? '\uFEFF' : '') +
     rows.map((row) => row.map(csvCell).join(',')).join('\r\n') +
     '\r\n'
   );

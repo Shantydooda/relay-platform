@@ -5,7 +5,7 @@ const { createSqliteRepository } = require('../../application/src/repository.cjs
 const { createApplication } = require('../../application/src/service.cjs');
 const { fail } = require('../../../packages/contracts/src/input.cjs');
 
-async function createUnifiedLocalStore({ authDb, applicationDb, repository: suppliedRepository, storage = 'sqlite', now = Date.now, localExecution = false, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, paymentRecoveryUserIds = [] }) {
+async function createUnifiedLocalStore({ authDb, applicationDb, repository: suppliedRepository, storage = 'sqlite', now = Date.now, localExecution = false, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, paymentRecoveryUserIds = [] }) {
   const identity = createStore(authDb, now, { identityOnly: true });
   const repository = suppliedRepository || createSqliteRepository(applicationDb);
   await importLegacyLocalData(authDb, repository);
@@ -20,7 +20,7 @@ async function createUnifiedLocalStore({ authDb, applicationDb, repository: supp
   }
   const { guardLocalAccess, createAccessBoundary } = require('./access-guard.cjs');
   const boundary = createAccessBoundary(repository);
-  const application = createApplication({ repository: boundary.repository, objectStore, fileScanner, now, localExecution, scopingProvider, paymentProvider, driveProvider, paymentRecoveryUserIds, resolveOperator, resolveActor: resolveOperator });
+  const application = createApplication({ repository: boundary.repository, objectStore, fileScanner, now, localExecution, scopingProvider, paymentProvider, driveProvider, attioProvider, paymentRecoveryUserIds, resolveOperator, resolveActor: resolveOperator });
   const guarded = guardLocalAccess({ identity, application, repository, resolveOperator, now, boundary });
   return {
     ...guarded, features: application.features, repository, storage,

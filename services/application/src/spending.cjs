@@ -13,7 +13,8 @@ const emptyTotals = () => Object.fromEntries(fields.map((field) => [field, 0]));
 
 // Confirmed ledger movements, rather than checkout/transfer UI states, are the
 // source of financial totals. A payout is not a second buyer expense.
-function summarizeSpending(tasks, history, taskView, now) {
+function summarizeSpending(tasks, history, taskView, now, currency = 'USD') {
+  if (!['USD', 'EUR'].includes(currency)) throw new Error('Unsupported report currency.');
   const archived = new Map();
   for (const settlement of history) {
     if (!archived.has(settlement.taskId)) archived.set(settlement.taskId, []);
@@ -28,6 +29,9 @@ function summarizeSpending(tasks, history, taskView, now) {
       if (task.settlement) settlements.set(task.settlement.id, task.settlement);
       const transactions = [];
       for (const settlement of settlements.values()) {
+        const settlementCurrency = settlement.currency || 'USD';
+        if (!['USD', 'EUR'].includes(settlementCurrency) || (settlement.ledger || []).some(entry => entry.currency !== settlementCurrency)) throw new Error('Invalid spending ledger currency.');
+        if (settlementCurrency !== currency) continue;
         const seen = new Set();
         for (const entry of settlement.ledger || []) {
           if (seen.has(entry.reference)) continue;
@@ -44,7 +48,7 @@ function summarizeSpending(tasks, history, taskView, now) {
                   : null;
           if (!kind) continue;
           if (
-            entry.currency !== 'USD' ||
+            entry.currency !== currency ||
             !Number.isSafeInteger(entry.amountMinor) ||
             entry.amountMinor < 0
           ) {
@@ -94,7 +98,7 @@ function summarizeSpending(tasks, history, taskView, now) {
         createdAt: task.createdAt,
         status: taskView(task, now).status,
         paymentStatus: task.settlement?.status || 'unfunded',
-        agreedMinor: offer?.amountMinor ?? null,
+        agreedMinor: offer && (offer.currency || 'USD') === currency ? offer.amountMinor : null,
         offerId: offer?.id || null,
         ...totals,
         transactions: transactions.sort((a, b) => b.createdAt - a.createdAt),
@@ -108,6 +112,6 @@ function summarizeSpending(tasks, history, taskView, now) {
       if (!Number.isSafeInteger(totals[field]))
         throw new Error('Spending total exceeds supported precision.');
     }
-  return { items, totals, currency: 'USD', sandbox: true, observedAt: now };
+  return { items, totals, currency, sandbox: true, observedAt: now };
 }
 module.exports = { summarizeSpending };

@@ -1921,6 +1921,15 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 3000
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "EUR"
+            ],
+            "default": "USD",
+            "description": "Must match agent quoting rules. EUR currently supports one-off personal work only; no FX."
           }
         },
         "required": [
@@ -2196,6 +2205,15 @@
           },
           "leaseSeconds": {
             "const": 30
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "EUR"
+            ],
+            "default": "USD",
+            "description": "Currency of the minimum quote and runtime offers."
           }
         },
         "required": [
@@ -2593,6 +2611,63 @@
                     "type": "null"
                   }
                 ]
+              },
+              "handoffs": {
+                "type": "array",
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "sourceTaskId": {
+                      "type": "string"
+                    },
+                    "submissionId": {
+                      "type": "string"
+                    },
+                    "submissionVersion": {
+                      "type": "integer"
+                    },
+                    "notes": {
+                      "type": "string",
+                      "maxLength": 2000
+                    },
+                    "approvedAt": {
+                      "type": "integer"
+                    },
+                    "planVersion": {
+                      "type": "integer"
+                    },
+                    "file": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "filename": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "filename",
+                        "sha256",
+                        "size"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sourceTaskId",
+                    "submissionId",
+                    "submissionVersion",
+                    "notes",
+                    "approvedAt",
+                    "planVersion"
+                  ]
+                }
               }
             },
             "required": [

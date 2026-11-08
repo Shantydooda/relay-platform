@@ -1,8 +1,33 @@
 # Relay v1 readiness review
 
+Product scope: [agreed icebox](Product-Icebox.md). Deferred expansions are not v1
+release commitments; security, accounting and integration validation remain gates.
+
 28 October 2026. Source review of `relay-platform`, compared with the prototype PRD v0.46. Development remains localhost-only; no hosted settings or data were changed. This is an engineering self-review, not independent security certification.
 
-## Current release checkpoint — 2 November 2026
+## Current local build priority — 6 November 2026
+
+Use [Release acceptance](Release-Acceptance.md) for the current gate checklist.
+The dated entries below preserve implementation history; their “next” and
+“pending” statements are not the current backlog. Verification evidence applies
+only to its recorded source fingerprint, not to subsequent edits.
+
+
+Stripe sandbox funding/refund webhooks and restart/deduplication QA have passed;
+actual payout completion remains pending provider balance availability. See
+[Sandbox payments](Sandbox-Payments.md) for the current evidence, superseding the
+older disconnected-Stripe notes below. Demo and staging remain separate.
+
+While payout is pending, the next gate is an independently operated supplier
+integration. The existing onboarding, SDK and local adapter are reused. Response
+size, decoding, cancellation and retry hardening are now covered by local tests
+(see [Supplier API](Supplier-API.md)); these are preparation, not independent
+supplier validation. Next: connect a real builder runtime and exercise its own
+input mapping, quoting, execution, revisions, permissions and recovery. Google
+OAuth/revocation, managed-hosted parity and independent release review remain
+separate gates; no icebox features are being added.
+
+## Historical release checkpoint — 2 November 2026
 
 The consolidated localhost verification passed against source fingerprint
 `11707c0f3754c0e02a284806c63cee871fddc6c1010bb65cffa58e11f78e07c7`.
@@ -19,18 +44,58 @@ with no quota rejections and persisted file/usage integrity after reconnecting.
 Local p95 task creation/upload/read times were 7/48/3 ms; these are fixture
 measurements, not production throughput or latency commitments.
 
-### Next executable build order
+### Historical listing increment — 4 November 2026
 
-1. **Bound history and spending at scale.** Replace full-history materialization
-   with bounded authorized queries and stable report/export snapshots. Preserve
-   opening balances, pending-now labels and exact CSV reconciliation across pages.
-   Cover concurrent ledger changes, large histories and tenant isolation before
-   changing the UI to paged history.
-2. **Complete a cross-role release rehearsal.** Exercise buyer, employee,
-   approver and builder journeys using disposable local fixtures, including
-   revoked access, declined approvals, changed scope, permission waits, revisions,
-   failed settlement recovery and final delivery. Include keyboard, mobile and
-   accessibility checks. The native HTTP tests do not replace this browser pass.
+Listing lifecycle and owner preview are implemented in existing agent settings.
+Individual authenticated profile reads now work beyond the catalog's 100-record
+window. New records default to draft; legacy visibility is preserved. See the
+follow-up in [Agent distribution audit](Agent-Distribution-Audit.md) for semantics
+and the 515-check release evidence. Next product increment is paged server-side
+discovery; public pages, portfolios and attribution remain pending. Browser QA is
+still blocked by tool availability. Stripe and hosted environments are unchanged.
+
+### Distribution-first product build order — 4 November 2026
+
+**Audit correction:** storefronts/discovery already exist. See
+[Agent distribution audit](Agent-Distribution-Audit.md) before adding new surfaces.
+Next extend existing agent settings with listing lifecycle and authorized individual
+profile retrieval; then fix catalog pagination, add permitted portfolios and
+acquisition attribution/analytics. Do not rebuild onboarding or create another
+marketplace. The detailed audit supersedes any implication below that these existing
+surfaces must be built from scratch.
+
+
+Relay's commercial thesis is distribution and customer acquisition for agent
+builders. See PRD v0.55 section 1.1 for the product decision and acceptance criteria.
+Start with authenticated agent storefronts and outcome-oriented discovery using
+actual catalog data and the existing request/quote path. Next: reviewed builder
+publishing controls and permitted portfolios, then acquisition attribution and
+conversion analytics, followed by repeat hiring. Public anonymous profiles and SEO
+are not implied by a localhost profile link. No invented ratings, prices or usage.
+Pricing by acquisition source remains a proposal, not an implemented fee change.
+These priorities do not waive the release gates below or revive the icebox.
+
+### Historical build order (superseded)
+
+3 November increment: paged spending reports and stable exports are implemented
+locally. See [Spending reports](Spending-Reports.md) for contracts, bounds and QA.
+Reports use indexed batches of 25 tasks, immutable authorized snapshot pages,
+integer-minor-unit totals and complete CSV assembly. New ledger writes cannot
+change an existing report; explicit refresh creates a new snapshot.
+
+1. **Completed locally: bounded paged spending reports.** Tested 1,001 tasks,
+   all eight financial columns, concurrent payment changes, competing refreshes,
+   restart, access changes, expiry and failed-export handling. This is bounded
+   synchronous reporting (10,000 source tasks / 32 MiB saved rows), not unlimited
+   asynchronous financial warehousing. Invoices and real-provider validation remain separate.
+2. **Core cross-role rehearsal completed locally; remaining release checks tracked.**
+   Buyer, employee, approver and builder browser evidence is in
+   [Cross-role rehearsal](Cross-Role-Rehearsal.md), including decline/resubmit,
+   approval, execution, revision and delivery. The 4 November exceptional-path
+   browser pass covers employee revocation during composition, changed-offer
+   reapproval and fixture funding/refund/payout recovery. Full assistive-technology
+   and physical-device audits remain outstanding.
+   Keyboard improvements below close specific gaps, not the entire accessibility gate.
 3. **Validate external integrations when authorized/configured.** Actual Stripe
    sandbox reconciliation, Google OAuth/revocation, an independently operated
    supplier and managed-auth/hosted parity remain gates. Keep these disconnected
@@ -49,11 +114,11 @@ spending QA is recorded below. Passing local checks is not production approval.
 
 The next increment now provides shared SQLite/Postgres application services and a real bounded CSV runtime through bids, authorized unpaid execution, file delivery, revisions and acceptance. See [the implementation guide](Unified-Backend.md). A subsequent [native PostgreSQL increment](Native-Postgres.md) implements local versioned migrations, real multi-connection concurrency tests, verified data cutover and paired recovery. The subsequent [Supplier API v1 increment](Supplier-API.md) adds builder-run connections, expiring scoped keys, a versioned polling API, transactional ordered updates, cancellation and execution recovery, all restricted to unpaid localhost work. A subsequent [local conversational scoping increment](Conversational-Scoping.md) introduces schema-validated local-model proposals and inactive recurring-work drafts; its evidence and limitations are recorded separately. A subsequent [capability qualification increment](Capability-Qualification.md) adds actual bounded CSV test jobs, mandatory revisions, persisted evaluator evidence and buyer-visible offer snapshots. Broader domain assessments, human review and commercial eligibility remain pending. Hosted composition is still not activated. The review below remains the pre-implementation baseline; commercial, hosted and independent-review release gates still apply.
 
-## Latest payment increment
+## Historical payment increment
 
 Signed sandbox webhooks and durable automatic reconciliation are implemented locally, with persisted leases, retry backoff, canonical provider checks and review states. Stripe is still disconnected. Fixture and native PostgreSQL validation is recorded in [Sandbox payments](Sandbox-Payments.md); it is not evidence of real Stripe integration or real-money readiness.
 
-## Current next step — operational release hardening
+## Historical next step — operational release hardening
 
 Payment recovery is implemented and evaluated with disconnected-provider fixtures. Company workspace creation, expiring recipient-bound invitations, role-limited team views and revocation now form the local identity foundation; see [Company workspaces](Company-Workspaces.md). Approval requests, decline/resubmit and atomic budget reservations now bind to the exact selected agreement. Local company administration now includes role changes, removal confirmation and audit history. Local access cutoff locking and durable membership epochs prevent queued access after revocation and old approvals after demotion/re-promotion; see Company-Workspaces.md (29 October). Authenticated text delivery previews are now implemented locally; see Unified-Backend.md (29 October). Private object storage, larger-file quarantine, automatic real ClamAV scanning and recovery are now implemented locally. The local JavaScript supplier SDK now wraps the existing HTTP contract; it does not add permissions or production eligibility. A second offline link-inventory supplier now exercises a separate rubric, automatic quotes, text/JSON delivery and revisions through the same SDK. Local queue visibility, bounded recovery and scheduled execution are now implemented (see the latest increment below), with multi-connection and queue-capacity checks. Next: broader production load/quotas, monitoring and operational release tests. Hosted identity parity and production-scale authorization review remain release gates. Actual Stripe validation, production accounting, managed-auth parity and independent review remain open. The historical baseline below is retained as audit context, not current implementation status.
 
@@ -951,3 +1016,358 @@ History & spend supports optional From/Through dates, inclusive UTC calendar day
 The authorized server response includes the CSV generated from the exact same report snapshot displayed in the page. Export does not refetch totals. CSV has per-task rows and a TOTAL row with eight decimal monetary columns, USD/sandbox flags, dates and snapshot timestamp. Do not sum task rows and TOTAL together. Monetary decimals are generated from integer minor units; formula-like task titles are escaped. Existing workspace/member authorization applies.
 
 QA: 346 backend and 79 web tests passed. New cases cover cross-period funding/refunds/releases, inclusive end boundaries, exact cent sums (including negative net funding), invalid dates, CSV quoting/formula safety and zero-row exports. Browser verified a UTC single-day filter and actual downloaded CSV: four task rows, eight numeric columns reconciled to the displayed zero totals. Follow-up authenticated browser QA at 390×844 completed: reversed dates show an inline error while preserving the prior report; correcting the range clears the error; open-ended dates and empty results work; All time clears both fields and restores nine tasks. The mobile CSV download contained four task rows plus TOTAL, with all eight monetary columns reconciled exactly to the displayed zero totals. Nonzero and negative amounts remain covered by automated fixtures. Empty results now offer Show all history instead of prompting a new task; the button was verified to restore the full history. The latest web suite passed 76 application plus 5 shared UI tests, and 7 targeted spending/export checks passed, including exact downloaded Blob bytes. Desktop viewport restored after responsive emulation; physical-device date-picker behavior was not tested. Demo/staging/Stripe unchanged.
+
+### Cross-role local rehearsal — 4 November 2026
+
+Buyer, employee, approver and builder browser journeys were exercised against disposable native PostgreSQL data, including real local CSV qualification/execution/revision, decline/resubmit, exact-offer approval, downloaded delivery and allowance release. Fixed pre-post attachment access, company-entry navigation, builder task targeting and stale local landing claims. See [Cross-role rehearsal](Cross-Role-Rehearsal.md) for evidence and explicit untested/provider boundaries. Live-provider and independent-review gates remain open; icebox items remain deferred.
+
+
+## Keyboard release rehearsal follow-up
+
+Local-only changes add a keyboard skip link to the workspace without replacing
+its task hash, focus failed-form errors, dismiss account/notification menus with
+Escape and restore their summary focus, and identify each delivery download by
+filename in its accessible label. Quarantine download restrictions remain intact.
+
+Browser QA used a disposable PostgreSQL/identity fixture on port 4183. Verified
+failed-login focus and successful retry, skip navigation for buyer and builder,
+account and notification Escape behavior, and no browser console errors.
+97 web/shared UI tests passed, including escaped filename labels and detached-form
+error fallback; JavaScript syntax and diff whitespace checks passed. Backend
+behavior was unchanged and the backend suite was not rerun for this UI increment.
+This is not a full screen-reader or accessibility certification.
+
+Next: complete the remaining exceptional-path browser rehearsal, then validate
+external providers with configured credentials. Stripe remains disconnected;
+no demo/staging deployment or icebox expansion occurred.
+
+## Paginated discovery — 4 November 2026
+
+Implemented in the existing Agent Market, not a new workspace. GET
+`/api/agent-market` accepts q, category, type, after and limit; returns agents,
+categories, total, hasMore and nextCursor. Default page 25, maximum 50. Search and
+intersecting filters inspect all published non-self listings, including records
+beyond the previous 100-record cap. Legacy visibility is preserved. Cursor reuse
+with another account/filter is rejected. Qualification uses the existing sanitized
+projection; hidden listings remain inaccessible and task creation revalidates.
+
+The UI debounces typing, keeps filter controls mounted, resets pagination on filter
+changes, discards obsolete responses, deduplicates appended pages and offers retry.
+Loading does not falsely display no results. Session reset clears discovery state.
+
+Limits: server work is a full scan in batches of 250, not indexed/ranked/semantic
+search. Working agent memory is bounded, but scan cost grows with catalog size;
+large-scale catalog performance needs measured indexing work. Per-request totals
+are consistent; cursor pages are live, not snapshots across requests. Concurrent
+publication/removal can change totals, and new earlier IDs need refresh. Categories
+come from the full eligible catalog, not just the current page. Public anonymous
+profiles, portfolio assets and attribution are separate future increments.
+
+QA: run 75703666-a145-46cf-9d2e-ebcce7b4cc99 passed unchanged source: 370 backend,
+116 web/shared UI, 33 native PostgreSQL and 2 load checks (521 total, zero skips).
+New coverage includes 310-agent catalogs, sparse matches beyond the old cap,
+publication exclusion, literal wildcard characters, invalid bounds/cursors,
+filter/account cursor binding, stale replies, append/deduplication, retry and
+account/navigation changes. Real HTTP discovery validation was exercised in the
+native integration suite. Localhost restarted; root returns 200 and signed-out
+market returns 401. Browser control reports browser.user unavailable, so no live
+visual/mobile walkthrough is claimed. These notes were added after verification.
+Stripe disconnected; demo, staging and icebox unchanged. Next product increment:
+permissioned portfolio examples, followed by attribution; indexed discovery is a
+scale gate, not a claim made by this increment.
+
+## Permissioned portfolio excerpts — 4 November 2026
+
+Extended existing builder agent settings and authenticated storefronts; no new
+workspace. Original examples require a rights/redaction attestation. Accepted
+Relay-work examples must belong to that agent and require the current customer
+workspace owner's approval of immutable title, summary and sample text. Employees
+cannot authorize company publication. Customer approval/revocation appears in the
+source task, with existing notifications for sharing events. Source-task navigation
+uses the builder work view. Examples are labelled separately from qualification.
+
+Routes: POST /api/agents/:id/portfolio and PATCH /api/portfolio/:id. Commands are
+owner-authorized/current-membership-checked, versioned and idempotent. Pending,
+declined, revoked and withdrawn records are excluded from buyer storefronts.
+Agent listing visibility still gates the whole profile. Records and decision
+history persist in the existing document store; no schema cutover. Lock ordering
+is task then agent for task-backed mutations. No private task fields, file URLs,
+input bytes or buyer identity are included in published projections. Existing
+portfolio examples cannot be edited in place; replacements need fresh consent.
+
+Boundaries: text only, 20 historical examples per agent/task, original-work rights
+are declared rather than independently verified. Revocation cannot recall prior
+copies. File publication/scanning, external customer-work approvals and moderation
+remain separate work. Multi-agent orchestration stays in the icebox; PRD records
+the dependency-graph/handover model without implementing it. Stripe/demo/staging
+remain unchanged.
+
+Evidence: release run a72084fa-156a-4c12-9ce6-c6c2eacb2008 passed unchanged source:
+374 backend, 119 web/shared UI, 33 native PostgreSQL and 2 load checks = 528, no
+skips/failures. New tests cover unauthorized approval, fresh membership revocation,
+wrong task/agent sources, immutable excerpt projection, approval/revoke/replay,
+competing decisions, stale versions, and escaped UI. Native HTTP exercise follows
+real local delivery through permission request, approval, process restart and
+revocation. Afterwards the builder source-task link was corrected and all 119
+web/shared UI checks passed again; no backend changes followed the full run.
+Browser control returns browser.user unavailable: live visual/mobile/keyboard
+walkthrough remains unverified. Self-review is not independent security review.
+
+## Acquisition baseline — 5 November 2026
+
+Existing agent settings now contain Acquisition totals and an authenticated local
+builder-sharing link (#storefront=UUID?source=builder). Market profile links use
+source=market; unlabelled profile entry is storefront. The buyer's initial direct
+request stores a bounded source label together with server-validated agent/operator,
+routing mode and timestamp. It remains fixed through scope changes and replay.
+This is client-reported entry-point attribution, not verified acquisition or fee
+entitlement. No raw referrer URLs, campaigns, customer context or visitor IDs.
+
+Owner-only GET /api/agents/:id/acquisition reads attributed tasks in batches of
+100 in one consistent transaction and returns aggregate counts only. Requests =
+distinct posted tasks; quoted = tasks with any target-operator offer; selected =
+tasks with an offer.selected event; delivered = target-operator assignment accepted.
+Repeated offers/selections do not duplicate a milestone. Cancellation does not
+remove historical milestones. Selection is not funding. Builder-mode requests are
+credited to the originating listing, not necessarily the agent executing them.
+Drafts, older unattributed tasks, open-market work and derived scheduled runs are
+excluded. Local unpaid/sandbox results are included and explicitly labelled, never
+represented as revenue. Reports load on agent opening/explicit refresh, not polling.
+No separate analytics workspace, duplicate onboarding or billing logic was added.
+
+Limitations: all-time counts only; no visit tracking, conversion denominator,
+repeat-purchase analytics or anonymous profiles. Bounded-memory reads still have
+history-dependent scan cost and need indexing/capacity evaluation before large
+scale. Client labels are forgeable by design and must not determine payments.
+Next distribution work: saved agents and repeat-hire entry with fresh terms and
+permissions. Public acquisition and production release gates remain separate.
+
+QA: full run 765579b5-211e-435d-9474-963525176e83 passed unchanged source: 376 backend,
+121 web/shared UI, 33 native PostgreSQL and 2 load checks (532 total; zero failures
+or skips). New coverage includes >200 attributed tasks across pages, private draft
+exclusion, scope-change retention, retry deduplication, unknown source rejection,
+self-target rejection, cross-owner report rejection, non-disclosure of task text,
+and source-labelled storefront handoff. Native HTTP checks cover owner-only access
+and exclude open-market work from attribution. Portfolio approval/restart/revocation
+checks passed again. Browser control still reports browser.user unavailable, so
+portfolio and acquisition live visual/mobile QA remain pending. Self-review covered
+privacy, metric meaning, replay, route identity and unnecessary background reads.
+Localhost restarted with Stripe keys excluded. No demo/staging/icebox changes.
+Evidence notes and PRD were updated after the checks.
+
+## Multi-builder parent plans — localhost increment, 5 November 2026
+
+The founder explicitly brought a bounded orchestration slice out of the icebox.
+One reviewed parent brief owns 2–8 dependent subtasks. Dependencies form an acyclic
+graph, not a strict waterfall: independent steps may execute concurrently on
+separate builders. Each step has its own supplier brief, acceptance criteria and
+fixed quote ceiling; allocations cannot exceed the parent ceiling. The buyer
+reviews and starts each quote separately. Existing workspace access, exact-offer
+company approval and task-scoped tool permissions still apply.
+
+Start from a fresh draft using **Plan work with multiple agents**. Attach inputs
+and authorize tools on the individual steps. A downstream step cannot be posted
+until every dependency has an accepted delivery and an explicitly approved
+handover. Each handover records the exact submission ID/version, approved summary
+and optional selected CSV. A copied CSV is integrity-checked and belongs to the
+downstream task. Only the authorized runtime receives handover notes/content;
+market listings and unstarted supplier views do not reveal them. The parent
+brief, sibling data and credentials are not shared implicitly. Parent completion
+requires every step's delivery to be accepted.
+
+Current limits: local unpaid execution only; manual plan creation and individual
+start approval; immutable scope and budget allocations; handovers support text
+plus at most one CSV of 256 KB per downstream step. Changing requirements needs
+a new plan. There is no automatic decomposition, re-planning, budget reallocation,
+paid multi-supplier settlement, arbitrary artifact merging or recall of already
+shared outputs. Cancelling a step does not automatically cancel/re-plan the parent.
+The plan links accepted deliverables; it does not prove semantic consistency or
+independently verify arbitrary work. These broader capabilities remain deferred.
+
+QA: full local verification passed **536 tests** (380 backend, 121 web, 33 native
+PostgreSQL and two sustained load tests), with no skipped/cancelled tests and no
+source changes during the run. Evidence: private release run
+`fcd503c3-ed5b-4456-96e8-0c958790efad`, source fingerprint
+`6f3db4fdc3924e1fe648b3074c963c814bc4355134ef2d1786c16fbb6f3febba`.
+Targeted tests exercise two builders, parallel root steps, accepted versioned
+handoffs, actual CSV processing, privacy, caps, stale approvals and unauthorized
+access. An additional disposable native PostgreSQL probe verified competing
+handover requests across two connections and persistence after reconnect. A UI
+render probe checked gated completion, source binding and escaped handover text.
+Browser/mobile interaction QA remains pending because the browser tool returns
+`browser.user is unavailable`. This is engineering self-review, not independent
+security review or production certification. Documentation was updated after the
+verification fingerprint. Stripe, hosted staging and the published demo are unchanged.
+
+
+## Multi-builder failure recovery and browser QA — 5 November 2026
+
+Recovery now explicitly replaces a selected step and its dependent descendants,
+while preserving unaffected steps and linking superseded attempts in plan history.
+The buyer supplies a reason and confirms the reset. Active affected assignments
+must be stopped first. Scope and budget allocations remain fixed; changing them
+still requires a new plan. Recovery is limited to local unpaid work and up to 12
+plan versions; it does not move money or recall data already shared.
+
+Replacement steps require fresh inputs, task permissions, offers and exact-offer
+company approval. Approved handovers are not inherited: each accepted source
+submission must be approved again with the new notes and optional CSV before a
+dependent step can be posted. Old company approval becomes stale and its budget
+reservation is released. Superseded attempts are read-only and excluded from current
+and recent task lists, but remain accessible in recovery history. Recovery checks
+parent and step versions, serializes concurrent changes and supports idempotent replay.
+
+Browser QA completed on a disposable localhost fixture: an actual runtime failure,
+branch recovery, changed handovers blocked until both fresh approvals, a second
+builder's offer, buyer selection/start, real CSV runtime delivery, delivery acceptance
+and parent completion. Supplier actions used the real local supplier API. Fixed the
+missing application-composition exports that blocked HTTP orchestration, added an
+HTTP regression, and gave recovery disclosures unique persistence keys. No production
+accounts or hosted services were used. Mobile/accessibility release QA remains open.
+
+Full local verification passed 541 checks (384 backend, 121 web, 34 native PostgreSQL,
+two load checks), zero failures/skips/cancellations, unchanged source during the run.
+Native checks include competing recovery commands across connections and persistence
+after reconnect. Evidence: release run `22823151-6460-46b2-864e-8564598aa668`, source
+fingerprint `cd1a95281efa3cdda68e97ae632d01cc6c55e7a3005bc8bd1e6c945476b4276e`.
+Documentation was updated after verification. These local results do not establish
+production readiness; managed services, external supplier and independent reviews
+remain release gates. Stripe stays disconnected; demo and staging are unchanged.
+
+
+## Saved agents — 5 November 2026
+
+The next distribution increment extends the existing market and storefronts with
+private account-level saved agents, without adding another workspace. Save/remove
+controls persist across refreshes; the Saved agents filter intersects server-side
+search, category, agent type and pagination. Saving is a bookmark, not a hire,
+qualification, permission grant or commercial commitment. Fresh quote and task
+approval requirements are unchanged. Dedicated repeat-hire from completed history
+remains the next retention increment.
+
+PATCH `/api/agent-market/:id/saved` takes `{saved, expectedVersion}` and a durable
+idempotency key. The authenticated user's list is serialized per account and capped
+at 200 IDs; no other account can read it. Discovery/profile responses include that
+user's saved state and list version. Discovery `saved=true` binds the cursor to the
+saved filter and current account. Pages remain live, not an immutable snapshot.
+
+Only currently published, non-self agents can be newly saved. Paused/unpublished
+listings disappear from results and reject new direct requests. Previously saved
+hidden entries expose only an unavailable placeholder and a remove action, never
+stale private profile content. The command requires a current list version;
+stale edits refresh and report a conflict rather than silently overwriting changes.
+Existing document storage is reused without a schema migration. No builder-facing
+bookmark counts or acquisition claims were added.
+
+Browser QA used an isolated loopback fixture: save, reload persistence, storefront
+consistency, remove, saved-list empty state, keyboard filter activation and a
+390-pixel mobile layout. Review also corrected cramped medium-width market cards
+using a grid based on available space. Unit coverage exercises SQLite and PGlite
+privacy, concurrent saves, stale versions, replay, hidden listings, removal, cursor
+binding and the capacity boundary. Full local release evidence is recorded below
+once the final source checks complete. No hosted or real-money integration is implied.
+
+Final verification: **545 checks passed**, with no failures, skipped tests or
+source changes during release run `dbe86330-d307-4b17-9692-2b3034e63873`. Source
+fingerprint `8c349e9f6435b24e41f72bde11afdc8df8fe782efe93a0ad66b1971d15250b0f`. Native PostgreSQL now also
+checks saved-list contention across two connections, reconnect persistence and
+removal visibility. Evidence documentation was appended after the verified run.
+Localhost health reports PostgreSQL/local-only; Stripe remains disconnected, and
+the published demo and hosted staging were not changed. Independent reviews and
+external integration release gates remain open.
+
+
+## Repeat hire from completed work — 5 November 2026
+
+Accepted deliveries now offer **Work with this agent again** in the existing task
+conversation. The buyer starts a blank conversation targeted to the actual agent
+that delivered the accepted assignment, in the same workspace. No task is created
+until the new message is submitted. The completed task remains unchanged and linked
+from the composer. The new request follows the normal scope/post/quote/select flow.
+
+The existing POST `/api/tasks` accepts `repeatFromTaskId` and
+`expectedSourceVersion` with an agent routing preference and `repeat-hire` source.
+Server checks current source access, source version, accepted assignment, workspace,
+exact agent, current publication and qualification. Paused/expired/self-targeted
+agents cannot be rehired. A source with no current eligible agent exposes an
+unavailable explanation, not private listing details or an automatic alternative.
+Completion is determined by the authoritative assignment status, not the underlying
+task's posted status. Superseded/cancelled attempts cannot initiate repeat hire.
+
+The new draft contains only the supplied new brief and a private source-task/version
+reference. It copies no messages, input, delivery files, context snapshots, tool
+grants, handovers, quotes, selections, company approval, settlement or schedule.
+Company approval requirements derive from current workspace membership. All new
+file access, grants, exact-offer approval and execution authorization use existing
+server gates. Replaying the same creation key returns the same new draft, including
+after reconnect, but revalidates access first. A deliberately new request/key may
+create another independent draft. Repeat-hire attribution is reported separately;
+it does not imply revenue or a changed fee. No new marketplace or approval system.
+
+QA uses SQLite/PGlite isolation/negative tests and native PostgreSQL duplicate
+requests across independent connections with reconnect. Disposable browser QA used
+a real CSV qualification (test plus revision), completed delivery, repeat-hire
+entry, new brief, posting, a new $2 quote instead of the prior $1 quote and explicit
+selection without inherited execution authorization or source CSV. Mobile and
+keyboard entry were checked. No external supplier, money, demo or staging data was
+used. Broader external release and independent review gates remain open.
+
+Repeat-hire final verification: `verify:local` report `2da09ffd-b3fd-49d9-a354-06493e9b2f37` passed 549 checks (388 backend, 123 web, 36 native PostgreSQL, two load checks), with zero failures/skips/cancellations and unchanged source during the run. Source fingerprint: `173dbff78d852298498cec5dc2cf118876f1d8a7f47e0f1c33304df500151e09`. This evidence note was appended afterward; application source was not changed. Browser QA covered accepted delivery → repeat conversation → fresh quote → explicit selection, original-task preservation, keyboard activation and a 390px mobile viewport. New execution was correctly blocked pending new inputs; this was not a second full delivery run. Screenshot: `/tmp/relay-repeat-hire.png`. Localhost restarted and health returned PostgreSQL/local-only; disposable QA server stopped. External release gates remain open.
+
+
+## Builder conversion evidence — 5 November 2026
+
+Acquisition selection counts now require evidence that this operator's own offer
+was selected. Another supplier's selection no longer inflates the originating
+builder's conversion count. Manual and scheduled selection events record the
+selected offer ID; counting remains once per task, including after replacement.
+Current selection or assignment provides fallback evidence for older records.
+Unattributable historical selection events are excluded, not guessed or backfilled.
+The report basis is `posted-direct-requests-v2`; older selected totals may decrease.
+Quoted/selected metrics cover the operator's agents, including builder-targeted
+requests originating from this listing. They are historical milestones, not current
+awards, paying customers or revenue. Accepted delivery remains a separate check.
+No anonymous tracking, new workspace, fees or payment changes were introduced.
+
+Regression coverage runs on SQLite and PGlite: competitor selection, own selection
+followed by replacement, durable retry, unknown legacy history, assignment fallback,
+privacy and paged aggregation. Browser QA verified the existing builder report and
+refresh using an isolated localhost fixture: one repeat request/quote/selection,
+zero accepted deliveries. No new layout was introduced; responsive layout was not
+retested in this increment. Screenshot: `/tmp/relay-conversion-report.png`.
+
+Full verification passed 549 checks with zero failures/skips and unchanged source:
+run `6e59604a-e637-4960-9e01-58b85608a329`, fingerprint
+`ced2e53b4ef8e2aec64c596f2a5a6b440b89e082d42a0a1b205e2d4c077743e1`. Documentation evidence was appended afterward.
+Localhost health is PostgreSQL/local-only. Stripe remains disconnected; demo and
+staging untouched. External provider and independent review release gates remain.
+
+### Stripe test connection — 5 November 2026
+
+Stripe is now connected to localhost only using the account's Test mode sandbox,
+not live mode. See `Sandbox-Payments.md` for private local startup, test evidence and
+limits. Actual Checkout/idempotency/expiry, a simulated USD 1.00 payment/refund and
+card decline passed; signed expiry/refund events returned HTTP 200 locally. All 29
+payment regression tests passed. Connect onboarding/transfers/payouts and complete
+in-product funded-task QA remain release gates. Relay's browser session needs a
+fresh login. Demo and hosted staging remain disconnected and unchanged.
+
+### Connect rehearsal update — 5 November 2026
+
+Hosted test Connect onboarding and a real isolated funded CSV task through accepted
+delivery now passed. Actual transfer failed because Stripe settled the USD charge
+in EUR; no payout occurred. Funding now fails before charging for non-USD default
+settlement accounts. Accounts v2 creation and retry safety are implemented, with
+34 payment/reconciliation/recovery tests passing. Full verification timed out in
+the backend stage and must be rerun successfully before release. See
+`Sandbox-Payments.md` for evidence and limits. Currency-compatible transfer/payout
+and automatic webhook-driven task settlement remain open release gates. Main
+localhost is running; no demo or staging changes.
+
+### Drive audit and first Attio delivery destination — 6 November 2026
+
+Reused the existing selected-file Drive backend; corrected expired/revoked-grant recovery messaging. Added local Attio company delivery with exact-row review, owner authorization, connection-generation binding, accepted-file integrity checks, durable per-row confirmations, bounded retry and domain-based provider matching. It is a private-integration setup, not production OAuth onboarding. Google and Attio credentials are not configured; real-provider acceptance remains open. See [integration scope, setup and evidence](Delivery-Integrations.md). Demo, staging and payment configuration remain unchanged.
+
+### Attio delivery recovery — 6 November 2026
+
+Accepted task views now restore durable delivery receipts automatically, allow explicit resume of interrupted batches, and retain confirmations after disconnect. Connection changes require fresh review. Native PostgreSQL restart/concurrent-resume, application, HTTP authorization and 128 frontend/shared UI checks passed. Disposable browser QA passed through resume, disconnect and refresh. Integration acceptance still uses local fixtures; live Google/Attio acceptance is pending. See `Delivery-Integrations.md`.

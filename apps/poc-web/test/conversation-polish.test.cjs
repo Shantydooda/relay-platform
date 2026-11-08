@@ -234,3 +234,32 @@ test('change review escapes supplier content and only offers current proposals f
   html=vm.runInContext('changeProposalCards(task,proposals)',ctx);
   assert.doesNotMatch(html,/Accept revised terms/);assert.match(html,/no longer current/);
 });
+
+test('request review exposes source attachment before posting without creating another task', () => {
+  const ctx = context();
+  ctx.state.detail = {task:{id:'draft',title:'CSV cleanup',brief:'Clean data',status:'draft'},messages:[]};
+  ctx.state.messageDrafts = {};
+  ctx.state.features = {};
+  ctx.state.reviewChatRequest = true;
+  ctx.composer = () => '<form id="message"></form>';
+  ctx.RelayExecution = {input: task => `<form id="task-input" data-task="${task.id}"></form>`};
+  ctx.scopeRecap = () => '<button>Review scope</button>';
+  const html = vm.runInContext('draftConversation()',ctx);
+  assert.match(html, /id="task-input" data-task="draft"/);
+  assert.equal((html.match(/id="task-input"/g)||[]).length,1);
+  assert.match(html,/Keep chatting/);
+});
+
+test('repeat-hire prompt is explicit about fresh agreement and access, with no unavailable action', () => {
+  const ctx = context();
+  ctx.state.detail = { repeatHire: { available: true, name: '<Research>' } };
+  const html = vm.runInContext('repeatHireCard()', ctx);
+  assert.match(html, /Work with &lt;Research>/);
+  assert.match(html, /fresh quote/);
+  assert.match(html, /Previous approvals and payments do not carry over/);
+  assert.match(html, /data-action="repeat-hire"/);
+  ctx.state.detail.repeatHire = { available: false };
+  assert.doesNotMatch(vm.runInContext('repeatHireCard()', ctx), /data-action="repeat-hire"/);
+  ctx.state.detail.repeatHire = null;
+  assert.equal(vm.runInContext('repeatHireCard()', ctx), '');
+});

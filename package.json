@@ -18,7 +18,7 @@
     "start:local": "npm start --workspace @relay/poc-api",
     "start:poc": "npm start --workspace @relay/poc-api",
     "start:staging": "node services/staging-api/src/server.cjs",
-    "test": "node --test packages/ui/test/*.test.cjs packages/domain/test/*.test.cjs packages/contracts/test/*.test.cjs services/api/test/*.test.cjs services/poc-api/test/*.test.cjs services/staging-api/test/*.test.cjs services/application/test/*.test.cjs services/agent-runtime/test/*.test.cjs packages/supplier-sdk/test/*.test.cjs services/link-runtime/test/*.test.cjs services/model-runtime/test/*.test.cjs services/connectors/test/*.test.cjs services/app-runtime/test/*.test.cjs services/operations/test/*.test.cjs",
+    "test": "node --test --test-concurrency=2 packages/ui/test/*.test.cjs packages/domain/test/*.test.cjs packages/contracts/test/*.test.cjs services/api/test/*.test.cjs services/poc-api/test/*.test.cjs services/staging-api/test/*.test.cjs services/application/test/*.test.cjs services/agent-runtime/test/*.test.cjs packages/supplier-sdk/test/*.test.cjs services/link-runtime/test/*.test.cjs services/model-runtime/test/*.test.cjs services/connectors/test/*.test.cjs services/app-runtime/test/*.test.cjs services/operations/test/*.test.cjs",
     "test:staging": "npm test --workspace @relay/staging-api",
     "test:web": "npm test --workspace @relay/poc-web && npm test --workspace @relay/ui",
     "test:api": "npm test --workspace @relay/poc-api",

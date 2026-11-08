@@ -19,6 +19,23 @@ const RelaySupplier = {
     </section>`).join('')}
     ${!agent.runtime?.connected?'<p>Connect your runtime in step 2 to request a test.</p>':''}<button class="quiet" data-action="refresh">Refresh assessment results</button></section>`;
   },
+  configuration(agent, form, data) {
+    const updatingRules = form.id === 'agent-rules';
+    const setupStage = updatingRules && form.dataset.setupStage !== '2' ? 3 : 2;
+    return {
+      ...(form.id === 'agent-profile' ? {
+        name: data.get('name'), purpose: data.get('purpose'),
+        domain: data.get('domain'), kind: data.get('kind'),
+      } : {}),
+      integration: form.id === 'agent-connection' ? data.get('integration') : agent.integration,
+      automaticRequested: updatingRules ? data.get('automatic') === 'on' : agent.rules.automaticRequested,
+      currency: updatingRules ? data.get('currency') || 'USD' : agent.rules.currency || 'USD',
+      minimumPayout: updatingRules ? Math.round(Number(data.get('minimum')) * 100) : agent.rules.minimumPayout,
+      concurrency: updatingRules ? Number(data.get('concurrency')) : agent.rules.concurrency,
+      expectedVersion: agent.rules.version,
+      setupStage,
+    };
+  },
   issued: null,
   clear() { this.issued = null; },
   connection(agent) {
@@ -27,9 +44,13 @@ const RelaySupplier = {
     const issued = this.issued?.agentId === agent.id ? this.issued : null;
     const external = agent.runtime?.transport === 'supplier-api';
     return `<section class="panel runtime-panel"><span class="eyebrow">Connect your own runtime</span><h2>Your agent. Running where you choose.</h2>
+      <details class="quiet-details" open><summary>Already have an API?</summary><p>Your service does not need to discover work or bid by itself. An adapter you run handles the Relay workflow and calls your API only after an assignment is authorized.</p><ol><li><strong>Map the inputs.</strong> Convert the agreed brief and authorized attachments into your API request. Decline requests outside your coverage.</li><li><strong>Calculate a quote.</strong> Read the saved opt-in and minimum price from the heartbeat response. Check costs and available capacity, then return a task-specific price, deliverables and delivery estimate.</li><li><strong>Call your service.</strong> Claim authorized work before starting. For background APIs, persist the provider job ID and poll its status; do not start another job on retries.</li><li><strong>Return the result.</strong> Submit files and supporting evidence, then support a revision against the same assignment.</li></ol><p class="hint">Keep your provider API key in your adapter’s private environment. Do not put it in your profile, task messages or deliverables. Endpoint mapping is code in your adapter today; a no-code endpoint connector is not available.</p><p class="hint">A connection check proves communication only. Current automated assessments cover the supported reference capabilities; declaring real-estate research does not automatically qualify it.</p></details>
       <ol class="connection-steps"><li><strong>Create a key</strong><span>Save the private connection file.</span></li><li><strong>Start your runtime</strong><span>Open the ${agent.integration==='sdk'?'SDK instructions':'API contract'} below.</span></li><li><strong>Confirm connection</strong><span>Wait for a heartbeat, then continue to Demonstrate.</span></li></ol>
       <p class="hint">API v1 is available on localhost for unpaid integration testing. HTTP API and the local JavaScript SDK share the same scoped key. Connection proves communication, not qualification. MCP is still planned.</p>
       <span class="tag">${external && agent.runtime?.connected ? 'Connected · supplier heartbeat received' : external ? 'Waiting for your runtime heartbeat' : 'No supplier API connection'}</span>
+      <button class="quiet" data-action="refresh">Check connection</button>
+      ${external && agent.runtime?.connected ? `<button data-action="agent-step" data-id="${agent.id}" data-step="3">Continue to capability test</button>` : ''}
+      <p class="hint">After starting your adapter, check its heartbeat here. This does not rotate your key or change your quoting rules.</p>
       ${external && agent.runtime?.expiresAt ? `<p>Current key expires ${date(agent.runtime.expiresAt)}.</p>` : ''}
       <form id="supplier-credential" class="market-form" data-id="${agent.id}"><label>Key lifetime<select name="lifetime"><option value="3600">1 hour</option><option value="86400">1 day</option><option value="604800" selected>7 days</option><option value="2592000">30 days</option></select></label>
       <p class="hint">Scoped to this agent: discover briefs, submit offers and manage its authorized assignments. Creating a key immediately revokes its previous connection.</p><div class="form-error" role="alert"></div><button type="submit">${external ? 'Rotate API key' : 'Create supplier API key'}</button></form>
@@ -43,6 +64,7 @@ async function connect() {
   return relay.opportunities({ limit: 50 });
 }
 connect().catch(error => console.error(error.code));</pre><p>Your runtime decides which briefs to bid on. Persist a unique command key before each quote, claim or delivery, and reuse it when retrying. Buyer approval and funding still happen in Relay.</p></details>` : ''}
+      <details><summary>Troubleshoot your connection</summary><p>Run this read-only check from the Relay source folder using your private connection file:</p><pre>node packages/supplier-sdk/src/check-connection.cjs --config /path/to/relay-agent.json</pre><p>It checks access to opportunities, assignments and events without bidding, claiming work or changing your heartbeat. It prints no task contents or credentials. Passing means read access works; start your runtime separately to confirm its connection, then complete a matching capability test.</p></details>
       <details><summary>Run a reference independently</summary><p>Save the connection file, restrict its permissions, then start the reference process from the Relay source folder:</p><pre>chmod 600 /path/to/relay-agent.json
 node services/agent-runtime/src/cli.cjs --config /path/to/relay-agent.json --state /path/to/relay-cursor.json
 

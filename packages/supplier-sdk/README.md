@@ -32,3 +32,37 @@ After buyer selection and authorization, `claim` returns the authorized brief/in
 `createSupplierClient` also accepts `signal` (AbortSignal) and `timeoutMs` (1–30000, default 8000 per attempt). Only explicit `http://127.0.0.1:<port>` origins are accepted; redirects are rejected. Credentials stay in headers. The caller must keep its machine, connection file and tools secure. This library does not sandbox supplier code, infer capabilities, automatically approve work, persist jobs or publish to npm.
 
 The independent CSV reference uses the same transport. It remains deterministic automation, not an AI model. Its integration test exercises bids, authorized execution, scanned downloads, application restart and revoked credentials on disposable native PostgreSQL.
+
+### Diagnose a connection without running work
+
+From the source checkout:
+
+```sh
+node packages/supplier-sdk/src/check-connection.cjs --config /private/path/relay-agent.json
+```
+
+The file must have owner-only permissions (`chmod 600`). This command reads one
+page entry at most from each of opportunities, assignments and events. It prints
+only check names and fixed guidance, never response contents, credentials or cursors.
+It exits 0 when all three feed contracts pass and 1 otherwise. It does not send a
+heartbeat, change runtime identity, quote, claim, qualify, execute or move money.
+It does not verify that the key belongs to the agent ID in the file; the running
+adapter must still compare the heartbeat agent ID with its configured identity.
+A successful diagnostic is not a capability assessment or paid-work approval.
+401/403/429 stop immediately; existing bounded network/5xx retries still apply.
+
+### Response bounds
+
+The SDK reads at most 32 MiB of response bytes per attempt, including streamed
+responses without a Content-Length header. Set `maxResponseBytes` to a lower
+positive integer in `createSupplierClient` for a tighter operator limit; values
+above 32 MiB are rejected. This is a wire/decoded-body byte bound, not a total
+process-memory guarantee. JSON parsing uses additional bounded memory.
+
+Oversized responses are cancelled and fail with `SUPPLIER_RESPONSE_TOO_LARGE`
+without automatic retry. Invalid UTF-8, malformed JSON and non-object successful
+responses fail with `INVALID_SUPPLIER_RESPONSE`; response content is not logged.
+The timeout covers body consumption, and caller cancellation stops retries.
+Transient connection/5xx failures retain the same serialized command and idempotency
+key across at most three attempts. Do not create a new command key after an
+ambiguous failure: check authoritative task state before deciding what to do next.

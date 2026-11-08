@@ -23,6 +23,7 @@ function createScoping(context, provider) {
   const { repository, command, taskFor, expected, now, touch, event } = context;
   const running = new Set();
   function editable(task) {
+    require('./orchestration.cjs').fixedScope(task);
     assertUnfunded(task);
     if (task.assignment || !['draft', 'posted'].includes(task.status)) {
       fail(

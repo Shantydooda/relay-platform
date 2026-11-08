@@ -41,7 +41,10 @@ async function start() {
     const driveConfigPath = resolve(__dirname, '../../../.poc-data/google-drive.json');
     if (existsSync(driveConfigPath) && (statSync(driveConfigPath).mode & 0o077)) throw new Error('Drive config must be readable only by its owner');
     const driveProvider = existsSync(driveConfigPath) ? require('../../connectors/src/google-drive.cjs').createGoogleDrive({ ...JSON.parse(readFileSync(driveConfigPath, 'utf8')), origin }) : null;
-    const store = await createUnifiedLocalStore({ driveProvider, objectStore, fileScanner, authDb, applicationDb, repository: native?.repository, storage: native ? 'postgres' : 'sqlite', localExecution: true, scopingProvider, paymentProvider, paymentRecoveryUserIds: (process.env.RELAY_PAYMENT_RECOVERY_USER_IDS || '').split(',').filter(Boolean) });
+    const attioConfigPath = resolve(__dirname, '../../../.poc-data/attio.json');
+    if (existsSync(attioConfigPath) && (statSync(attioConfigPath).mode & 0o077)) throw new Error('Attio config must be private (chmod 600).');
+    const attioProvider = existsSync(attioConfigPath) ? require('../../connectors/src/attio.cjs').createAttio({ ...JSON.parse(readFileSync(attioConfigPath, 'utf8')), origin }) : null;
+    const store = await createUnifiedLocalStore({ attioProvider, driveProvider, objectStore, fileScanner, authDb, applicationDb, repository: native?.repository, storage: native ? 'postgres' : 'sqlite', localExecution: true, scopingProvider, paymentProvider, paymentRecoveryUserIds: (process.env.RELAY_PAYMENT_RECOVERY_USER_IDS || '').split(',').filter(Boolean) });
     const runtimeManager = createLocalRuntimeManager(origin);
     const paymentWebhookVerifier = paymentProvider && process.env.RELAY_STRIPE_WEBHOOK_SECRET
       ? require('../../payments/src/webhook.cjs').createWebhookVerifier({ secret: process.env.RELAY_STRIPE_WEBHOOK_SECRET }) : null;

@@ -169,3 +169,68 @@ test('Drive caps concurrent requests through body completion and recovers after 
     code: 'DRIVE_UNAVAILABLE',
   });
 });
+
+test('expired or revoked Google grants produce actionable, redacted reconnect errors', async () => {
+  const drive = createGoogleDrive({
+    ...config,
+    fetchImpl: async () =>
+      Response.json(
+        {
+          error: 'invalid_grant',
+          error_description: 'private provider detail',
+        },
+        { status: 400 },
+      ),
+  });
+  await assert.rejects(
+    drive.refresh('private-refresh'),
+    (error) =>
+      error.code === 'DRIVE_RECONNECT' && !error.message.includes('private'),
+  );
+});
+
+test('Drive provider failures release capacity and redact response details', async () => {
+  for (const status of [401, 403, 429, 500, 503]) {
+    let attempts = 0;
+    const drive = createGoogleDrive({
+      ...config,
+      maxConcurrent: 1,
+      fetchImpl: async () => {
+        attempts++;
+        return attempts === 1
+          ? new Response('private token detail', { status })
+          : new Response('');
+      },
+    });
+    await assert.rejects(
+      drive.revoke('fixture'),
+      (error) =>
+        error.code ===
+          (status === 401 ? 'DRIVE_RECONNECT' : 'DRIVE_REJECTED') &&
+        !error.message.includes('private'),
+    );
+    await drive.revoke('fixture');
+    assert.equal(attempts, 2);
+  }
+  let attempts = 0;
+  const drive = createGoogleDrive({
+    ...config,
+    maxConcurrent: 1,
+    fetchImpl: async () =>
+      ++attempts === 1
+        ? new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new Error('private stream failure'));
+              },
+            }),
+          )
+        : new Response(''),
+  });
+  await assert.rejects(
+    drive.revoke('fixture'),
+    (error) =>
+      error.code === 'DRIVE_UNAVAILABLE' && !error.message.includes('private'),
+  );
+  await drive.revoke('fixture');
+});

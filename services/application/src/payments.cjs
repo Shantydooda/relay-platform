@@ -31,6 +31,7 @@ function createPayments(context, provider) {
   };
   const ownerBuyer = async (repo, actor, id) => {
     const task = await taskFor(repo, actor, id, true);
+    require('./orchestration.cjs').fixedScope(task);
     if (actor.memberships.find(m => m.id === task.tenantId)?.role !== 'owner') {
       fail(403, 'APPROVAL_REQUIRED', 'Sandbox funding currently requires the workspace owner.');
     }
@@ -54,21 +55,7 @@ function createPayments(context, provider) {
           requirements: op.requirements || [], pending: !!op.pending, checkedAt: op.checkedAt || null } : { status: 'not_started' } };
     });
   }
-  async function spendingHistory(actor, tenantId, filters = {}) {
-    const { reportingPeriod, applyPeriod, spendingCsv } = require('./spending-report.cjs');
-    const period = reportingPeriod(filters.from, filters.to);
-    active(actor);
-    const member = actor.memberships.find(item => item.id === tenantId);
-    if (!member) fail(404, 'NOT_FOUND', 'Workspace not found.');
-    return repository.read(async repo => {
-      const { tasks, history } = await repo.spendingRecords(tenantId, member.role === 'owner' ? null : actor.user.id);
-      const report = applyPeriod({
-        ...require('./spending.cjs').summarizeSpending(tasks, history, context.taskView, now()),
-        scope: member.role === 'owner' ? 'workspace' : 'your work'
-      }, period);
-      return { ...report, csv: spendingCsv(report) };
-    });
-  }
+  const spendingHistory = require('./spending-snapshots.cjs').createSpendingReports(context);
   // An operation is durably reserved before contacting Stripe. After an unknown
   // outcome, retries use the SAME provider key. Never replay beyond its window.
   function retryWindow(operation) {
@@ -87,9 +74,12 @@ function createPayments(context, provider) {
       const current = await repo.get('sandbox-operator', actor.user.id, true);
       if (current) {
         if (current.country !== body.country) fail(409, 'COUNTRY_LOCKED', 'Use the existing operator account country.');
+        if (!current.accountId && !current.contactEmail) {
+          fail(409, 'OPERATOR_MIGRATION_REVIEW', 'An earlier operator setup needs reconciliation before upgrading its Stripe API version.');
+        }
         return current;
       }
-      const record = { id: actor.user.id, ownerId: actor.user.id, country: body.country, operationId: randomUUID(), createdAt: now(), status: 'creating' };
+      const record = { id: actor.user.id, ownerId: actor.user.id, country: body.country, contactEmail: actor.user.email, operationId: randomUUID(), createdAt: now(), status: 'creating' };
       await repo.save('sandbox-operator', record); return record;
     });
     if (!op.accountId) {
@@ -134,6 +124,15 @@ function createPayments(context, provider) {
   async function begin(actor, id, action, body, key) {
     configured(); active(actor); exactKeys(body, ['expectedVersion']);
     if (!['fund', 'refund', 'transfer', 'payout'].includes(action)) fail(404, 'NOT_FOUND', 'Unknown sandbox action.');
+    if (action === 'fund' && provider.assertFundingSupported) {
+      const funding = await repository.read(async repo => {
+        const task = await taskFor(repo, actor, id, true);
+        const offer = task.offers.find(item => item.id === task.selectedOfferId);
+        const operator = offer && await repo.get('sandbox-operator', offer.operatorId);
+        return operator ? { accountId: operator.accountId, currency: offer.currency || 'USD' } : null;
+      });
+      if (funding) await provider.assertFundingSupported(funding.accountId, funding.currency);
+    }
     await command(actor.user.id, key, ['sandbox', id, action, body], repo => participant(repo, actor, id), async repo => {
       const task = await participant(repo, actor, id); expected(task, body.expectedVersion);
       const sync = await repo.get('payment-job', `task:${id}`);
@@ -147,13 +146,13 @@ function createPayments(context, provider) {
         if (task.assignment || task.status !== 'posted') fail(409, 'FUNDING_UNAVAILABLE', 'Select an offer before funding.');
         const offer = task.offers.find(o => o.id === task.selectedOfferId);
         if (!offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now()) fail(409, 'OFFER_UNAVAILABLE', 'Select a current offer.');
-        if (!Number.isSafeInteger(offer.amountMinor) || offer.amountMinor < 50 || offer.amountMinor > 100000) fail(409, 'SANDBOX_AMOUNT_LIMIT', 'Sandbox funding supports $0.50–$1,000 USD.');
+        if (!Number.isSafeInteger(offer.amountMinor) || offer.amountMinor < 50 || offer.amountMinor > 100000) fail(409, 'SANDBOX_AMOUNT_LIMIT', 'Sandbox funding supports 0.50–1,000 in the agreed currency.');
         const op = await repo.get('sandbox-operator', offer.operatorId, true);
         if (!ready(op)) fail(409, 'OPERATOR_NOT_READY', 'The operator must refresh sandbox verification and payout readiness.');
         await context.approvals.requireApproval(repo, actor, task);
         if (p) await repo.save('sandbox-settlement-history', { ...p, ownerId: task.ownerId });
         p = { id: randomUUID(), ownerId: task.ownerId, taskId: id, operatorId: offer.operatorId,
-          accountId: op.accountId, amountMinor: offer.amountMinor, currency: 'USD', offerId: offer.id,
+          accountId: op.accountId, amountMinor: offer.amountMinor, currency: offer.currency || 'USD', offerId: offer.id,
           scopeVersion: task.scopeVersion, inputHash: task.input?.sha256 || null, ledger: [], status: 'creating_checkout' };
         task.settlement = p;
       } else if (action === 'refund') {
@@ -241,7 +240,7 @@ function createPayments(context, provider) {
       if (current.status === next && !entry) return paymentView(current);
       current.status = next; current.updatedAt = now();
       if (entry && !current.ledger.some(e => e.reference === entry[2])) {
-        current.ledger.push({ debit: entry[0], credit: entry[1], amountMinor: p.amountMinor, currency: 'USD', reference: entry[2], createdAt: now() });
+        current.ledger.push({ debit: entry[0], credit: entry[1], amountMinor: p.amountMinor, currency: p.currency || 'USD', reference: entry[2], createdAt: now() });
       }
       touch(task, now()); event(task, actorId, `sandbox.${next}`, now()); await saveTask(repo, task);
       await indexPayment(repo, task, now(), true);

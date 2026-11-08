@@ -1,5 +1,6 @@
 'use strict';
 const taskLabel = (task) =>
+  task.orchestrationPlan ? (task.orchestrationPlan.status === 'accepted' ? 'Completed plan' : 'Plan in progress') :
   ['queued', 'running'].includes(task.status) &&
   task.permissionRequests?.some((request) =>
     ['pending', 'declined'].includes(request.status),
@@ -186,7 +187,7 @@ function taskNextStep(detail, offers = []) {
       ];
 }
 function scopeRecap(task) {
-  return `<section class="panel scope-recap"><span class="eyebrow">Agreed work starts with a clear brief</span><h2>Your scope</h2><p class="offer-details">${escape(task.brief)}</p>${recurringPlan(task.workPlan)}<div class="scope-footer"><small>Scope ${task.scopeVersion ?? task.version} · reviewed brief</small>${['draft', 'posted', 'selected'].includes(task.status) ? '<button class="quiet" data-action="edit">Change brief</button>' : ''}</div>${task.status === 'draft' && task.scoping?.status === 'pending' ? '<p class="hint">Preparing your local reply. You can edit the brief manually at any time.</p>' : task.status === 'draft' && task.workPlan?.openQuestions?.length ? '<p class="hint">Answer the remaining questions in the conversation before requesting offers.</p>' : task.status === 'draft' ? '<p class="hint">Posting shares the reviewed brief and input metadata with local builders. Conversation and file contents stay private until you authorize the selected runtime. Remove confidential details from the public brief.</p><button class="primary" data-action="post">Looks good · get offers</button>' : ''}</section>`;
+  return `<section class="panel scope-recap"><span class="eyebrow">Agreed work starts with a clear brief</span><h2>Your scope</h2><p class="offer-details">${escape(task.brief)}</p>${recurringPlan(task.workPlan)}<div class="scope-footer"><small>Scope ${task.scopeVersion ?? task.version} · reviewed brief</small>${!task.orchestrationStep && ['draft', 'posted', 'selected'].includes(task.status) ? '<button class="quiet" data-action="edit">Change brief</button>' : ''}</div>${task.orchestrationStep?.dependencies.some(id=>!task.orchestrationStep.handoffs.some(h=>h.sourceTaskId===id)) ? '<p>Approve upstream handovers in the parent plan before posting.</p>' : task.status === 'draft' && task.scoping?.status === 'pending' ? '<p class="hint">Preparing your local reply. You can edit the brief manually at any time.</p>' : task.status === 'draft' && task.workPlan?.openQuestions?.length ? '<p class="hint">Answer the remaining questions in the conversation before requesting offers.</p>' : task.status === 'draft' ? '<p class="hint">Posting shares the reviewed brief and input metadata with local builders. Conversation and file contents stay private until you authorize the selected runtime. Remove confidential details from the public brief.</p><button class="primary" data-action="post">Looks good · get offers</button>' : ''}</section>`;
 }
 function startReview(task) {
   if (
@@ -228,9 +229,17 @@ function conversationGuidance(task, messages) {
         ? 'Your selected offer stays with this conversation. The next step is checking the start requirements.'
         : 'Your brief and conversation stay together on this task.';
 }
+function repeatHireCard() {
+  const repeat = state.detail?.repeatHire;
+  if (!repeat) return '';
+  if (!repeat.available) return '<section class="panel"><h2>Need something else?</h2><p>This agent is not currently available for a new direct request.</p><a href="#market">Find another agent</a></section>';
+  return `<section class="panel"><h2>Work with ${escape(repeat.name)} again</h2><p>Start a new conversation in this workspace. Review a fresh quote and choose the files and tool permissions for the new task. Previous approvals and payments do not carry over.</p><button data-action="repeat-hire" class="primary">Work with this agent again</button></section>`;
+}
+
 function taskView() {
   const { task, messages, events } = state.detail,
     posted = task.status !== 'draft';
+  if (task.orchestrationStep?.supersededBy) return `<section class="market-workspace"><h1>${escape(task.title)}</h1><p>This attempt was replaced. Its history is preserved; work continues in the parent plan.</p>${RelayOrchestration.step(task)}<details><summary>Previous brief</summary><p>${escape(task.brief)}</p></details><details><summary>Previous updates</summary>${events.map(item=>`<p>${escape(item.type)}</p>`).join('')}</details></section>`;
   const labels = {
     'task.created': 'Brief saved',
     'scope.updated': 'Scope updated · previous offers invalidated',
@@ -257,7 +266,7 @@ function taskView() {
   );
   const followUps = renderMessages(messages.filter(isFollowUp));
   const editor = `<form id="edit" class="panel editor scope-editor"><span class="eyebrow">Confirm a scope change</span><h2>What should the brief say?</h2><p>Only this confirmation changes scope.${posted ? ' Existing offers and selection will need review again.' : ''}</p><label for="title">Task title</label><input id="title" name="title" value="${escape(task.title)}" maxlength="120" required><label for="brief">Current requirements</label><textarea id="brief" name="brief" maxlength="10000" required>${escape(task.brief)}</textarea><div class="form-error" role="alert"></div><div class="inline-actions"><button class="primary" type="submit">Confirm brief change</button><button type="button" data-action="stop-edit">Keep current brief</button></div></form>`;
-  return `<section class="buyer-conversation" data-task-id="${task.id}"><header class="conversation-heading"><div><span class="conversation-brand">${relayCharacter()}Relay</span><h1>${escape(posted ? task.title : 'Let’s get it done.')}</h1></div><span class="tag ${task.status}" role="status">${task.status === 'buyer_review' && state.detail.submissions?.at(-1)?.files.some((file) => file.scan && file.scan.status !== 'clean') ? 'Checking delivery' : taskLabel(task)}</span></header><div class="thread-layout"><section class="thread-main" aria-label="Conversation and reply"><div class="thread-history" aria-label="Task conversation">${task.scheduleId ? '<article class="thread-message relay"><strong>Scheduled run</strong><p>This task uses its saved context and execution rules.</p><button class="quiet" data-action="buyer-nav" data-tab="scheduled">View schedule & context</button></article>' : ''}${transcript}
+  return `<section class="buyer-conversation" data-task-id="${task.id}"><header class="conversation-heading"><div><span class="conversation-brand">${relayCharacter()}Relay</span><h1>${escape(posted ? task.title : 'Let’s get it done.')}</h1></div><span class="tag ${task.status}" role="status">${task.status === 'buyer_review' && state.detail.submissions?.at(-1)?.files.some((file) => file.scan && file.scan.status !== 'clean') ? 'Checking delivery' : taskLabel(task)}</span></header><div class="thread-layout"><section class="thread-main" aria-label="Conversation and reply"><div class="thread-history" aria-label="Task conversation">${task.scheduleId ? '<article class="thread-message relay"><strong>Scheduled run</strong><p>This task uses its saved context and execution rules.</p><button class="quiet" data-action="buyer-nav" data-tab="scheduled">View schedule & context</button></article>' : ''}${transcript}${typeof RelayOrchestration === 'object' ? RelayOrchestration.step(task) : ''}
  ${state.editing ? editor : state.features?.scoping && task.scoping?.status === 'completed' && ['request', 'change'].includes(task.scoping.proposal.intent) ? `<details><summary>Current brief · scope v${task.scopeVersion}</summary><p>${escape(task.brief)}</p></details>` : posted ? '' : `<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><p>${task.workPlan && task.workPlan.cadence !== 'once' ? 'Here’s your recurring request. Confirm the work and cadence before requesting offers.' : 'Here’s the brief I’ll send to agents. Does this capture what you need?'}</p>${scopeRecap(task)}</article>`}
 
  ${!state.editing ? scopingReview(task) : ''}
@@ -266,12 +275,12 @@ function taskView() {
  ${!(task.workPlan && task.workPlan.cadence !== 'once') && typeof RelayApprovals === 'object' ? (state.detail.execution && state.detail.approval?.status === 'approved' ? `<details><summary>Company approval · recorded</summary>${RelayApprovals.task(task, state.detail.approval)}</details>` : RelayApprovals.task(task, state.detail.approval)) : ''}
  ${!(task.workPlan && task.workPlan.cadence !== 'once') && typeof RelayPayments === 'object' ? RelayPayments.task(task, state.detail.payment, false, state.detail.execution) : ''}
  ${(!task.workPlan || task.workPlan.cadence === 'once') && !state.editing && state.reviewStart ? startReview(task) : ''}
- ${typeof RelayExecution === 'object' ? RelayExecution.delivery(task) : ''}
-${changeProposalCards(task, state.detail.changeProposals)}${followUps}${state.sendingMessage ? `<article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p class="offer-details">${escape(state.sendingMessage)}</p></article>${activityCard('Sending your message', 'Waiting for Relay to save it.', true)}` : ''}
+ ${typeof RelayExecution === 'object' ? RelayExecution.delivery(task) : ''}${repeatHireCard()}
+${typeof RelayPortfolio === 'object' ? RelayPortfolio.requests(state.detail.portfolioRequests) : ''}${changeProposalCards(task, state.detail.changeProposals)}${followUps}${state.sendingMessage ? `<article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p class="offer-details">${escape(state.sendingMessage)}</p></article>${activityCard('Sending your message', 'Waiting for Relay to save it.', true)}` : ''}
  ${!state.features?.scoping && messages.length > 1 && messages.at(-1)?.role !== 'supplier' && !state.editing ? `<article class="thread-message relay latest-guidance"><span class="thread-speaker">${relayCharacter()}Relay</span><p>${escape(conversationGuidance(task, messages))}</p></article>` : ''}
  ${task.status === 'cancelled' ? '<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><p>This request is closed. Your brief and conversation remain available.</p></article>' : ''}
  </div>${task.status !== 'cancelled' && !state.editing ? composer('message', ['draft', 'posted'].includes(task.status) ? 'Add details or ask Relay a question…' : 'Ask a question or message your agent…', 'Send', state.messageDrafts[task.id] || '', 'Enter to send · Shift + Enter for a new line') : ''}</section><aside class="thread-context"><details class="conversation-details" data-disclosure-key="conversation-details"><summary>Context & details</summary><div class="conversation-details-body">${!state.editing && task.status === 'posted' && typeof RelayExecution === 'object' ? RelayExecution.input(task) : ''}${typeof RelayApps === 'object' ? RelayApps.contextPicker(task) : ''}
- ${posted ? `<details><summary>${posted ? 'Agreed scope' : 'Your brief'} · v${task.scopeVersion ?? task.version}</summary><p>${escape(task.brief)}</p>${['draft', 'posted', 'selected'].includes(task.status) ? '<button class="quiet" data-action="edit">Change scope & refresh offers</button>' : ''}</details>` : ''}
+ ${posted ? `<details><summary>${posted ? 'Agreed scope' : 'Your brief'} · v${task.scopeVersion ?? task.version}</summary><p>${escape(task.brief)}</p>${!task.orchestrationStep && ['draft', 'posted', 'selected'].includes(task.status) ? '<button class="quiet" data-action="edit">Change scope & refresh offers</button>' : ''}</details>` : ''}
  <details><summary>Samples & references</summary><p>CSV task input can be attached in this conversation. Other input formats are not supported yet. Delivery files are scanned separately. Input bytes are shared only after execution is authorized.</p></details>
  <details><summary>Activity & agreement history</summary><ol class="steps">${events.map((e) => `<li>${escape(labels[e.type] || e.type)}<small>${date(e.createdAt)}</small></li>`).join('')}</ol>${state.detail.scopes?.length ? `<details><summary>Previous scope versions</summary>${state.detail.scopes.map((v) => `<p><strong>Scope ${v.version}</strong><br>${escape(v.brief)}</p>`).join('')}</details>` : ''}</details>
  <details><summary>Local testing details</summary><p class="thread-footnote">${state.features?.scoping ? 'Local model suggestions · confirm scope before posting.' : 'Manual brief review · local model not configured.'} ${state.payments?.configured ? 'Sandbox payments only. Start permission is separate from funding.' : 'Stripe sandbox is not connected. Local execution can run unpaid.'}</p></details>
@@ -338,7 +347,7 @@ function activityCard(title, description, active = false) {
   return `<section class="live-activity ${active ? 'is-working' : ''}" role="status"><div class="activity-heading">${relayCharacter()}<strong>${escape(title)}</strong>${active ? '<span class="activity-spinner" aria-hidden="true"></span>' : ''}</div><p>${escape(description)}</p></section>`;
 }
 function taskDashboard() {
-  const requestedTasks = state.tasks.filter((task) => task.status !== 'draft');
+  const requestedTasks = state.tasks.filter((task) => !task.orchestrationStep?.supersededBy && (task.status !== 'draft' || task.orchestrationPlan));
   const needsPermission = (task) =>
     ['queued', 'running'].includes(task.status) &&
     task.permissionRequests?.some((request) =>
@@ -420,7 +429,7 @@ function draftConversation() {
     ${sourceReads.length ? `<section class="live-activity"><strong>${pending ? 'Using your selected context' : 'Context used for this response'}</strong>${sourceReads.map((read) => `<p>✓ Read ${escape(read.name)} · saved version ${read.version}</p>`).join('')}<small>Saved copies in Relay. No live external lookup.</small></section>` : ''}
     ${pending || ['failed', 'cancelled'].includes(task.scoping?.status) ? scopingReview(task) : ''}
     ${!state.features?.scoping ? `<article class="thread-message relay">${relayCharacter()}<p>Your message is saved. Conversational replies need the local model to be connected. You can keep notes here or review a request yourself.</p></article>` : ''}
-    ${state.reviewChatRequest ? `<section class="panel scope-recap"><h2>Review before requesting</h2>${proposal && ['request', 'change'].includes(proposal.intent) ? scopingReview(task) : scopeRecap(task)}<button class="quiet" data-action="keep-chatting">Keep chatting</button></section>` : !pending ? '<div class="chat-request-action"><span>Ready to turn this into work?</span><button data-action="review-chat-request">Review task request</button></div>' : ''}
+    ${typeof RelayOrchestration === 'object' ? RelayOrchestration.setup(task) : ''}${state.reviewChatRequest ? `<section class="panel scope-recap"><h2>Review before requesting</h2>${typeof RelayExecution === 'object' ? RelayExecution.input(task) : ''}${proposal && ['request', 'change'].includes(proposal.intent) ? scopingReview(task) : scopeRecap(task)}<button class="quiet" data-action="keep-chatting">Keep chatting</button></section>` : !pending ? '<div class="chat-request-action"><span>Ready to turn this into work?</span><button data-action="review-chat-request">Review task request</button></div>' : ''}
   </div>${composer('message', 'Say more…', 'Send', state.messageDrafts[task.id] || '', 'Enter to send · Shift + Enter for a new line').replaceAll('Message about this task', 'Message Relay')}</section><aside class="thread-context"><details class="conversation-details" data-disclosure-key="conversation-details"><summary>Context & details</summary><div class="conversation-details-body">${typeof RelayApps === 'object' ? RelayApps.contextPicker(task) : ''}${task.contextReferences?.length && state.features?.scoping ? '<p>Use selected saved copies to help Relay respond. This does not grant a builder access.</p><button data-action="read-chat-context">Read selected sources & respond</button>' : ''}<small>Only requested work appears in My tasks. Find this chat in Recent conversations.</small></div></details></aside></div></section>`;
 }
 
@@ -436,10 +445,51 @@ function changeProposalCards(task, proposals = [], buyer = true) {
           ? 'no longer current'
           : proposal.status;
       const delta = proposal.amountMinor - proposal.previousAmountMinor;
-      return `<section class="work-activity change-proposal"><header><strong>${pending ? 'Proposed change' : 'Change ' + escape(status)}</strong><span class="tag">${delta > 0 ? '+' : delta < 0 ? '−' : ''}${money(Math.abs(delta))}</span></header><div class="work-activity-body"><h3>${escape(proposal.title)}</h3><p class="offer-details">${escape(proposal.brief)}</p><p>${escape(proposal.reason)}</p><p><strong>${money(proposal.previousAmountMinor)} → ${money(proposal.amountMinor)}</strong> total · ${proposal.deliveryMinutes} min after restart</p><p class="hint">${money(proposal.retainedMinor)} of the total covers work already performed. Local test amounts; no money moves.</p>${pending && buyer ? `<form data-change-review="${escape(proposal.id)}"><input type="hidden" name="taskId" value="${escape(task.id)}"><div class="inline-actions"><button class="primary" name="decision" value="accept">Accept revised terms</button><button name="decision" value="decline">Keep original scope</button></div><p class="hint">Acceptance stops the old run. ${task.companyApprovalRequired ? 'Fresh company approval and ' : ''}Start authorization is required before revised work begins.</p><div class="form-error" role="alert"></div></form>` : ''}</div></section>`;
+      return `<section class="work-activity change-proposal"><header><strong>${pending ? 'Proposed change' : 'Change ' + escape(status)}</strong><span class="tag">${delta > 0 ? '+' : delta < 0 ? '−' : ''}${money(Math.abs(delta), proposal.currency)}</span></header><div class="work-activity-body"><h3>${escape(proposal.title)}</h3><p class="offer-details">${escape(proposal.brief)}</p><p>${escape(proposal.reason)}</p><p><strong>${money(proposal.previousAmountMinor, proposal.currency)} → ${money(proposal.amountMinor, proposal.currency)}</strong> total · ${proposal.deliveryMinutes} min after restart</p><p class="hint">${money(proposal.retainedMinor, proposal.currency)} of the total covers work already performed. Local test amounts; no money moves.</p>${pending && buyer ? `<form data-change-review="${escape(proposal.id)}"><input type="hidden" name="taskId" value="${escape(task.id)}"><div class="inline-actions"><button class="primary" name="decision" value="accept">Accept revised terms</button><button name="decision" value="decline">Keep original scope</button></div><p class="hint">Acceptance stops the old run. ${task.companyApprovalRequired ? 'Fresh company approval and ' : ''}Start authorization is required before revised work begins.</p><div class="form-error" role="alert"></div></form>` : ''}</div></section>`;
     })
     .join('');
 }
 function builderConversation(task) {
-  return `<section class="builder-conversation"><h3>Conversation with the buyer</h3><div class="builder-messages">${(task.messages || []).map((message) => `<p><strong>${escape(message.role === 'supplier' ? message.authorName : message.role === 'assistant' ? 'Relay' : message.authorName || 'Buyer')}</strong><br>${escape(message.body)}</p>`).join('')}</div><form data-supplier-message="${escape(task.id)}"><label>Reply to buyer<textarea name="body" maxlength="10000" required placeholder="Clarify, answer a question or explain your progress…"></textarea></label><div class="form-error" role="alert"></div><button type="submit">Send reply</button><small>Sent as the operator. Messages do not change the agreement.</small></form>${changeProposalCards(task, task.changeProposals, false)}${!task.submissions?.length && !task.payment && !task.scheduleId && !task.recurringScheduleId && (!task.workPlan?.cadence || task.workPlan.cadence === 'once') ? `<details><summary>Propose a scope or price change</summary><form data-change-propose="${escape(task.id)}"><label>Type of change<select name="kind"><option value="scope-change">Add or remove scope</option><option value="correction">Correction · same price</option><option value="included-revision">Included revision · same price</option></select></label><label>Revised title<input name="title" maxlength="120" required value="${escape(task.title)}"></label><label>Complete revised brief<textarea name="brief" maxlength="10000" required>${escape(task.brief)}</textarea></label><label>Reason for change<textarea name="reason" maxlength="2000" required></textarea></label><div class="quote-fields"><label>Revised total (USD)<input name="total" type="number" min="0.01" max="100000" step="0.01" required value="${task.amountMinor / 100}"></label><label>Included cost of completed work (USD)<input name="retained" type="number" min="0" step="0.01" required value="0"></label><label>Delivery after restart (minutes)<input name="minutes" type="number" min="1" max="10080" step="1" required value="${task.deliveryMinutes}"></label></div><p class="hint">Clarifications, corrections and included revisions should not increase the price. The original agreement stays in effect until the buyer accepts a change.</p><div class="form-error" role="alert"></div><button type="submit">Send change proposal</button></form></details>` : '<p class="hint">For scheduled work, update its schedule. Submitted or funded work needs its delivery and settlement review.</p>'}</section>`;
+  return `<section class="builder-conversation"><h3>Conversation with the buyer</h3><div class="builder-messages">${(task.messages || []).map((message) => `<p><strong>${escape(message.role === 'supplier' ? message.authorName : message.role === 'assistant' ? 'Relay' : message.authorName || 'Buyer')}</strong><br>${escape(message.body)}</p>`).join('')}</div><form data-supplier-message="${escape(task.id)}"><label>Reply to buyer<textarea name="body" maxlength="10000" required placeholder="Clarify, answer a question or explain your progress…"></textarea></label><div class="form-error" role="alert"></div><button type="submit">Send reply</button><small>Sent as the operator. Messages do not change the agreement.</small></form>${changeProposalCards(task, task.changeProposals, false)}${!task.orchestrationStep && !task.submissions?.length && !task.payment && !task.scheduleId && !task.recurringScheduleId && (!task.workPlan?.cadence || task.workPlan.cadence === 'once') ? `<details><summary>Propose a scope or price change</summary><form data-change-propose="${escape(task.id)}"><label>Type of change<select name="kind"><option value="scope-change">Add or remove scope</option><option value="correction">Correction · same price</option><option value="included-revision">Included revision · same price</option></select></label><label>Revised title<input name="title" maxlength="120" required value="${escape(task.title)}"></label><label>Complete revised brief<textarea name="brief" maxlength="10000" required>${escape(task.brief)}</textarea></label><label>Reason for change<textarea name="reason" maxlength="2000" required></textarea></label><div class="quote-fields"><label>Revised total (${escape(task.currency || 'USD')})<input name="total" type="number" min="0.01" max="100000" step="0.01" required value="${task.amountMinor / 100}"></label><label>Included cost of completed work (${escape(task.currency || 'USD')})<input name="retained" type="number" min="0" step="0.01" required value="0"></label><label>Delivery after restart (minutes)<input name="minutes" type="number" min="1" max="10080" step="1" required value="${task.deliveryMinutes}"></label></div><p class="hint">Clarifications, corrections and included revisions should not increase the price. The original agreement stays in effect until the buyer accepts a change.</p><div class="form-error" role="alert"></div><button type="submit">Send change proposal</button></form></details>` : '<p class="hint">For scheduled work, update its schedule. Submitted or funded work needs its delivery and settlement review.</p>'}</section>`;
 }
+
+// One listener survives sidebar refreshes. Pointer updates never re-render UI.
+(() => {
+  if (typeof matchMedia !== 'function' || typeof document === 'undefined') return;
+  const motion = matchMedia('(prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine)');
+  let frame = null;
+  let pointer = null;
+  let current = null;
+
+  function reset() {
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+    pointer = null;
+    current?.style.removeProperty('transform');
+    current = null;
+  }
+
+  function update() {
+    frame = null;
+    if (!motion.matches || document.hidden || !pointer) return reset();
+    const face = document.querySelector('.workspace-identity .chat-character.face svg');
+    if (face !== current) current?.style.removeProperty('transform');
+    current = face;
+    if (!face) return;
+    // Measure the stationary wrapper, not the transformed face.
+    const bounds = face.parentElement.getBoundingClientRect();
+    const x = Math.max(-1, Math.min(1, (pointer.x - bounds.left - bounds.width / 2) / 300));
+    const y = Math.max(-1, Math.min(1, (pointer.y - bounds.top - bounds.height / 2) / 300));
+    face.style.transform = `translate(${x * 5}px, ${y * 4}px) perspective(180px) rotateX(${-y * 12}deg) rotateY(${x * 18}deg) rotateZ(${x * 8}deg)`;
+  }
+
+  document.addEventListener('pointermove', event => {
+    if (!motion.matches || event.pointerType === 'touch' || document.hidden) return;
+    pointer = { x: event.clientX, y: event.clientY };
+    if (frame === null) frame = requestAnimationFrame(update);
+  }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', reset);
+  window.addEventListener('blur', reset);
+  document.addEventListener('visibilitychange', reset);
+  motion.addEventListener('change', reset);
+})();

@@ -174,7 +174,7 @@ const RelayApps = {
         'attio',
         'Attio',
         'Sales & CRM',
-        'Contacts, companies and relationship context.',
+        'Send reviewed company CSV deliveries to your CRM.',
       ],
       [
         'salesforce',
@@ -194,11 +194,11 @@ const RelayApps = {
       <div class="tool-library-grid">${tools
         .map(([id, name, category, description]) => {
           const available =
-            id === 'local' ||
+            id === 'local' || (id === 'attio' && state.features?.attioDelivery && this.owner()) ||
             (id === 'drive' &&
               state.features?.driveConnections &&
               this.owner());
-          const status =
+          const status = id === 'attio' && available ? (state.attio?.connected ? 'Connected' : state.attio?.configured ? 'Ready to connect' : 'Setup required') :
             id === 'drive' && state.features?.driveConnections && !this.owner()
               ? 'Administrator managed'
               : id === 'local'
@@ -210,7 +210,7 @@ const RelayApps = {
                       ? 'Ready to connect'
                       : 'Setup required'
                   : 'Not available yet';
-          return `<article class="tool-library-card" data-tool-card data-search="${escape(`${name} ${category} ${description}`.toLowerCase())}" data-category="${escape(category)}"><div class="tool-card-top"><span class="tool-monogram tool-${id}" aria-hidden="true">${this.toolIcon(id)}</span><span class="tool-availability">${status}</span></div><h2>${name}</h2><p>${description}</p><small>${escape(category)}</small>${available ? `<button data-action="${id === 'drive' && state.drive?.configured && !state.drive?.connected ? 'app-drive-connect' : 'app-tool-open'}" data-tool="${id}">${id === 'local' ? (this.owner() ? 'Add a source' : 'View sources') : state.drive?.configured && !state.drive?.connected ? 'Connect' : 'View connection'}</button>` : `<span class="tool-coming">${id === 'drive' && state.features?.driveConnections ? 'Ask your administrator to manage this connection' : 'Connector not built yet'}</span>`}</article>`;
+          return `<article class="tool-library-card" data-tool-card data-search="${escape(`${name} ${category} ${description}`.toLowerCase())}" data-category="${escape(category)}"><div class="tool-card-top"><span class="tool-monogram tool-${id}" aria-hidden="true">${this.toolIcon(id)}</span><span class="tool-availability">${status}</span></div><h2>${name}</h2><p>${description}</p><small>${escape(category)}</small>${available ? `<button data-action="${id === 'drive' && state.drive?.configured && !state.drive?.connected ? 'app-drive-connect' : 'app-tool-open'}" data-tool="${id}">${id === 'attio' ? 'View connection' : id === 'local' ? (this.owner() ? 'Add a source' : 'View sources') : state.drive?.configured && !state.drive?.connected ? 'Connect' : 'View connection'}</button>` : `<span class="tool-coming">${id === 'drive' && state.features?.driveConnections ? 'Ask your administrator to manage this connection' : 'Connector not built yet'}</span>`}</article>`;
         })
         .join(
           '',
@@ -234,9 +234,33 @@ const RelayApps = {
     const empty = root.querySelector('[data-tool-empty]');
     if (empty) empty.hidden = visible > 0;
   },
+  attioCard() {
+    if (!state.features?.attioDelivery || !this.owner()) return '';
+    const connection = state.attio;
+    return `<section class="panel" id="tool-attio"><h2>Attio delivery</h2><p>Send an accepted company CSV to Attio after reviewing its rows. Existing companies are matched by domain; supplied names are updated.</p>${connection?.configured ? `<p>Destination: <strong>${escape(connection.destination)}</strong></p><button data-action="app-attio-control" data-operation="${connection.connected ? 'disconnect' : 'connect'}">${connection.connected ? 'Disconnect Attio' : 'Enable Attio delivery'}</button><p class="hint">Disconnecting blocks future sends. It does not delete companies already delivered.</p>` : '<p class="hint">Local setup required: configure a private Attio integration on the server. No credentials are collected in chat. Company CSV delivery supports up to 50 rows; people, deals and custom fields are not supported yet.</p>'}</section>`;
+  },
+  attioReceipt(receipt) {
+    const complete = receipt.status === 'sent';
+    const canContinue = receipt.canContinue && state.attio?.connected;
+    const status = complete ? 'Delivered' : receipt.status === 'review' ? 'Ready for your review' : receipt.status === 'failed' ? 'Needs attention' : state.attioSending ? 'Sending' : 'Paused';
+    return `<article class="panel" aria-label="Attio delivery receipt"><h4>${escape(receipt.filename)}</h4><p><strong>${receipt.completed} of ${receipt.total} companies confirmed</strong> · ${status}</p><p>${escape(receipt.destination)}</p><details ${receipt.status === 'review' ? 'open' : ''}><summary>Review companies & confirmations</summary><ul>${receipt.rows.map(row => `<li>${escape(row.name || row.domain)} · ${escape(row.domain)}${receipt.results?.some(result => result.domain === row.domain) ? ' · Confirmed' : ' · Not confirmed'}</li>`).join('')}</ul></details>${complete ? '<p>Delivery complete. Refreshing this task does not send these rows again.</p>' : `<p class="hint">Creates companies or updates matching domains and supplied names. This sends data outside Relay. No emails are sent.</p>${receipt.error ? `<p role="alert">${escape(receipt.error)}</p>` : ''}${receipt.blockedReason ? `<p>${escape(receipt.blockedReason)}</p>` : ''}${canContinue ? `<button class="primary" data-action="app-attio-send" ${state.attioSending ? 'disabled' : ''} data-id="${escape(receipt.id)}">${receipt.status === 'review' ? 'Confirm & send companies' : 'Resume remaining companies'}</button>` : '<p class="hint">Refresh to check readiness, or review the file again after resolving the connection.</p>'}`}</article>`;
+  },
+  attioDelivery(task, submission) {
+    if (!state.features?.attioDelivery || !this.owner() || submission?.status !== 'accepted') return '';
+    const receipts = [...(state.attioReceipts || []).filter(item => item.taskId === task.id)];
+    const review = state.attioReview?.taskId === task.id ? state.attioReview : null;
+    if (review) {
+      const existing = receipts.findIndex(item => item.fileId === review.fileId);
+      if (existing < 0) receipts.push(review);
+      else if (review.updatedAt > receipts[existing].updatedAt) receipts[existing] = review;
+    }
+    const files = submission.files.filter(file => file.filename.toLowerCase().endsWith('.csv'));
+    if (!files.length && !receipts.length) return '';
+    return `<section class="panel"><h3>Attio delivery</h3>${state.attio?.connected ? `<p>Review companies before sending to ${escape(state.attio.destination)}.</p>${files.map(file => `<button data-action="app-attio-prepare" ${state.attioSending ? 'disabled' : ''} data-id="${escape(file.id)}" data-submission="${escape(submission.id)}">Review ${escape(file.filename)}</button>`).join('')}` : '<p>Connect Attio in Tools to send companies. Past confirmations below remain available.</p>'}<div aria-live="polite">${receipts.map(receipt => this.attioReceipt(receipt)).join('')}</div></section>`;
+  },
   toolsPage() {
     const data = this.data();
-    return `<section class="market-workspace tools-workspace"><header class="builder-page-title"><div><span class="eyebrow">YOUR TOOLS, TOGETHER</span><h1>Bring your context.</h1><p>Find a tool, choose what to share, and put it to work.</p></div></header>${this.toolLibrary()}<div id="tool-drive">${this.driveCard()}</div><h2>Your sources</h2><p class="hint">Use @ in a conversation to select a saved source. Nothing is shared automatically.</p>
+    return `<section class="market-workspace tools-workspace"><header class="builder-page-title"><div><span class="eyebrow">YOUR TOOLS, TOGETHER</span><h1>Bring your context.</h1><p>Find a tool, choose what to share, and put it to work.</p></div></header>${this.toolLibrary()}<div id="tool-drive">${this.driveCard()}</div>${this.attioCard()}<h2>Your sources</h2><p class="hint">Use @ in a conversation to select a saved source. Nothing is shared automatically.</p>
       ${this.owner() ? `<details class="panel" id="tool-local"><summary>Add a local source</summary><form id="app-source-create" class="market-form"><label>Name<input name="name" maxlength="80" required placeholder="Weekly lead list"></label><label>CSV, JSON or text<textarea name="content" maxlength="16000" required placeholder="Paste test data here"></textarea></label><button class="primary">Save local source</button><div class="form-error" role="alert"></div></form></details>` : '<p id="tool-local">Your workspace administrator manages sources and connections.</p>'}
       ${data.sources.map((source) => (source.provenance?.provider === 'google-drive' ? `<details class="panel"><summary>${escape(source.name)} · ${source.provenance.mode === 'live-file' ? 'Live Drive file' : 'Drive snapshot'} · ${escape(source.status)}</summary><p>${source.provenance.mode === 'live-file' ? 'Last checked ' + escape(date(source.provenance.checkedAt)) + '. Authorized latest-data reads check Drive again. Preview below is the last saved version.' : 'Imported ' + escape(date(source.provenance.importedAt)) + '. This saved copy does not sync with Drive.'}</p><pre>${escape(source.content)}</pre>${source.status === 'active' ? `<button data-action="app-disconnect" data-id="${escape(source.id)}">Disconnect this source</button>` : '<p>Import the file again to reconnect. Old permissions stay revoked.</p>'}</details>` : `<details class="panel"><summary>${escape(source.name)} · v${source.version} · ${escape(source.status)}</summary><form id="app-source-edit" data-id="${escape(source.id)}" class="market-form"><label>Name<input name="name" value="${escape(source.name)}" required maxlength="80"></label><label>Source content<textarea name="content" required maxlength="16000">${escape(source.content)}</textarea></label><button class="primary">${source.status === 'active' ? 'Save new version' : 'Reconnect local source'}</button>${source.status === 'active' ? `<button type="button" data-action="app-disconnect" data-id="${escape(source.id)}">Disconnect</button>` : '<p>Reconnecting does not restore old permissions. Grant access again.</p>'}<div class="form-error" role="alert"></div></form></details>`)).join('')}
       <h2>Permissions</h2>${
@@ -267,7 +291,7 @@ const RelayApps = {
   hostingPanel() {
     const hosting = this.data().hosting || { entitlement: { plan: 'free', canHost: false, includedHosts: 0 }, hosts: [] };
     const entitlement = hosting.entitlement;
-    return `<section class="relay-hosting ${entitlement.canHost ? 'hosting-enabled' : 'hosting-locked'}"><div class="hosting-copy"><span class="mode-symbol" aria-hidden="true">◫</span><div><span class="eyebrow">RELAY HOSTING</span><h2>Run installed apps without operating the infrastructure.</h2><p>Relay would deploy the reviewed app release into a bounded runtime, broker only the data permissions you approved, and keep its runs and outputs inside this workspace.</p><ol class="hosting-flow"><li><span>1</span>Install a reviewed delivery</li><li><span>2</span>Approve its data access</li><li><span>3</span>Provision and manage a release</li></ol><small>Localhost simulates the hosting control plane. It does not create public cloud compute, a public URL or a charge.</small></div></div>${entitlement.canHost ? `<div class="hosting-plan"><span class="tag success">${escape(entitlement.plan)} plan</span><strong>${hosting.hosts.length} of ${entitlement.includedHosts} hosts used</strong><span>Subscription entitlement active</span></div>` : `<div class="hosting-plan"><span class="tag">Subscription feature</span><strong>Pro or Business required</strong><span>Pro includes 2 hosts. Business includes 10. Billing is disconnected on localhost.</span><button data-action="app-hosting-plans">View hosting access</button></div>`}</section>`;
+    return `<section class="relay-hosting ${entitlement.canHost ? 'hosting-enabled' : 'hosting-locked'}"><div class="hosting-copy"><span class="mode-symbol" aria-hidden="true">◫</span><div><span class="eyebrow">RELAY HOSTING</span><h2>Run installed apps without operating the infrastructure.</h2><p>Hosted automations run the reviewed release in a separate local worker, using only the approved input. Runs and outputs stay in this workspace.</p><ol class="hosting-flow"><li><span>1</span>Install a reviewed delivery</li><li><span>2</span>Approve its data access</li><li><span>3</span>Provision and manage a release</li></ol><small>Local worker execution is active. No public cloud compute, public URL or hosting charge is created.</small></div></div>${entitlement.canHost ? `<div class="hosting-plan"><span class="tag success">${escape(entitlement.plan)} plan</span><strong>${hosting.hosts.length} of ${entitlement.includedHosts} hosts used</strong><span>Subscription entitlement active</span></div>` : `<div class="hosting-plan"><span class="tag">Subscription feature</span><strong>Pro or Business required</strong><span>Pro includes 2 hosts. Business includes 10. Hosting subscriptions use local fixtures; checkout is not enabled.</span><button data-action="app-hosting-plans">View hosting access</button></div>`}</section>`;
   },
   card(app) {
     const data = this.data(),
@@ -276,6 +300,7 @@ const RelayApps = {
     const runs = data.runs.filter((run) => run.appId === app.id);
     const host = data.hosting?.hosts?.find((item) => item.appId === app.id);
     const canHost = !!data.hosting?.entitlement?.canHost;
+    const hostingBlocked = !!host && (!canHost || host.status !== 'running');
     const valid =
       grant?.status === 'active' &&
       grant.expiresAt > Date.now() &&
@@ -286,8 +311,9 @@ const RelayApps = {
       ${app.appPackage ? `<p>${escape(app.appPackage.description)}</p><details><summary>What this app does · ${app.appPackage.steps.length} steps</summary><ol>${app.appPackage.steps.map((step) => `<li>${escape(this.stepLabel(step))}</li>`).join('')}</ol><p>Delivered by ${escape(app.agentName || 'your builder')}. This installed version stays fixed when the original delivery changes.</p><small>Package: ${escape(app.packageHash?.slice(0, 12))}…</small></details>` : ''}
       ${app.reason ? `<p role="status">${escape(app.reason)}</p>` : ''}
       <p>${app.calendar ? `${escape(app.calendar.cadence)} at ${escape(app.calendar.time)} (${escape(app.calendar.timezone)}) · ${app.status === 'active' ? 'Next: ' + escape(date(app.nextAt)) : 'Paused'}` : 'Runs when you choose.'}</p>
-      ${!valid ? '<p class="app-next-action">Read permission needs attention. Open Permissions below before running this app.</p>' : runs.some((r) => r.status === 'needs_review') ? '<p class="app-next-action">Your result is ready. Review or discard it below before starting another run.</p>' : app.status !== 'active' ? '<p class="app-next-action">This app is paused. Resume it when you are ready to run again.</p>' : ''}<div class="app-actions"><button class="primary" data-action="app-control" data-id="${escape(app.id)}" data-control="run" ${!valid || app.status !== 'active' || runs.some((r) => r.status === 'needs_review') ? 'disabled' : ''}>Run now</button><button data-action="app-control" data-id="${escape(app.id)}" data-control="${app.status === 'active' ? 'pause' : 'resume'}">${app.status === 'active' ? 'Pause' : 'Resume'}</button><button data-action="task" data-id="${escape(app.sourceTaskId)}">Open task conversation</button></div>
-      <details class="app-host-details"><summary>Relay hosting · ${host ? escape(host.status.replaceAll('_', ' ')) : canHost ? 'ready to provision' : 'subscription required'}</summary>${host ? `<div class="host-status-line"><span class="host-state host-${escape(host.status)}"></span><strong>${host.status === 'subscription_hold' ? 'Suspended until the subscription is active' : host.status === 'running' ? 'Runtime is enabled' : 'Runtime is stopped'}</strong></div><div class="host-metrics"><span><small>Runtime</small><strong>${escape(host.runtime)}</strong></span><span><small>Release</small><strong>v${host.release}</strong></span><span><small>Memory</small><strong>${host.resources.memoryMb} MB</strong></span><span><small>Last deploy</small><strong>${escape(date(host.lastDeployAt))}</strong></span></div><p>This host can run only the installed bounded app and its current approved grant. Permission revocation blocks starts and redeploys. Arbitrary code, shell access, inbound public traffic and silent external writes remain disabled.</p><div class="app-actions">${host.status === 'running' || host.status === 'subscription_hold' ? `<button data-action="app-host" data-id="${escape(app.id)}" data-host-action="stop">Stop host</button>` : `<button class="primary" data-action="app-host" data-id="${escape(app.id)}" data-host-action="start" ${!canHost ? 'disabled' : ''}>Start host</button>`}<button data-action="app-host" data-id="${escape(app.id)}" data-host-action="redeploy" ${!canHost ? 'disabled' : ''}>Deploy current release</button></div><details class="host-remove"><summary>Remove hosted runtime</summary><p>This removes the runtime allocation, not the installed app, task history or saved outputs.</p><button data-action="app-host" data-id="${escape(app.id)}" data-host-action="deprovision">Deprovision host</button></details>` : canHost ? `<p>Provision this reviewed app in your Relay hosting allowance. Its existing data grant is rechecked before the runtime is created.</p><button class="primary" data-action="app-host" data-id="${escape(app.id)}" data-host-action="provision">Provision host</button>` : '<p>Upgrade to Pro or Business to provision this installed app. Manual local runs remain available and use the same permission checks.</p><button data-action="app-hosting-plans">See subscription requirements</button>'}</details>
+      ${hostingBlocked ? '<p class="app-next-action" role="status">Hosting is paused. Restore your subscription and start the host to run again. Saved outputs remain available.</p>' : ''}
+      ${!valid ? '<p class="app-next-action">Read permission needs attention. Open Permissions below before running this app.</p>' : runs.some((r) => r.status === 'needs_review') ? '<p class="app-next-action">Your result is ready. Review or discard it below before starting another run.</p>' : app.status !== 'active' ? '<p class="app-next-action">This app is paused. Resume it when you are ready to run again.</p>' : ''}<div class="app-actions"><button class="primary" data-action="app-control" data-id="${escape(app.id)}" data-control="run" ${hostingBlocked || !valid || app.status !== 'active' || runs.some((r) => r.status === 'needs_review') ? 'disabled' : ''}>Run now</button><button data-action="app-control" data-id="${escape(app.id)}" data-control="${app.status === 'active' ? 'pause' : 'resume'}">${app.status === 'active' ? 'Pause' : 'Resume'}</button><button data-action="task" data-id="${escape(app.sourceTaskId)}">Open task conversation</button></div>
+      <details class="app-host-details"><summary>Relay hosting · ${host ? escape(host.status.replaceAll('_', ' ')) : canHost ? 'ready to provision' : 'subscription required'}</summary>${host ? `<div class="host-status-line"><span class="host-state host-${escape(host.status)}"></span><strong>${host.status === 'subscription_hold' ? 'Suspended until the subscription is active' : host.status === 'running' ? 'Local worker ready' : 'Runtime is stopped'}</strong></div><div class="host-metrics"><span><small>Runtime</small><strong>${escape(host.runtime)}</strong></span><span><small>Release</small><strong>v${host.release}</strong></span><span><small>Worker heap</small><strong>64 MB</strong></span><span><small>Last deploy</small><strong>${escape(date(host.lastDeployAt))}</strong></span></div><p>Each hosted run uses a separate local process with a five-second deadline. An active subscription and current approved grant are required. Permission revocation blocks starts and redeploys. Arbitrary code, shell access, inbound public traffic and silent external writes remain disabled.</p><div class="app-actions">${host.status === 'running' || host.status === 'subscription_hold' ? `<button data-action="app-host" data-id="${escape(app.id)}" data-host-action="stop">Stop host</button>` : `<button class="primary" data-action="app-host" data-id="${escape(app.id)}" data-host-action="start" ${!canHost ? 'disabled' : ''}>Start host</button>`}<button data-action="app-host" data-id="${escape(app.id)}" data-host-action="redeploy" ${!canHost ? 'disabled' : ''}>Deploy current release</button></div><details class="host-remove"><summary>Remove hosted runtime</summary><p>This disables hosted execution, not the installed app, task history or saved outputs.</p><button data-action="app-host" data-id="${escape(app.id)}" data-host-action="deprovision">Deprovision host</button></details>` : canHost ? `<p>Provision this reviewed app in your Relay hosting allowance. Its existing data grant is rechecked before the runtime is created.</p><button class="primary" data-action="app-host" data-id="${escape(app.id)}" data-host-action="provision">Provision host</button>` : '<p>Upgrade to Pro or Business to provision this installed app. Manual local runs remain available and use the same permission checks.</p><button data-action="app-hosting-plans">See subscription requirements</button>'}</details>
       <details><summary>Permissions</summary>${grant ? this.grant(grant) : ''}<form id="app-renew" data-id="${escape(app.id)}"><label class="app-consent"><input type="checkbox" name="consent" required> Allow this app to read this source for the next 30 days.</label><button>Renew read access</button><div class="form-error" role="alert"></div></form></details>
       <details><summary>App schedule · ${app.calendar ? 'enabled' : 'off'}</summary><form id="app-calendar" data-id="${escape(app.id)}" class="market-form"><label>Frequency<select name="cadence"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label>Time<input type="time" name="time" value="09:00" required></label><label>Timezone<input name="timezone" value="${escape(Intl.DateTimeFormat().resolvedOptions().timeZone)}" required></label><label data-calendar-day>Day (weekly: Monday 1–Sunday 7; monthly: 1–31)<input type="number" name="day" value="1" min="1" max="31" required></label><p>One result at a time. Review the previous result before the next run. Missed slots are skipped; no catch-up burst.</p><button>Enable schedule</button>${app.calendar ? `<button type="button" data-action="app-control" data-id="${escape(app.id)}" data-control="unschedule">Remove schedule</button>` : ''}<div class="form-error" role="alert"></div></form></details>
       <h3>Recent runs</h3>${runs.map((run) => `<section class="app-result" data-run-id="${escape(run.id)}"><strong>${escape(date(run.createdAt))} · ${escape(run.status.replaceAll('_', ' '))}</strong><p>Source v${run.sourceVersion} · ${escape(run.filename)}</p>${run.stepEvidence ? `<details><summary>Run details · ${run.stepEvidence.length} completed steps</summary><ol>${run.stepEvidence.map((step) => `<li>${escape(step.operation)} · ${step.inputRows} → ${step.outputRows} records</li>`).join('')}</ol></details>` : ''}<details><summary>Review output</summary><pre>${escape(run.output)}</pre></details>${run.status === 'saved' ? `<a href="/api/app-runs/${encodeURIComponent(run.id)}/download">Download ${escape(run.filename)}</a>` : ''}${run.status === 'needs_review' ? `<div class="app-actions"><button data-action="app-review" data-id="${escape(run.id)}" data-review="save" ${!valid || run.grantId !== app.grantId ? 'disabled' : ''}>Approve & save in Relay</button><button data-action="app-review" data-id="${escape(run.id)}" data-review="discard">Discard result</button></div>` : ''}</section>`).join('') || '<p>No runs yet.</p>'}</article>`;
@@ -354,9 +380,33 @@ const RelayApps = {
     const id = button.dataset.id,
       action = button.dataset.action,
       data = this.data();
+    if (action === 'app-attio-control') {
+      await api('/api/attio/control', { method: 'POST', body: { tenantId: state.tenantId, action: button.dataset.operation } });
+      state.attioReview = null;
+      await refresh(); render(); return;
+    }
+    if (action === 'app-attio-prepare') {
+      state.attioReview = await api('/api/attio/prepare', { method: 'POST', body: { taskId: state.detail.task.id, submissionId: button.dataset.submission, fileId: id } });
+      render(); return;
+    }
+    if (action === 'app-attio-send') {
+      if (state.attioSending) return;
+      state.attioSending = true;
+      const taskId = state.detail?.task.id;
+      const tenantId = state.tenantId;
+      try {
+        for (let row = 0; row < 50; row++) {
+          if (state.detail?.task.id !== taskId || state.tenantId !== tenantId) break;
+          state.attioReview = await api('/api/attio/send', { method: 'POST', body: { id, consent: 'upsert-reviewed-companies' } });
+          render();
+          if (state.attioReview.status !== 'sending') break;
+        }
+      } finally { state.attioSending = false; render(); }
+      return;
+    }
     if (action === 'app-tool-open') {
       const target = document.getElementById(
-        button.dataset.tool === 'local' ? 'tool-local' : 'tool-drive',
+        'tool-' + button.dataset.tool,
       );
       if (target) {
         if (target.tagName === 'DETAILS') target.open = true;
@@ -376,7 +426,7 @@ const RelayApps = {
       return;
     }
     if (action === 'app-hosting-plans') {
-      notice.textContent = 'Relay hosting will require an active paid Pro or Business subscription. Checkout stays disabled until Stripe is connected.';
+      notice.textContent = 'Relay hosting will require an active paid Pro or Business subscription. Hosting subscription checkout is not enabled; local subscription fixtures are used for testing.';
       return;
     }
     if (action === 'app-request') {

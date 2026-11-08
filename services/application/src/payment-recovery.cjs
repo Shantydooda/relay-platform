@@ -29,7 +29,7 @@ function createPaymentRecovery({ repository, now, localExecution, paymentRecover
         const history = await repo.list('payment-recovery', 'tenant_id', job.id, 100);
         return { id: job.id, title: task?.title || 'Operator verification', type: job.type,
           status: job.status === 'review' ? 'needs_review' : job.failures ? 'retrying' : job.leaseUntil > now() ? 'checking' : job.nextAt < now() - 60000 ? 'overdue' : 'scheduled',
-          paymentStatus: task?.settlement?.status || null, amountMinor: task?.settlement?.amountMinor ?? null,
+          paymentStatus: task?.settlement?.status || null, amountMinor: task?.settlement?.amountMinor ?? null, currency: task?.settlement?.currency || 'USD',
           failures: job.failures, lastCheckedAt: job.lastCheckedAt || null, nextAt: job.nextAt,
           errorCode: job.errorCode || null, snapshot: snapshot(job), canRetry: !blockedReason, blockedReason,
           references: task?.settlement ? ['sessionId','intentId','refundId','transferId','payoutId'].filter(field=>task.settlement[field]).map(field=>({type:field,id:task.settlement[field]})) : [],

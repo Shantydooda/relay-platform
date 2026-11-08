@@ -32,6 +32,7 @@ function createRecurring(context, execution) {
     if (body.monthlyLimitMinor < body.perRunLimitMinor || body.consent !== 'local-unpaid-recurring') fail(400, 'CONSENT_REQUIRED', 'Confirm unpaid recurring execution and a monthly limit at least as large as one run.');
     return command(actor.user.id, key, ['schedule', taskId, body], repo => taskFor(repo, actor, taskId, true), async repo => {
       const task = await taskFor(repo, actor, taskId, true);
+      require('./orchestration.cjs').fixedScope(task);
       expected(task, body.expectedVersion);
       if (task.recurringScheduleId) fail(409, 'SCHEDULE_EXISTS', 'This request already has a schedule. Manage it in Scheduled work.');
       if (!task.workPlan || task.workPlan.cadence === 'once' || task.assignment) fail(409, 'RECURRING_REQUEST_REQUIRED', 'Start a recurring request and confirm its scope before enabling a schedule. Deliveries cannot be converted into recurring work.');
@@ -39,6 +40,7 @@ function createRecurring(context, execution) {
       if (calendar.cadence !== task.workPlan.cadence) fail(409, 'CADENCE_CHANGED', 'The calendar must match the confirmed recurring request.');
       const offer = task.offers.find(o => o.id === task.selectedOfferId);
       if (task.status !== 'posted' || !offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now() || !offer.runtimeBid) fail(409, 'OFFER_UNAVAILABLE', 'Select a current runtime offer for this recurring request.');
+      if ((offer.currency || 'USD') !== 'USD') fail(409, 'CURRENCY_UNSUPPORTED', 'Recurring budgets currently require a USD offer.');
       if (offer.amountMinor > body.perRunLimitMinor) fail(400, 'INVALID_LIMIT', 'The run limit must cover the selected quote.');
       const agent = await repo.get('agent', offer.agentId);
       const capability = agent?.capabilities.find(c => c.id === offer.capabilityId);
@@ -121,13 +123,13 @@ function createRecurring(context, execution) {
           const capability = agent?.capabilities.find(c => c.id === schedule.capabilityId);
           if (!capability || capabilityView(agent, capability, now()).qualification !== 'qualified') return pause('The selected capability needs renewed qualification.');
           if (!agent.credentialHash || agent.credentialExpiresAt <= now() || agent.connectedAt <= now() - 120000 || !agent.rules.automaticRequested) return;
-          const offer = task.offers.find(o => o.agentId === schedule.agentId && o.capabilityId === schedule.capabilityId && o.scopeVersion === task.scopeVersion && o.expiresAt > now() && o.runtimeBid && o.amountMinor <= schedule.perRunLimitMinor);
+          const offer = task.offers.find(o => o.agentId === schedule.agentId && o.capabilityId === schedule.capabilityId && o.scopeVersion === task.scopeVersion && o.expiresAt > now() && o.runtimeBid && (o.currency || 'USD') === 'USD' && o.amountMinor <= schedule.perRunLimitMinor);
           if (!offer) return;
           const month = monthKey(schedule.calendar, now());
           const reserved = schedule.month === month ? schedule.reservedMinor : 0;
           if (reserved + offer.amountMinor > schedule.monthlyLimitMinor) return pause('Monthly quote limit reached. No additional run was authorized.');
           if (task.selectedOfferId !== offer.id) {
-            task.selectedOfferId = offer.id; touch(task, now()); event(task, 'system', 'schedule.offer_selected', now()); await saveTask(repo, task);
+            task.selectedOfferId = offer.id; touch(task, now()); event(task, 'system', 'schedule.offer_selected', now(), offer.id); await saveTask(repo, task);
           }
           if (schedule.companyApprovalRequired && task.approval?.status !== 'approved') return;
           // Same execution authorization as an interactive buyer, inside this

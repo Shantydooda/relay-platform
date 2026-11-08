@@ -8,14 +8,14 @@ function createStripeSandbox({ secretKey, origin, apiVersion = '2025-02-24.acaci
   if (typeof secretKey !== 'string' || !/^sk_test_[A-Za-z0-9]+$/.test(secretKey)) throw new Error('A Stripe sandbox secret key is required; live keys are forbidden.');
   const local = new URL(origin);
   if (local.origin !== origin || local.protocol !== 'http:' || local.hostname !== '127.0.0.1') throw new Error('Sandbox redirects must use localhost.');
-  async function request(path, fields, key, account) {
+  async function request(path, fields, key, account, v2 = false) {
     if (!/^\/[a-z0-9_/?=&\[\]-]+$/i.test(path)) throw new Error('Invalid provider path');
-    const response = await fetchImpl(`https://api.stripe.com/v1${path}`, {
+    const response = await fetchImpl(`https://api.stripe.com/${v2 ? 'v2' : 'v1'}${path}`, {
       method: fields ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(15000),
-      headers: { Authorization: `Bearer ${secretKey}`, 'Stripe-Version': apiVersion,
-        ...(fields ? { 'Content-Type': 'application/x-www-form-urlencoded', 'Idempotency-Key': key } : {}),
+      headers: { Authorization: `Bearer ${secretKey}`, 'Stripe-Version': v2 ? '2026-10-28.endive' : apiVersion,
+        ...(fields ? { 'Content-Type': v2 ? 'application/json' : 'application/x-www-form-urlencoded', 'Idempotency-Key': key } : {}),
         ...(account ? { 'Stripe-Account': account } : {}) },
-      ...(fields ? { body: new URLSearchParams(fields).toString() } : {})
+      ...(fields ? { body: v2 ? JSON.stringify(fields) : new URLSearchParams(fields).toString() } : {})
     });
     if (!response.ok) fail(502, 'SANDBOX_PROVIDER_ERROR', 'Stripe sandbox could not confirm this operation. Retry the same operation; do not create a replacement.');
     const value = await response.json();
@@ -35,13 +35,29 @@ function createStripeSandbox({ secretKey, origin, apiVersion = '2025-02-24.acaci
     if (!/^[a-z]+_[A-Za-z0-9_]+$/.test(value || '')) fail(502, 'PROVIDER_ID_INVALID', 'Invalid sandbox object reference.');
     return value;
   };
+  function currency(record) {
+    const value = record.currency || 'USD'; // Legacy operations were USD.
+    if (!['USD', 'EUR'].includes(value)) fail(409, 'SANDBOX_CURRENCY_UNSUPPORTED', 'Use an explicit USD or EUR agreement.');
+    return value.toLowerCase();
+  }
   return {
     kind: 'stripe-sandbox',
     async createOperator(operation) {
-      const account = await request('/accounts', { type: 'express', country: operation.country,
-        'capabilities[transfers][requested]': 'true', 'settings[payouts][schedule][interval]': 'manual',
-        'metadata[relay_operator]': operation.ownerId }, operation.id);
-      return { accountId: id(account.id) };
+      const account = sandbox(await request('/core/accounts', {
+        contact_email: operation.contactEmail,
+        dashboard: 'express',
+        identity: { country: operation.country.toLowerCase() },
+        configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
+        defaults: { responsibilities: { fees_collector: 'application', losses_collector: 'application' } },
+        metadata: { relay_operator: operation.ownerId }
+      }, operation.id, null, true));
+      // Accounts v2 interoperates with v1 settings and settlement APIs. Set the
+      // schedule before persisting readiness; retries reuse both provider keys.
+      const accountId = id(account.id);
+      await request(`/accounts/${accountId}`, {
+        'settings[payouts][schedule][interval]': 'manual'
+      }, `${operation.id}:manual-payouts`);
+      return { accountId };
     },
     async onboarding(accountId, key) {
       const link = await request('/account_links', { account: id(accountId), type: 'account_onboarding',
@@ -58,9 +74,20 @@ function createStripeSandbox({ secretKey, origin, apiVersion = '2025-02-24.acaci
         payoutsEnabled: a.payouts_enabled === true, manualPayouts: a.settings?.payouts?.schedule?.interval === 'manual',
         requirements: (requirements.currently_due || []).slice(0, 50), pending: (requirements.pending_verification || []).length > 0 };
     },
+    async assertFundingSupported(accountId, agreedCurrency = 'USD') {
+      const expected = currency({ currency: agreedCurrency });
+      // No FX: fail before charging a buyer if
+      // Stripe would settle the charge or recipient balance in another currency.
+      const platform = await request('/account');
+      const recipient = await request(`/accounts/${id(accountId)}`);
+      if (platform.default_currency !== expected || recipient.default_currency !== expected) {
+        fail(409, 'SANDBOX_CURRENCY_UNSUPPORTED',
+          'The agreed currency must match both Stripe settlement currencies. Funding is blocked; no charge was created.');
+      }
+    },
     async checkout(operation) {
       const s = sandbox(await request('/checkout/sessions', { mode: 'payment', 'payment_method_types[0]': 'card',
-        'line_items[0][price_data][currency]': 'usd', 'line_items[0][price_data][unit_amount]': String(operation.amountMinor),
+        'line_items[0][price_data][currency]': currency(operation), 'line_items[0][price_data][unit_amount]': String(operation.amountMinor),
         'line_items[0][price_data][product_data][name]': 'Relay sandbox task funding', 'line_items[0][quantity]': '1',
         client_reference_id: operation.id, 'metadata[relay_operation]': operation.id,
         'payment_intent_data[transfer_group]': operation.id,
@@ -71,37 +98,41 @@ function createStripeSandbox({ secretKey, origin, apiVersion = '2025-02-24.acaci
     async funding(payment) {
       const s = sandbox(await request(`/checkout/sessions/${id(payment.sessionId)}?expand[]=payment_intent`));
       const intent = s.payment_intent;
-      if (s.amount_total !== payment.amountMinor || s.currency !== 'usd' || s.client_reference_id !== payment.operationId) fail(502, 'FUNDING_MISMATCH', 'Sandbox funding does not match the agreed amount.');
+      if (s.amount_total !== payment.amountMinor || s.currency !== currency(payment) || s.client_reference_id !== payment.operationId) fail(502, 'FUNDING_MISMATCH', 'Sandbox funding does not match the agreed amount.');
       if (s.payment_status !== 'paid') return { status: s.status === 'expired' ? 'expired' : 'awaiting_payment' };
       sandbox(intent);
-      if (intent.status !== 'succeeded' || intent.amount_received !== payment.amountMinor || intent.currency !== 'usd' || typeof intent.latest_charge !== 'string') fail(502, 'FUNDING_MISMATCH', 'Sandbox payment is not fully confirmed.');
+      if (intent.status !== 'succeeded' || intent.amount_received !== payment.amountMinor || intent.currency !== currency(payment) || typeof intent.latest_charge !== 'string') fail(502, 'FUNDING_MISMATCH', 'Sandbox payment is not fully confirmed.');
       return { status: 'funded', intentId: id(intent.id), chargeId: id(intent.latest_charge) };
     },
     async refund(operation) {
       const r = await request('/refunds', { payment_intent: id(operation.intentId), amount: String(operation.amountMinor), 'metadata[relay_operation]': operation.id }, operation.id);
-      if (r.amount !== operation.amountMinor || r.currency !== 'usd' || r.payment_intent !== operation.intentId) fail(502, 'REFUND_MISMATCH', 'Refund does not match funding.');
+      if (r.amount !== operation.amountMinor || r.currency !== currency(operation) || r.payment_intent !== operation.intentId) fail(502, 'REFUND_MISMATCH', 'Refund does not match funding.');
       return { refundId: id(r.id), status: r.status };
     },
     async refundStatus(payment) {
       // Refund objects have no livemode attribute; the test credential and matched intent bind them.
       const r = await request(`/refunds/${id(payment.refundId)}`);
-      if (r.amount !== payment.amountMinor || r.currency !== 'usd' || r.payment_intent !== payment.intentId) fail(502, 'REFUND_MISMATCH', 'Refund does not match funding.');
+      if (r.amount !== payment.amountMinor || r.currency !== currency(payment) || r.payment_intent !== payment.intentId) fail(502, 'REFUND_MISMATCH', 'Refund does not match funding.');
       return { status: r.status };
     },
     async transfer(operation) {
-      const t = sandbox(await request('/transfers', { amount: String(operation.amountMinor), currency: 'usd',
+      const charge = sandbox(await request(`/charges/${id(operation.chargeId)}?expand[]=balance_transaction`));
+      if (charge.currency !== currency(operation) || charge.amount !== operation.amountMinor || charge.balance_transaction?.currency !== currency(operation)) {
+        fail(409, 'SETTLEMENT_CURRENCY_MISMATCH', 'Charge settlement does not match the agreed currency. Operations review is required; no transfer was created.');
+      }
+      const t = sandbox(await request('/transfers', { amount: String(operation.amountMinor), currency: currency(operation),
         destination: id(operation.accountId), source_transaction: id(operation.chargeId), 'metadata[relay_operation]': operation.id }, operation.id));
-      if (t.amount !== operation.amountMinor || t.currency !== 'usd' || t.destination !== operation.accountId || t.source_transaction !== operation.chargeId) fail(502, 'TRANSFER_MISMATCH', 'Transfer does not match the settlement.');
+      if (t.amount !== operation.amountMinor || t.currency !== currency(operation) || t.destination !== operation.accountId || t.source_transaction !== operation.chargeId) fail(502, 'TRANSFER_MISMATCH', 'Transfer does not match the settlement.');
       return { transferId: id(t.id) };
     },
     async payout(operation) {
-      const p = sandbox(await request('/payouts', { amount: String(operation.amountMinor), currency: 'usd', 'metadata[relay_operation]': operation.id }, operation.id, id(operation.accountId)));
-      if (p.amount !== operation.amountMinor || p.currency !== 'usd') fail(502, 'PAYOUT_MISMATCH', 'Payout does not match the settlement.');
+      const p = sandbox(await request('/payouts', { amount: String(operation.amountMinor), currency: currency(operation), 'metadata[relay_operation]': operation.id }, operation.id, id(operation.accountId)));
+      if (p.amount !== operation.amountMinor || p.currency !== currency(operation)) fail(502, 'PAYOUT_MISMATCH', 'Payout does not match the settlement.');
       return { payoutId: id(p.id), status: p.status };
     },
     async payoutStatus(payment) {
       const p = sandbox(await request(`/payouts/${id(payment.payoutId)}`, null, null, id(payment.accountId)));
-      if (p.amount !== payment.amountMinor || p.currency !== 'usd') fail(502, 'PAYOUT_MISMATCH', 'Payout does not match the settlement.');
+      if (p.amount !== payment.amountMinor || p.currency !== currency(payment)) fail(502, 'PAYOUT_MISMATCH', 'Payout does not match the settlement.');
       return { status: p.status };
     }
   };

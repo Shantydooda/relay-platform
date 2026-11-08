@@ -33,6 +33,7 @@ function createTaskChanges(context) {
     return { task, offer };
   }
   function changeable(task) {
+    require('./orchestration.cjs').fixedScope(task);
     assertUnfunded(task);
     if (task.assignment && task.assignment.mode !== 'local-unpaid')
       fail(
@@ -160,7 +161,7 @@ function createTaskChanges(context) {
           baseScopeVersion: task.scopeVersion,
           agentId: offer.agentId,
           operatorId: actor.user.id,
-          previousAmountMinor: offer.amountMinor,
+          currency: offer.currency || 'USD', previousAmountMinor: offer.amountMinor,
           amountMinor: body.amountMinor,
           retainedMinor: body.retainedMinor,
           deliveryMinutes: body.deliveryMinutes,

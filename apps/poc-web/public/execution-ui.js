@@ -68,6 +68,32 @@ const RelayExecution = {
       <p>Only this task’s agreed brief and attached input are shared with the selected runtime. No Drive, CRM or external destinations are connected.</p>
       <button class="primary" data-action="authorize-local">Run locally · no payment</button><button class="quiet" data-action="hide-start">Keep reviewing</button></section>`;
   },
+  async requestRevision(form, notes) {
+    const task = state.detail.task;
+    const submissionId = form.dataset.id;
+    try {
+      await command(`/api/tasks/${task.id}/request-revision`, 'POST', {
+        expectedVersion: task.version, submissionId, notes,
+      });
+    } catch (error) {
+      if (error.code !== 'VERSION_CONFLICT') throw error;
+      await refresh();
+      render();
+      const currentForm = root.querySelector('#delivery-revision');
+      if (currentForm?.dataset.id === submissionId) {
+        currentForm.querySelector('[name=notes]').value = notes;
+        currentForm.closest('details').open = true;
+        showError({message:'Delivery status updated. Your notes are saved here. Review the latest files, then submit your revision again.'}, currentForm);
+      } else {
+        notice.textContent = 'The delivery changed. Review the latest result before requesting another revision. Your previous request was not submitted.';
+      }
+      return;
+    }
+    state.followExecution = true;
+    await refresh();
+    state.scrollTarget = '.delivery-submission:last-of-type';
+    render();
+  },
   file(taskId, submissionId, file) {
     const key = `${taskId}:${submissionId}:${file.id}`;
     const preview = state.filePreview?.key === key ? state.filePreview : null;
@@ -78,7 +104,7 @@ const RelayExecution = {
     return `<div class="delivery-file"><strong>${escape(file.filename)}</strong><span>${file.size < 1024 ? `${file.size} bytes` : `${(file.size / 1024).toFixed(1)} KB`}</span>
       <details class="file-check-details"><summary>${blocked ? (file.scan.status === 'blocked' ? 'File blocked · view details' : file.scan.status === 'scan_error' ? 'Safety check delayed' : 'Checking file') : file.scan ? 'Safety check passed' : 'File details'}</summary><p class="hint">${file.scan ? `${escape({ scanning: 'Scanning automatically', quarantined: 'Queued for scanning', scan_error: 'Scan incomplete', blocked: 'File blocked', clean: 'Scan passed' }[file.scan.status] || 'Awaiting scan')} · ${escape(file.scan.reason)}` : 'Legacy text delivery · malware scanning was not recorded.'}</p><p>${escape(file.mime)}</p></details>
       <div class="inline-actions">${!blocked && textPreview ? `<button class="quiet" data-action="preview-file" data-task="${escape(taskId)}" data-submission="${escape(submissionId)}" data-file="${escape(file.id)}" data-file-key="${escape(key)}">Preview ${escape(file.filename)}</button>` : ''}
-      ${!blocked ? `<a class="file-download" href="/api/tasks/${taskId}/submissions/${submissionId}/files/${file.id}" download>Download</a>` : ''}${file.scan && ['scan_error', 'quarantined'].includes(file.scan.status) ? `<button class="quiet" data-action="scan-file" data-task="${escape(taskId)}" data-submission="${escape(submissionId)}" data-file="${escape(file.id)}">Retry file scan</button>` : ''}</div>
+      ${!blocked ? `<a class="file-download" aria-label="Download ${escape(file.filename)}" href="/api/tasks/${taskId}/submissions/${submissionId}/files/${file.id}" download>Download</a>` : ''}${file.scan && ['scan_error', 'quarantined'].includes(file.scan.status) ? `<button class="quiet" data-action="scan-file" data-task="${escape(taskId)}" data-submission="${escape(submissionId)}" data-file="${escape(file.id)}">Retry file scan</button>` : ''}</div>
       ${
         preview && !blocked
           ? `<section class="delivery-preview" id="delivery-preview-${escape(file.id)}" aria-label="Preview of ${escape(file.filename)}"><div class="row-heading"><h4>File preview</h4><button class="quiet" data-action="close-file-preview">Close preview</button></div>
@@ -121,6 +147,7 @@ const RelayExecution = {
       ${['queued', 'running', 'buyer_review'].includes(execution.status) ? '<details><summary>Cancel execution</summary><form id=\"execution-cancel\" class=\"market-form\"><label>Reason<textarea name=\"reason\" maxlength=\"1000\" required></textarea></label><p>Relay will reject further submissions. A supplier must stop its own tools; actions already taken cannot be undone here.</p><div class=\"form-error\" role=\"alert\"></div><button type=\"submit\">Cancel execution</button></form></details>' : ''}
       ${typeof RelayApps === 'object' ? RelayApps.taskControls(task) : ''}
       ${typeof RelayRecurring === 'object' ? RelayRecurring.recovery(task) : ''}
+      ${typeof RelayApps === 'object' ? RelayApps.attioDelivery(task, current) : ''}
       ${execution.status === 'accepted' ? '<p>Your delivery is accepted. Original files and prior revisions remain available on this task.</p>' : ''}</article>`;
   },
   builderTask(task) {

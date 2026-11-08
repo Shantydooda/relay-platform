@@ -34,8 +34,8 @@ function owner(actor, agent) {
   if (!agent || agent.ownerId !== actor?.user?.id || actor.recoveryRequired) notFound();
   return agent;
 }
-function event(task, actorId, type, now) {
-  task.events.push({ sequence: task.events.length + 1, type, version: task.version, createdAt: now, actorId });
+function event(task, actorId, type, now, offerId) {
+  task.events.push({ sequence: task.events.length + 1, type, version: task.version, createdAt: now, actorId, ...(offerId ? { offerId } : {}) });
 }
 function touch(task, now) { task.version++; task.updatedAt = now; }
 function taskView(task, now) {
@@ -46,16 +46,29 @@ function taskView(task, now) {
     companyApprovalRequired: !!task.companyApprovalRequired,
     approvalStatus: require('./approvals.cjs').approvalView(task, now)?.status || null,
     recurringScheduleId: task.recurringScheduleId || null, scheduleId: task.scheduleId || null, scheduledFor: task.scheduledFor || null,
-    workPlan: task.workPlan || null,
+    workPlan: task.workPlan || null, orchestrationPlan: task.orchestrationPlan || null, orchestrationStep: task.orchestrationStep ? { ...task.orchestrationStep, handoffs: task.orchestrationStep.handoffs.map(({sourceTaskId,submissionId,submissionVersion})=>({sourceTaskId,submissionId,submissionVersion})) } : null,
     contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], contextReads: task.contextReads || [],
     scoping: task.scoping?.version === task.version ? (task.scoping.status === 'pending' && task.scoping.expiresAt <= now ? { status: 'failed', error: 'The local reply was interrupted. Try again; your message is saved.' } : task.scoping) : null,
     selectedOfferId: offer && offer.expiresAt > now ? offer.id : null,
     input: input ? { filename: input.filename, size: input.size, sha256: input.sha256, notes: input.notes } : null };
 }
+function listingState(agent) { return agent.listingStatus || 'published'; }
+function requestableAgent(agent, actor, time) {
+  return !!agent && listingState(agent) === 'published' && agent.ownerId !== actor.user.id &&
+    agent.capabilities.some(item => capabilityView(agent, item, time).qualification === 'qualified');
+}
+function listingView(agent, time) {
+  const capabilities = agent.capabilities.map(item => capabilityView(agent, item, time));
+  return { id: agent.id, name: agent.name, kind: agent.kind, purpose: agent.purpose,
+    domain: agent.domain, operatorName: agent.operatorName, listingStatus: listingState(agent),
+    availability: capabilities.some(item => item.qualification === 'qualified') ? 'available' : 'qualification_pending',
+    capabilities: capabilities.map(({ id, category, task, qualification, assessment }) =>
+      ({ id, category, task, qualification, evidence: assessment?.evidence || null })) };
+}
 function agentView(agent, now) {
   const connected = !!agent.credentialHash && (!agent.credentialExpiresAt || agent.credentialExpiresAt > now) && agent.connectedAt > now - 120000;
   const { id, name, kind, purpose, domain, integration, capabilities, setupStage, createdAt, version } = agent;
-  return { id, name, kind, purpose, domain, integration, capabilities: capabilities.map(item => capabilityView(agent, item, now)), setupStage, createdAt, version,
+  return { id, name, kind, purpose, domain, integration, listingStatus: listingState(agent), capabilities: capabilities.map(item => capabilityView(agent, item, now)), setupStage, createdAt, version,
     connection: connected ? 'connected' : 'not_connected',
     rules: { ...agent.rules, version, automaticEnabled: connected && agent.rules.automaticRequested },
     readiness: { profile: !!purpose, connection: connected, capability: capabilities.some(item => capabilityView(agent, item, now).qualification === 'qualified'), operator: false, payout: false,
@@ -63,7 +76,7 @@ function agentView(agent, now) {
     runtime: { connected, connectedAt: agent.connectedAt || null, kind: agent.runtimeKind || null, transport: agent.runtimeTransport || 'local-csv', expiresAt: agent.credentialExpiresAt || null, name: agent.runtimeName || null, version: agent.runtimeVersion || null } };
 }
 
-function createApplication({ repository, now = Date.now, localExecution = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, paymentRecoveryUserIds = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour }) {
+function createApplication({ repository, now = Date.now, localExecution = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour }) {
   const limits = require('./workspace-limits.cjs').workspaceLimits(conversationsPerHour);
   async function command(actorId, key, input, authorize, execute, lockKey, prepare) {
     if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(key)) fail(400, 'IDEMPOTENCY_REQUIRED', 'A valid request key is required.');
@@ -95,29 +108,55 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   const taskFor = async (repo, actor, id, write = false) => {
     const current = resolveActor ? await resolveActor(actor.user.id) : actor;
-    return buyer({ ...actor, memberships: current.memberships }, await repo.get('task', id, true), write);
+    const task = buyer({ ...actor, memberships: current.memberships }, await repo.get('task', id, true), write);
+    if (write && task.orchestrationStep?.supersededBy) fail(409, 'STEP_SUPERSEDED', 'This step was replaced. Open the current parent plan.');
+    return task;
   };
   const agentFor = async (repo, actor, id) => owner(actor, await repo.get('agent', id, true));
 
   async function createTask(actor, body, key) {
-    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode']);
+    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'expectedSourceVersion']);
     membership(actor, body.tenantId, true);
+    const repeating = body.repeatFromTaskId !== undefined;
+    if (repeating) {
+      text(body.repeatFromTaskId, 'Previous task', 36, 36);
+      positive(body.expectedSourceVersion, 'Previous task version');
+    } else if (body.expectedSourceVersion !== undefined || body.discoverySource === 'repeat-hire') {
+      fail(400, 'INVALID_INPUT', 'Repeat hire requires a completed source task.');
+    }
+    const authorize = async repo => {
+      membership(actor, body.tenantId, true);
+      if (repeating) await taskFor(repo, actor, body.repeatFromTaskId);
+    };
     const title = text(body.title, 'Title', 1, 120), brief = text(body.brief, 'Brief', 1, 10000);
-    return command(actor.user.id, key, ['create', body], async () => membership(actor, body.tenantId, true), async repo => {
+    return command(actor.user.id, key, ['create', body], authorize, async repo => {
       const time = now(), id = randomUUID();
+      let repeatHireOf = null;
+      if (repeating) {
+        const source = await taskFor(repo, actor, body.repeatFromTaskId);
+        expected(source, body.expectedSourceVersion);
+        if (source.tenantId !== body.tenantId || source.status === 'cancelled' ||
+            source.assignment?.status !== 'accepted' || source.orchestrationStep?.supersededBy ||
+            body.preferredAgentId !== source.assignment.agentId || body.preferenceMode !== 'agent' ||
+            body.discoverySource !== 'repeat-hire') {
+          fail(409, 'REPEAT_HIRE_UNAVAILABLE', 'Start a fresh request from the completed task in its original workspace.');
+        }
+        repeatHireOf = { taskId: source.id, version: source.version };
+      }
       await limits.consumeConversation(repo, body.tenantId, time);
-      let preferredAgentId = null, preferredOperatorId = null;
+      let preferredAgentId = null, preferredOperatorId = null, acquisition = null;
       if (body.preferredAgentId) {
         if (!['agent', 'builder'].includes(body.preferenceMode)) fail(400, 'INVALID_INPUT', 'Choose an agent or builder preference.');
-        const preferred = await repo.get('agent', text(body.preferredAgentId, 'Preferred agent', 36, 36));
-        const available = preferred && preferred.ownerId !== actor.user.id && preferred.capabilities.some(item => capabilityView(preferred, item, time).qualification === 'qualified');
+        const preferred = await repo.get('agent', text(body.preferredAgentId, 'Preferred agent', 36, 36), true);
+        const available = requestableAgent(preferred, actor, time);
         if (!available) fail(404, 'NOT_FOUND', 'That agent is not available for direct requests.');
+        acquisition = require('./acquisition.cjs').acquisition(body.discoverySource ?? 'unspecified', preferred, body.preferenceMode, time);
         if (body.preferenceMode === 'agent') preferredAgentId = preferred.id;
         else preferredOperatorId = preferred.ownerId;
-      } else if (body.preferenceMode !== undefined) {
+      } else if (body.preferenceMode !== undefined || body.discoverySource !== undefined) {
         fail(400, 'INVALID_INPUT', 'A routing preference requires an available agent.');
       }
-      const task = { id, tenantId: body.tenantId, ownerId: actor.user.id, title, brief, preferredAgentId, preferredOperatorId,
+      const task = { id, tenantId: body.tenantId, ownerId: actor.user.id, title, brief, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf,
         companyApprovalRequired: !!membership(actor, body.tenantId).company, status: 'draft', version: 1, scopeVersion: 1, createdAt: time, updatedAt: time,
         messages: [{ id: randomUUID(), body: brief, authorId: actor.user.id, authorName: actor.user.name, createdAt: time }],
         scopes: [{ version: 1, title, brief, createdAt: time }], events: [], offers: [], selectedOfferId: null, assignment: null, submissions: [] };
@@ -131,6 +170,9 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     return command(actor.user.id, key, [action, id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true);
       expected(task, body.expectedVersion);
+      if (task.orchestrationPlan && action !== 'messages') require('./orchestration.cjs').fixedScope(task);
+      if (task.orchestrationStep && ['scope','edit'].includes(action)) require('./orchestration.cjs').fixedScope(task);
+      if (action === 'post') require('./orchestration.cjs').ready(task);
       if (task.recurringScheduleId && action !== 'messages') fail(409, 'SCHEDULE_MANAGED', 'Manage this request in Scheduled work.');
       if (task.status === 'cancelled') fail(409, 'TASK_CLOSED', 'This request is closed.');
       if (action !== 'messages') assertUnfunded(task);
@@ -181,14 +223,25 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (!actor.memberships.length || actor.recoveryRequired) notFound();
     }, async repo => {
       const agent = { id: randomUUID(), ownerId: actor.user.id, operatorName: actor.user.name, name, purpose, domain, kind: body.kind,
-        integration: body.integration, capabilities, status: 'listed', version: 1, setupStage: 2, createdAt: now(),
+        integration: body.integration, capabilities, listingStatus: 'draft', status: 'listed', version: 1, setupStage: 2, createdAt: now(),
         rules: { automaticRequested: false, minimumPayout: 100, concurrency: 1 } };
       await repo.save('agent', agent);
       return { agentId: agent.id };
     });
   }
+  async function updateListing(actor, id, body, key) {
+    exactKeys(body, ['status', 'expectedVersion']);
+    if (!['draft', 'published', 'paused'].includes(body.status)) fail(400, 'INVALID_INPUT', 'Choose draft, published or paused.');
+    return command(actor.user.id, key, ['listing', id, body], repo => agentFor(repo, actor, id), async repo => {
+      const agent = await agentFor(repo, actor, id); expected(agent, body.expectedVersion);
+      agent.listingStatus = body.status;
+      agent.version++;
+      await repo.save('agent', agent);
+      return { agentId: id, listingStatus: agent.listingStatus, version: agent.version };
+    });
+  }
   async function configure(actor, id, body, key) {
-    exactKeys(body, ['integration', 'automaticRequested', 'minimumPayout', 'concurrency', 'expectedVersion', 'setupStage', 'name', 'purpose', 'domain', 'kind']);
+    exactKeys(body, ['integration', 'automaticRequested', 'minimumPayout', 'concurrency', 'expectedVersion', 'setupStage', 'name', 'purpose', 'domain', 'kind', 'currency']);
     if (!['api', 'sdk', 'mcp'].includes(body.integration) || typeof body.automaticRequested !== 'boolean') fail(400, 'INVALID_INPUT', 'Choose method and bidding preference.');
     positive(body.minimumPayout, 'Minimum payout', 10000000); positive(body.concurrency, 'Concurrency', 100); positive(body.setupStage, 'Stage', 3);
     return command(actor.user.id, key, ['configure', id, body], repo => agentFor(repo, actor, id), async repo => {
@@ -205,15 +258,19 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         agent.credentialExpiresAt = null;
       }
       agent.integration = body.integration; agent.setupStage = body.setupStage;
-      agent.rules = { automaticRequested: body.automaticRequested, minimumPayout: body.minimumPayout, concurrency: body.concurrency };
+      const currency = body.currency === undefined ? (agent.rules.currency || 'USD') : body.currency;
+      if (!['USD', 'EUR'].includes(currency)) fail(400, 'CURRENCY_UNSUPPORTED', 'Choose USD or EUR.');
+      agent.rules = { currency, automaticRequested: body.automaticRequested, minimumPayout: body.minimumPayout, concurrency: body.concurrency };
       agent.version++; await repo.save('agent', agent);
       return { agentId: id, version: agent.version, automaticEnabled: agentView(agent, now()).rules.automaticEnabled };
     });
   }
   async function quote(actor, id, body, key, runtime = null) {
-    exactKeys(body, ['agentId', 'capabilityId', 'expectedVersion', 'amountMinor', 'deliveryMinutes', 'proposal']);
+    exactKeys(body, ['agentId', 'capabilityId', 'expectedVersion', 'amountMinor', 'deliveryMinutes', 'proposal', 'currency']);
     positive(body.amountMinor, 'Amount', 10000000); positive(body.deliveryMinutes, 'Estimate', 525600);
     if (!localExecution) fail(403, 'COMMERCIAL_NOT_READY', 'Commercial bidding requires connected eligibility and funding services.');
+    const currency = body.currency === undefined ? 'USD' : body.currency;
+    if (!['USD', 'EUR'].includes(currency)) fail(400, 'CURRENCY_UNSUPPORTED', 'Choose USD or EUR.');
     const proposal = text(body.proposal, 'Proposal', 1, 3000);
     return command(actor.user.id, key, ['quote', id, body], async repo => { owner(actor, await repo.get('agent', body.agentId)); }, async repo => {
       const task = await repo.get('task', id, true), agent = await agentFor(repo, actor, body.agentId);
@@ -222,6 +279,9 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         if (agent.connectedAt <= now() - 120000) fail(409, 'RUNTIME_REQUIRED', 'Send a fresh heartbeat before bidding.');
       }
       if (!task || task.status !== 'posted' || actor.memberships.some(member => member.id === task.tenantId) || task.ownerId === actor.user.id) notFound();
+      require('./orchestration.cjs').ready(task);
+      if (currency !== 'USD' && (task.companyApprovalRequired || task.orchestrationStep || task.scheduleId || task.recurringScheduleId || (task.workPlan?.cadence && task.workPlan.cadence !== 'once'))) fail(409, 'CURRENCY_UNSUPPORTED', 'Budgets and recurring or coordinated work currently use USD.');
+      require('./orchestration.cjs').withinBudget(task, body.amountMinor);
       assertUnfunded(task);
       if (task.preferredAgentId && task.preferredAgentId !== body.agentId) fail(409, 'SCHEDULE_AGENT', 'This recurring run is reserved for its chosen agent.');
       if (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) fail(404, 'NOT_FOUND', 'This direct request is reserved for another builder.');
@@ -231,12 +291,13 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       const capability = agent.capabilities.find(item => item.id === body.capabilityId);
       if (!capability) notFound();
       if (runtime && (runtime.agentId !== agent.id || runtime.credentialHash !== agent.credentialHash || !agent.rules.automaticRequested)) fail(403, 'BIDDING_DISABLED', 'Automatic bidding is disabled.');
+      if (runtime && currency !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'Offer currency must match the agent quoting rules.');
       if (runtime && body.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'Offer is below the configured minimum.');
       if (task.offers.some(offer => offer.agentId === agent.id && offer.scopeVersion === task.scopeVersion && offer.expiresAt > now())) fail(409, 'OFFER_EXISTS', 'This agent already quoted on this scope.');
       const offer = { id: randomUUID(), agentId: agent.id, operatorId: actor.user.id, agentName: agent.name, agentType: agent.kind,
         operatorName: actor.user.name, category: capability.category, capability: capability.task, capabilityId: capability.id,
         qualification: capabilityView(agent, capability, now()).qualification, qualificationEvidence: capabilityView(agent, capability, now()).assessment, taskVersion: task.version, scopeVersion: task.scopeVersion,
-        amountMinor: body.amountMinor, deliveryMinutes: body.deliveryMinutes, proposal, currency: 'USD',
+        amountMinor: body.amountMinor, deliveryMinutes: body.deliveryMinutes, proposal, currency,
         createdAt: now(), expiresAt: now() + 86400000, runtimeBid: !!runtime, runtimeKind: runtime ? agent.runtimeKind : null };
       task.offers.push(offer); event(task, actor.user.id, 'offer.received', now()); await saveTask(repo, task);
       await repo.save('offer-index', { id: offer.id, ownerId: actor.user.id, taskId: id, offerId: offer.id });
@@ -255,7 +316,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (!offer) notFound();
       if (offer.scopeVersion !== task.scopeVersion) fail(409, 'VERSION_CONFLICT', 'Request a quote for the current scope.');
       if (offer.expiresAt <= now()) fail(409, 'OFFER_EXPIRED', 'This offer expired.');
-      task.selectedOfferId = offer.id; touch(task, now()); event(task, actor.user.id, 'offer.selected', now()); await saveTask(repo, task);
+      task.selectedOfferId = offer.id; touch(task, now()); event(task, actor.user.id, 'offer.selected', now(), offer.id); await saveTask(repo, task);
       return { taskId: id, offerId: offer.id, version: task.version, status: 'selected', executionAuthorized: false };
     });
   }
@@ -269,7 +330,14 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         task.scoping = { ...task.scoping, phase: job?.status === 'running' ? 'working' : 'waiting',
           requestedAt: job?.createdAt || task.scoping.expiresAt - 180000 };
       }
-      return { schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
+      let repeatHire = null;
+      if (task.status !== 'cancelled' && task.assignment?.status === 'accepted' && !task.orchestrationStep?.supersededBy &&
+          ['owner', 'employee'].includes(membership(actor, task.tenantId).role)) {
+        const agent = task.assignment.agentId ? await repo.get('agent', task.assignment.agentId) : null;
+        repeatHire = requestableAgent(agent, actor, now())
+          ? { available: true, agentId: agent.id, name: agent.name } : { available: false };
+      }
+      return { repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
         approval: require('./approvals.cjs').approvalView(task, now()), execution: publicExecution(task), payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), submissions: task.submissions.map(publicSubmission) };
     });
   }
@@ -330,7 +398,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       }
       return Promise.all(tasks.map(async task => {
         const offer = task.offers.find(item => item.id === (task.assignment?.offerId || task.selectedOfferId));
-        return { ...taskView(task, now()), agentName: offer.agentName, offerId: offer.id, amountMinor: offer.amountMinor, deliveryMinutes: offer.deliveryMinutes, proposal: offer.proposal,
+        return { ...taskView(task, now()), agentName: offer.agentName, offerId: offer.id, amountMinor: offer.amountMinor, currency: offer.currency || 'USD', deliveryMinutes: offer.deliveryMinutes, proposal: offer.proposal,
           acceptedAt: task.assignment?.authorizedAt || task.updatedAt, messages: task.messages.map(({authorId,...message})=>message), changeProposals: task.changeProposals || [], payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), execution: publicExecution(task), submissions: task.submissions.map(publicSubmission) };
       }));
     });
@@ -350,9 +418,11 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   // Runtime-specific commands are installed in one place and share task locks,
   // authorization, receipt replay handling and the same immutable task document.
-  const context = { driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView };
+  const context = { runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView };
   context.approvals = require('./approvals.cjs').createApprovals(context);
   context.credentials = require('./supplier-credentials.cjs').createCredentials(context);
+  const orchestration = require('./orchestration.cjs').createOrchestration(context);
+  const portfolio = require('./portfolio.cjs').createPortfolio(context);
   const payments = require('./payments.cjs').createPayments(context, paymentProvider);
   const qualification = require('./qualification.cjs').createQualification(context);
   const scoping = require('./scoping.cjs').createScoping(context, scopingProvider);
@@ -363,19 +433,29 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const lifecycle = require('./execution-lifecycle.cjs').createLifecycle(context);
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
-  return { ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./task-changes.cjs').createTaskChanges(context),
+  return { recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { attioDelivery: localExecution && !!resolveActor, notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
-      agents: actor => repository.read(async repo => (await repo.list('agent', 'owner_id', actor.user.id)).map(agent => agentView(agent, now()))),
+      saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
+      discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),
+      agents: actor => repository.read(async repo => Promise.all((await repo.list('agent', 'owner_id', actor.user.id)).map(async agent => ({ ...agentView(agent, now()), portfolio: (await repo.portfolioRecords('agentId', agent.id)).map(({ history, ...item }) => item) })))),
       catalog: actor => repository.read(async repo => {
         if (!actor?.user?.id || actor.recoveryRequired) fail(403, 'FORBIDDEN', 'An active account is required.');
         const rows = await repo.catalogAgents();
-        return rows.filter(agent => agent.ownerId !== actor.user.id && agent.purpose)
-          .map(agent => {
-            const capabilities = agent.capabilities.map(item => capabilityView(agent, item, now()));
-            const qualified = capabilities.filter(item => item.qualification === 'qualified');
-            return { id: agent.id, name: agent.name, kind: agent.kind, purpose: agent.purpose, domain: agent.domain, operatorName: agent.operatorName, availability: qualified.length ? 'available' : 'qualification_pending', capabilities: capabilities.map(({ id, category, task, qualification, assessment }) => ({ id, category, task, qualification, evidence: assessment?.evidence || null })) };
-          }).sort((a, b) => (a.availability === 'available' ? -1 : 1) - (b.availability === 'available' ? -1 : 1) || a.name.localeCompare(b.name));
+        return rows.filter(agent => listingState(agent) === 'published' && agent.ownerId !== actor.user.id && agent.purpose)
+          .map(agent => listingView(agent, now()))
+          .sort((a, b) => (a.availability === 'available' ? -1 : 1) - (b.availability === 'available' ? -1 : 1) || a.name.localeCompare(b.name));
       }),
+      listing: (actor, id) => repository.read(async repo => {
+        if (!actor?.user?.id || actor.recoveryRequired) fail(403, 'FORBIDDEN', 'An active account is required.');
+        const agent = await repo.get('agent', id);
+        if (!agent || (listingState(agent) !== 'published' && agent.ownerId !== actor.user.id)) notFound();
+        const examples = (await repo.portfolioRecords('agentId', id)).filter(item => item.status === 'published').map(portfolio.publicExample);
+        const saved = await require('./saved-agents.cjs').savedAgents(repo, actor.user.id);
+        return { ...listingView(agent, now()), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: agent.ownerId === actor.user.id };
+      }),
+      acquisition: require('./acquisition.cjs').createAcquisition(context),
+      addPortfolio: portfolio.add, decidePortfolio: portfolio.decide,
+      updateListing,
       addAgent, configure, opportunities, offers, accept: select, work: supplierTasks, quotes,
       quote
     }

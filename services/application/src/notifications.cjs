@@ -5,6 +5,11 @@ const {
   exactKeys,
 } = require('../../../packages/contracts/src/input.cjs');
 const labels = {
+  'portfolio.requested': 'A builder requests permission to share an excerpt',
+  'portfolio.approve': 'Portfolio sharing was approved',
+  'portfolio.decline': 'Portfolio sharing was declined',
+  'portfolio.revoke': 'Portfolio permission was revoked',
+  'portfolio.withdraw': 'A portfolio excerpt was withdrawn',
   'supplier.message': 'Your agent sent a message',
   'change.proposed': 'Revised terms are ready to review',
   'change.accepted': 'Revised terms were accepted',
@@ -30,6 +35,7 @@ const labels = {
   'schedule.run_created': 'A scheduled run was created',
 };
 const supplierTypes = new Set([
+  'portfolio.approve', 'portfolio.decline', 'portfolio.revoke',
   'change.accepted', 'change.declined',
   'message.added',
   'task.cancelled',

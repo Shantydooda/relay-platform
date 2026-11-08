@@ -32,6 +32,7 @@ function createExecution(context) {
     if (bytes.length !== metadata.size || hash(bytes) !== metadata.sha256) fail(409, 'FILE_UNAVAILABLE', 'File integrity check failed.');
     return bytes;
   }
+  context.verifiedBytes = verifiedBytes;
   function localOnly() {
     if (!localExecution) fail(403, 'LOCAL_EXECUTION_DISABLED', 'Unpaid execution is only available in explicit local development mode.');
   }
@@ -55,6 +56,7 @@ function createExecution(context) {
     if (!filename.toLowerCase().endsWith('.csv')) fail(400, 'INVALID_FILE', 'The local runtime accepts CSV input.');
     return command(actor.user.id, key, ['input', id, { ...body, base64: hash(bytes) }], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
+      if (task.orchestrationPlan || task.orchestrationStep?.dependencies.length) require('./orchestration.cjs').fixedScope(task);
       if (task.scheduleId || task.recurringScheduleId) fail(409, 'SCHEDULE_MANAGED', 'Recurring inputs are saved snapshots. Start a new recurring request to change them.');
       if (task.assignment || task.status === 'cancelled') fail(409, 'TASK_ASSIGNED', 'Inputs cannot be replaced after authorization.');
       assertUnfunded(task);
@@ -78,6 +80,8 @@ function createExecution(context) {
     });
   }
   async function authorizeWithin(repo, actor, task, mode) {
+    require('./orchestration.cjs').ready(task);
+    if (task.orchestrationStep && mode !== 'local-unpaid') fail(409, 'PLAN_LOCAL_ONLY', 'Orchestration currently supports local unpaid execution only.');
     if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Review and enable the recurring schedule. Each run gets its own execution.');
     localOnly();
     if (mode === 'local-unpaid') assertUnfunded(task);
@@ -95,9 +99,11 @@ function createExecution(context) {
     if (task.assignment) fail(409, 'TASK_ASSIGNED', 'This task is already authorized.');
     const offer = task.offers.find(item => item.id === task.selectedOfferId);
     if (!offer || offer.expiresAt <= now() || offer.scopeVersion !== task.scopeVersion || task.status !== 'posted') fail(409, 'OFFER_UNAVAILABLE', 'Select a valid offer for the current scope.');
+    require('./orchestration.cjs').withinBudget(task, offer.amountMinor);
     const agent = await repo.get('agent', offer.agentId, true);
     if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !offer.runtimeBid) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
     if (agent.runtimeKind !== 'supplier-hosted' && (agent.runtimeKind !== 'bounded-csv-automation' || !task.input)) fail(409, 'INPUT_REQUIRED', 'The local CSV runtime requires an attached CSV.');
+    if ((offer.currency || 'USD') !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'The operator changed quoting currency. Request a fresh offer.');
     if (offer.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'The operator changed its minimum. Request an updated offer.');
     if (offer.runtimeKind && offer.runtimeKind !== agent.runtimeKind) fail(409, 'RUNTIME_CHANGED', 'The agent connection changed. Request a fresh offer.');
     if (task.input) verifiedBytes(task.input, await repo.get('artifact', task.input.artifactId), task.id);
@@ -107,7 +113,7 @@ function createExecution(context) {
     task.assignment = { id: randomUUID(), agentId: agent.id, operatorId: offer.operatorId, offerId: offer.id,
       status: 'queued', authorizedAt: now(), mode, attempt: 0, progress: 'Waiting for the runtime',
       runtimeKind: agent.runtimeKind, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + Math.min(86400000, Math.max(300000, offer.deliveryMinutes * 120000)),
-      agreement: { ...offer, title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null } };
+      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null } };
     touch(task, now()); event(task, actor.user.id, 'assignment.authorized_local', now());
     await saveTask(repo, task);
     await repo.save('grant', { id: task.assignment.id, ownerId: offer.operatorId, tenantId: task.tenantId, taskId: task.id, agentId: agent.id });
@@ -162,7 +168,7 @@ function createExecution(context) {
         verifiedBytes(task.input, artifact, task.id);
         input = { ...task.input, base64: artifact.base64 };
       }
-      return { ...result, leaseToken: token, leaseUntil: task.assignment.leaseUntil, deadlineAt: task.assignment.deadlineAt || null, title: task.title, brief: task.assignment.agreement.brief, input, revisionNotes: task.assignment.revisionNotes || null };
+      return { ...result, leaseToken: token, leaseUntil: task.assignment.leaseUntil, deadlineAt: task.assignment.deadlineAt || null, title: task.title, brief: task.assignment.agreement.brief, handoffs: task.assignment.agreement.handoffs || [], input, revisionNotes: task.assignment.revisionNotes || null };
     });
   }
   async function assignmentsWithin(repo, principal) {

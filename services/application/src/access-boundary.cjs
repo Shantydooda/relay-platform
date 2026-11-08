@@ -40,7 +40,7 @@ function createAccessBoundary(repository) {
           }),
         );
       },
-      transaction: (key, work) =>
+      transaction: (key, work, options) =>
         run(() =>
           repository.transaction(key, (repo) => {
             const scope = { repo, active: true };
@@ -51,7 +51,7 @@ function createAccessBoundary(repository) {
                 scope.active = false;
               }
             });
-          }),
+          }, options),
         ),
     },
   };

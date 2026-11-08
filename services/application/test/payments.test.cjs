@@ -124,3 +124,133 @@ for (const adapter of ['sqlite', 'postgres']) test(`${adapter}: spending history
   const colleague = {...f.buyer,user:{...f.buyer.user,id:'colleague'},memberships:[{id:tenant,role:'employee'}]};
   assert.equal((await f.app.spendingHistory(colleague,tenant)).items.length,0);
 });
+
+test('Connect v2 creation and manual payout setup retry with stable independent keys', async () => {
+  const calls = [];
+  let failSettings = true;
+  const provider = createStripeSandbox({ secretKey: 'sk_test_fixture', origin: 'http://127.0.0.1:4180',
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/v2/core/accounts')) {
+        assert.equal(options.headers['Stripe-Version'], '2026-10-28.endive');
+        const body = JSON.parse(options.body);
+        assert.equal(body.contact_email, 'builder@example.com');
+        assert.equal(body.configuration.recipient.capabilities.stripe_balance.stripe_transfers.requested, true);
+        return { ok: true, json: async () => ({ id: 'acct_test', livemode: false }) };
+      }
+      assert.equal(url, 'https://api.stripe.com/v1/accounts/acct_test');
+      assert.equal(new URLSearchParams(options.body).get('settings[payouts][schedule][interval]'), 'manual');
+      if (failSettings) { failSettings = false; return { ok: false }; }
+      return { ok: true, json: async () => ({ id: 'acct_test' }) };
+    }
+  });
+  const operation = { id: 'stable-operation', ownerId: 'builder', country: 'DE', contactEmail: 'builder@example.com' };
+  await assert.rejects(provider.createOperator(operation), { code: 'SANDBOX_PROVIDER_ERROR' });
+  assert.deepEqual(await provider.createOperator(operation), { accountId: 'acct_test' });
+  assert.deepEqual(calls.map(c => c.options.headers['Idempotency-Key']),
+    ['stable-operation', 'stable-operation:manual-payouts', 'stable-operation', 'stable-operation:manual-payouts']);
+});
+
+test('Connect v2 rejects live account responses before setting payout configuration', async () => {
+  let calls = 0;
+  const provider = createStripeSandbox({ secretKey: 'sk_test_fixture', origin: 'http://127.0.0.1:4180',
+    fetchImpl: async () => { calls++; return { ok: true, json: async () => ({ id: 'acct_live', livemode: true }) }; }
+  });
+  await assert.rejects(provider.createOperator({ id: 'op', ownerId: 'builder', country: 'DE', contactEmail: 'builder@example.com' }), { code: 'LIVE_MODE_FORBIDDEN' });
+  assert.equal(calls, 1);
+});
+
+test('unsupported settlement currency blocks funding before reserving a payment', async t => {
+  const f = await fixture(t);
+  f.provider.assertFundingSupported = async () => {
+    const error = new Error('Unsupported currency'); error.code = 'SANDBOX_CURRENCY_UNSUPPORTED'; throw error;
+  };
+  await assert.rejects(f.begin('fund'), { code: 'SANDBOX_CURRENCY_UNSUPPORTED' });
+  assert.equal((await f.get()).settlement, undefined);
+  assert.equal(f.calls.filter(call => call[0] === 'checkout').length, 0);
+});
+
+test('Stripe settlement preflight rejects platform or recipient FX and permits USD pairs', async () => {
+  for (const currencies of [['eur','usd'], ['usd','eur'], ['usd','usd']]) {
+    let calls = 0;
+    const provider = createStripeSandbox({secretKey:'sk_test_fixture',origin:'http://127.0.0.1:4180',
+      fetchImpl: async () => ({ok:true,json:async()=>({default_currency:currencies[calls++]})})});
+    if (currencies.includes('eur')) await assert.rejects(provider.assertFundingSupported('acct_test'), {code:'SANDBOX_CURRENCY_UNSUPPORTED'});
+    else await provider.assertFundingSupported('acct_test');
+  }
+});
+
+test('unfinished legacy operator creation requires reconciliation before changing API generations', async t => {
+  const f = await fixture(t);
+  await f.options.repository.transaction('legacy-operator', async repo => {
+    await repo.save('sandbox-operator', {id:f.builder.user.id,ownerId:f.builder.user.id,country:'US',operationId:'legacy-operation',createdAt:Date.now(),status:'creating'});
+  });
+  const before = f.calls.length;
+  await assert.rejects(f.app.onboardOperator(f.builder,{country:'US'},randomUUID()), {code:'OPERATOR_MIGRATION_REVIEW'});
+  assert.equal(f.calls.length,before);
+});
+
+test('EUR agreement survives funding, restart, payout and currency-separated reporting', async t => {
+  const f = await fixture(t);
+  await f.repository.transaction('eur-fixture', async repo => {
+    const task = await repo.get('task', f.taskId);
+    task.offers[0].currency = 'EUR';
+    await repo.save('task', task);
+  });
+  let checked;
+  f.provider.assertFundingSupported = async (account, currency) => { checked = currency; };
+  await f.begin('fund');
+  assert.equal(checked, 'EUR');
+  await f.app.reconcilePayment(f.buyer, f.taskId);
+  await f.accept();
+  await f.begin('transfer', f.builder);
+  await f.begin('payout', f.builder);
+  const restarted = createApplication(f.options);
+  await restarted.reconcilePayment(f.builder, f.taskId);
+  const task = await f.get();
+  assert.equal(task.settlement.currency, 'EUR');
+  assert.deepEqual(task.settlement.ledger.map(entry => entry.currency), ['EUR', 'EUR', 'EUR']);
+  const eur = await restarted.spendingHistory(f.buyer, f.buyer.memberships[0].id, { currency: 'EUR' });
+  const usd = await restarted.spendingHistory(f.buyer, f.buyer.memberships[0].id, { currency: 'USD' });
+  assert.equal(eur.totals.releasedMinor, 500);
+  assert.equal(usd.totals.releasedMinor, 0);
+  assert.ok(eur.csv.includes('EUR'));
+  const page = await restarted.spendingHistory(f.buyer, f.buyer.memberships[0].id, { snapshot: eur.snapshotId });
+  assert.equal(page.currency, 'EUR');
+  assert.equal(page.csv, eur.csv);
+});
+
+test('EUR Stripe operations preserve amount and currency; FX transfer is blocked before writing', async () => {
+  const calls = [];
+  let wrongCurrency = false;
+  const provider = createStripeSandbox({ secretKey: 'sk_test_fixture', origin: 'http://127.0.0.1:4180', fetchImpl: async (url, options) => {
+    const body = options.body ? Object.fromEntries(new URLSearchParams(options.body)) : {};
+    calls.push({ url, body, method: options.method });
+    let value;
+    if (url.endsWith('/account') || url.includes('/accounts/')) value = { default_currency: 'eur' };
+    else if (url.includes('/charges/')) value = { livemode: false, amount: 100, currency: 'eur', balance_transaction: { currency: wrongCurrency ? 'usd' : 'eur' } };
+    else if (url.endsWith('/transfers')) value = { livemode: false, id: 'tr_eur', amount: 100, currency: 'eur', destination: 'acct_eur', source_transaction: 'ch_eur' };
+    else if (url.includes('/payouts')) value = { livemode: false, id: 'po_eur', amount: 100, currency: 'eur', status: 'paid' };
+    else if (url.includes('/refunds')) value = { id: 're_eur', amount: 100, currency: 'eur', payment_intent: 'pi_eur', status: 'succeeded' };
+    else if (options.method === 'POST') value = { livemode: false, id: 'cs_eur', url: 'https://checkout.stripe.com/test' };
+    else value = { livemode: false, amount_total: 100, currency: 'eur', client_reference_id: 'op_eur', payment_status: 'paid', payment_intent: { livemode: false, status: 'succeeded', amount_received: 100, currency: 'eur', latest_charge: 'ch_eur', id: 'pi_eur' } };
+    return { ok: true, json: async () => value };
+  }});
+  const op = { id: 'op_eur', operationId: 'op_eur', amountMinor: 100, currency: 'EUR', accountId: 'acct_eur', taskId: randomUUID(), createdAt: Date.now(), sessionId: 'cs_eur', intentId: 'pi_eur', chargeId: 'ch_eur', refundId: 're_eur', payoutId: 'po_eur' };
+  await provider.assertFundingSupported(op.accountId, 'EUR');
+  await assert.rejects(provider.assertFundingSupported(op.accountId, 'USD'), { code: 'SANDBOX_CURRENCY_UNSUPPORTED' });
+  await provider.checkout(op);
+  assert.equal(calls.at(-1).body['line_items[0][price_data][currency]'], 'eur');
+  assert.equal((await provider.funding(op)).status, 'funded');
+  await provider.refund(op);
+  await provider.refundStatus(op);
+  await provider.transfer(op);
+  assert.equal(calls.at(-1).body.currency, 'eur');
+  await provider.payout(op);
+  assert.equal(calls.at(-1).body.currency, 'eur');
+  await provider.payoutStatus(op);
+  wrongCurrency = true;
+  const writes = calls.filter(call => call.method === 'POST').length;
+  await assert.rejects(provider.transfer(op), { code: 'SETTLEMENT_CURRENCY_MISMATCH' });
+  assert.equal(calls.filter(call => call.method === 'POST').length, writes);
+});

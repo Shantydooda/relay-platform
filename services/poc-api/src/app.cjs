@@ -17,6 +17,8 @@ const assets = {
   '/':['index.html','text/html; charset=utf-8'],
   '/notifications-ui.js':['notifications-ui.js','text/javascript; charset=utf-8'],
   '/workspace-apps-ui.js':['workspace-apps-ui.js','text/javascript; charset=utf-8'],
+  '/orchestration-ui.js':['orchestration-ui.js','text/javascript; charset=utf-8'],
+  '/portfolio-ui.js':['portfolio-ui.js','text/javascript; charset=utf-8'],
   '/agent-market-ui.js':['agent-market-ui.js','text/javascript; charset=utf-8'],
   '/recurring-ui.js':['recurring-ui.js','text/javascript; charset=utf-8'],
   '/buyer-flow.js':['buyer-flow.js','text/javascript; charset=utf-8'],
@@ -192,7 +194,13 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if (path === '/api/notifications' && method === 'GET') return send(200, await store.notifications(actor));
         if (path === '/api/notifications/read' && method === 'POST') return send(200, await store.readNotifications(actor, await jsonBody(req)));
 
-        if (path === '/api/drive/status' && method === 'GET') return send(200, await store.driveStatus(actor, url.searchParams.get('tenantId')));
+        const attioReceipts = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/delivery-destinations$/);
+        if (attioReceipts && method === 'GET') return send(200, await store.attioDeliveries(actor, attioReceipts[1]));
+        if (path === '/api/attio/status' && method === 'GET') return send(200, await store.attioStatus(actor, url.searchParams.get('tenantId')));
+        const attioActions = { control: 'controlAttio', prepare: 'prepareAttio', send: 'sendAttio' };
+        const attioRoute = path.match(/^\/api\/attio\/([a-z]+)$/);
+        if (attioRoute && method === 'POST' && Object.hasOwn(attioActions, attioRoute[1])) return send(200, await store[attioActions[attioRoute[1]]](actor, await jsonBody(req)));
+        if (path === '/api/drive/status'  && method === 'GET') return send(200, await store.driveStatus(actor, url.searchParams.get('tenantId')));
         const driveActions = {begin:'beginDrive',complete:'completeDrive',picker:'drivePicker',import:'importDriveFile',disconnect:'disconnectDrive'};
         const driveRoute = path.match(/^\/api\/drive\/([a-z]+)$/);
         if (driveRoute && method === 'POST' && Object.hasOwn(driveActions, driveRoute[1])) return send(200, await store[driveActions[driveRoute[1]]](actor, await jsonBody(req)));
@@ -227,6 +235,12 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if (path === '/api/execution-queue' && method === 'GET') return send(200, await store.executionQueue(actor));
         const scheduleRoute = path.match(/^\/api\/schedules\/([0-9a-f-]{36})$/);
         if (scheduleRoute && method === 'POST') return send(200, await store.updateSchedule(actor, scheduleRoute[1], await jsonBody(req), key));
+        const orchestrationRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(orchestrate|handover|complete-plan|recover-plan)$/);
+        if (orchestrationRoute && method === 'POST') {
+          const [,id,action] = orchestrationRoute;
+          const handlers = {'recover-plan':store.recoverOrchestration,orchestrate:store.createOrchestration,handover:store.approveHandover,'complete-plan':store.completeOrchestration};
+          return send(200, await handlers[action](actor,id,await jsonBody(req),req.headers['idempotency-key']));
+        }
         const recurringRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(schedule|retry-execution)$/);
         if (recurringRoute && method === 'POST') return send(200, await store[recurringRoute[2] === 'schedule' ? 'createSchedule' : 'retryExecution'](actor, recurringRoute[1], await jsonBody(req), key));
         if (store.createTeam) {
@@ -250,7 +264,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if (approvalRoute && method === 'POST') return send(200, await store[approvalRoute[2] ? 'decideApproval' : 'requestApproval'](actor, approvalRoute[1], await jsonBody(req), key));
         if (path === '/api/payments/recovery' && method === 'GET') return send(200, await store.paymentRecovery(actor, url.searchParams.get('after') || ''));
         if (path === '/api/payments/recovery/retry' && method === 'POST') { const body = await jsonBody(req); const { id, ...input } = body; return send(200, await store.retryPaymentRecovery(actor, id, input, key)); }
-        if (path === '/api/payments/history' && method === 'GET') return send(200, await store.spendingHistory(actor, url.searchParams.get('tenantId'), {from:url.searchParams.get('from') || '',to:url.searchParams.get('to') || ''}));
+        if (path === '/api/payments/history' && method === 'GET') return send(200, await store.spendingHistory(actor, url.searchParams.get('tenantId'), {currency:url.searchParams.get('currency') || 'USD',from:url.searchParams.get('from') || '',to:url.searchParams.get('to') || '',snapshot:url.searchParams.get('snapshot') || '',page:url.searchParams.get('page') || 0}));
         if (path === '/api/payments/status' && method === 'GET') return send(200, await store.paymentStatus(actor));
         if (path === '/api/payments/operator' && method === 'POST') return send(200, await store.onboardOperator(actor, await jsonBody(req), key));
         if (path === '/api/payments/operator/refresh' && method === 'POST') { await jsonBody(req); return send(200, await store.refreshOperator(actor)); }
@@ -313,7 +327,19 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if(store.marketplace){
         const market=store.marketplace,key=req.headers['idempotency-key'];
         if(path==='/api/agents'&&method==='GET')return send(200,{agents:await market.agents(actor)});
-        if(path==='/api/agent-market'&&method==='GET')return send(200,{agents:await market.catalog(actor)});
+        if(path==='/api/agent-market'&&method==='GET')return send(200,await market.discover(actor,{savedOnly:url.searchParams.has('saved') ? ({true:true,false:false}[url.searchParams.get('saved')] ?? null) : false,q:url.searchParams.get('q')||'',category:url.searchParams.get('category')||'All agents',type:url.searchParams.get('type')||'All types',after:url.searchParams.get('after')||'',limit:Number(url.searchParams.get('limit')||25)}));
+        const savedAgentPath = path.match(/^\/api\/agent-market\/([0-9a-f-]{36})\/saved$/);
+        if (savedAgentPath && method === 'PATCH') return send(200, await market.saveAgent(actor, savedAgentPath[1], await jsonBody(req), key));
+        const listingPath=path.match(/^\/api\/agent-market\/([0-9a-f-]{36})$/);
+        if(listingPath&&method==='GET')return send(200,{agent:await market.listing(actor,listingPath[1])});
+        const acquisitionPath = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/acquisition$/);
+        if (acquisitionPath && method === 'GET') return send(200, await market.acquisition(actor, acquisitionPath[1]));
+        const portfolioAdd = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/portfolio$/);
+        if (portfolioAdd && method === 'POST') return send(201, await market.addPortfolio(actor, portfolioAdd[1], await jsonBody(req), key));
+        const portfolioDecision = path.match(/^\/api\/portfolio\/([0-9a-f-]{36})$/);
+        if (portfolioDecision && method === 'PATCH') return send(200, await market.decidePortfolio(actor, portfolioDecision[1], await jsonBody(req), key));
+        const listingUpdate=path.match(/^\/api\/agents\/([0-9a-f-]{36})\/listing$/);
+        if(listingUpdate&&method==='PATCH')return send(200,await market.updateListing(actor,listingUpdate[1],await jsonBody(req),key));
         if(path==='/api/agents'&&method==='POST')return send(201,await market.addAgent(actor,await jsonBody(req),key));
         if(path==='/api/opportunities'&&method==='GET')return send(200,{tasks:await market.opportunities(actor)});
         if(path==='/api/quotes'&&method==='GET')return send(200,{offers:await market.quotes(actor)});

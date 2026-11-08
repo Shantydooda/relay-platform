@@ -20,6 +20,10 @@ const {
   runPackage,
 } = require('../../app-runtime/src/data-app.cjs');
 
+const {
+  runLocalAutomation,
+} = require('../../app-runtime/src/local-worker.cjs');
+
 const RECIPES = Object.freeze({
   'csv-normalize-v1': { title: 'Clean CSV data', filename: 'clean.csv' },
   'link-inventory-v1': { title: 'Organize links', filename: 'links.json' },
@@ -144,8 +148,14 @@ function createWorkspaceApps(context) {
     }
   }
   async function hostingEntitlement(repo, tenantId) {
-    const subscription = await repo.get('workspace-subscription', tenantId);
-    const active = subscription?.status === 'active' && ['pro', 'business'].includes(subscription.plan);
+    const subscription = await repo.get(
+      'workspace-subscription',
+      tenantId,
+      true,
+    );
+    const active =
+      subscription?.status === 'active' &&
+      ['pro', 'business'].includes(subscription.plan);
     return {
       plan: subscription?.plan || 'free',
       status: subscription?.status || 'none',
@@ -164,7 +174,16 @@ function createWorkspaceApps(context) {
         runs: [],
         audit: [],
         recipes: RECIPES,
-        hosting: { entitlement: { plan: 'free', status: 'none', canHost: false, includedHosts: 0, provider: null }, hosts: [] },
+        hosting: {
+          entitlement: {
+            plan: 'free',
+            status: 'none',
+            canHost: false,
+            includedHosts: 0,
+            provider: null,
+          },
+          hosts: [],
+        },
       };
     return repository.read(async (repo) => {
       const visible = (rows) =>
@@ -195,13 +214,24 @@ function createWorkspaceApps(context) {
       );
       const entitlement = await hostingEntitlement(repo, tenantId);
       const hosts = visible(await repo.list('app-host', 'tenant_id', tenantId))
-        .filter(host => host.status !== 'deleted')
-        .map(host => ({
+        .filter((host) => host.status !== 'deleted')
+        .map((host) => ({
           ...host,
-          status: !entitlement.canHost && host.status === 'running' ? 'subscription_hold' : host.status,
+          status:
+            !entitlement.canHost && host.status === 'running'
+              ? 'subscription_hold'
+              : host.status,
           subscriptionActive: entitlement.canHost,
         }));
-      return { sources, apps, grants, runs, audit: auditLog, recipes: RECIPES, hosting: { entitlement, hosts } };
+      return {
+        sources,
+        apps,
+        grants,
+        runs,
+        audit: auditLog,
+        recipes: RECIPES,
+        hosting: { entitlement, hosts },
+      };
     });
   }
   async function saveSource(actor, body, key) {
@@ -1012,7 +1042,32 @@ function createWorkspaceApps(context) {
       };
     });
   }
+  async function executionHost(repo, app) {
+    const host = await repo.get('app-host', app.id, true);
+    if (!host) return null; // Existing local previews are not hosted execution.
+    const entitlement = await hostingEntitlement(repo, app.tenantId);
+    if (!entitlement.canHost)
+      fail(
+        402,
+        'SUBSCRIPTION_REQUIRED',
+        'An active hosting subscription is required to run this automation.',
+      );
+    if (host.status !== 'running')
+      fail(
+        409,
+        'HOST_STOPPED',
+        'Start or provision the host before running this automation.',
+      );
+    if (host.packageHash !== (app.packageHash || null))
+      fail(
+        409,
+        'HOST_RELEASE_STALE',
+        'Deploy the current app release before running.',
+      );
+    return host;
+  }
   async function execute(repo, app, slot, admission = null) {
+    const host = await executionHost(repo, app);
     if (app.status !== 'active')
       fail(409, 'APP_PAUSED', 'Resume this app before running it.');
     const pending = app.latestRunId
@@ -1043,7 +1098,17 @@ function createWorkspaceApps(context) {
     const id = `${String(now()).padStart(16, '0')}:${randomUUID()}`;
     let output, stepEvidence;
     try {
-      if (app.recipe === 'csv-normalize-v1')
+      if (host) {
+        const result = await (context.runHostedAutomation || runLocalAutomation)({
+          recipe: app.recipe,
+          appPackage: app.appPackage,
+          content: input.content,
+        });
+        output = result.output;
+        stepEvidence = result.steps;
+        await executionHost(repo, app);
+        await checkGrant(repo, grant, app);
+      } else if (app.recipe === 'csv-normalize-v1')
         output = normalizeCsv(Buffer.from(input.content)).csv.toString();
       else if (app.recipe === 'link-inventory-v1')
         output = JSON.stringify(inventory(input.content), null, 2);
@@ -1063,6 +1128,13 @@ function createWorkspaceApps(context) {
     const run = record({ user: { id: app.id } }, app.tenantId, {
       id,
       requestedBy: app.ownerId,
+      ...(host
+        ? {
+            execution: 'local-process',
+            hostId: host.id,
+            hostRelease: host.release,
+          }
+        : { execution: 'local-preview' }),
       appId: app.id,
       status: 'needs_review',
       recipe: app.recipe,
@@ -1178,6 +1250,7 @@ function createWorkspaceApps(context) {
                 'Review the previous result before another run.',
               );
             const grant = await repo.get('tool-grant', app.grantId, true);
+            await executionHost(repo, app);
             const input = await checkGrant(repo, grant, app);
             return admitSource(repo, input, grant);
           }
@@ -1186,7 +1259,11 @@ function createWorkspaceApps(context) {
   }
   async function controlHost(actor, id, body, key) {
     exactKeys(body, ['expectedVersion', 'action']);
-    if (!['provision', 'start', 'stop', 'redeploy', 'deprovision'].includes(body.action))
+    if (
+      !['provision', 'start', 'stop', 'redeploy', 'deprovision'].includes(
+        body.action,
+      )
+    )
       fail(400, 'INVALID_ACTION', 'Choose a supported host action.');
     return command(
       actor.user.id,
@@ -1196,18 +1273,39 @@ function createWorkspaceApps(context) {
       async (repo) => {
         const app = await owned(repo, actor, 'workspace-app', id, true);
         const entitlement = await hostingEntitlement(repo, app.tenantId);
-        const requiresSubscription = ['provision', 'start', 'redeploy'].includes(body.action);
+        const requiresSubscription = [
+          'provision',
+          'start',
+          'redeploy',
+        ].includes(body.action);
         if (requiresSubscription && !entitlement.canHost)
-          fail(402, 'SUBSCRIPTION_REQUIRED', 'Relay hosting requires an active Pro or Business subscription.');
+          fail(
+            402,
+            'SUBSCRIPTION_REQUIRED',
+            'Relay hosting requires an active Pro or Business subscription.',
+          );
         let host = await repo.get('app-host', id, true);
         if (body.action === 'provision') {
-          if (host && host.status !== 'deleted') fail(409, 'HOST_EXISTS', 'This app already has a Relay host.');
+          if (host && host.status !== 'deleted')
+            fail(409, 'HOST_EXISTS', 'This app already has a Relay host.');
           expected(app, body.expectedVersion);
-          if (app.status !== 'active') fail(409, 'APP_PAUSED', 'Resume this app before hosting it.');
-          await checkGrant(repo, await repo.get('tool-grant', app.grantId), app);
+          if (app.status !== 'active')
+            fail(409, 'APP_PAUSED', 'Resume this app before hosting it.');
+          await checkGrant(
+            repo,
+            await repo.get('tool-grant', app.grantId),
+            app,
+          );
           const hosts = await repo.list('app-host', 'tenant_id', app.tenantId);
-          if (hosts.filter(item => item.status !== 'deleted').length >= entitlement.includedHosts)
-            fail(409, 'HOST_LIMIT', 'This subscription has reached its included host limit.');
+          if (
+            hosts.filter((item) => item.status !== 'deleted').length >=
+            entitlement.includedHosts
+          )
+            fail(
+              409,
+              'HOST_LIMIT',
+              'This subscription has reached its included host limit.',
+            );
           host = record(actor, app.tenantId, {
             id: app.id,
             appId: app.id,
@@ -1216,39 +1314,64 @@ function createWorkspaceApps(context) {
             release: 1,
             deployedAppVersion: app.version,
             packageHash: app.packageHash || null,
-            resources: { cpu: 'shared', memoryMb: 256, storageMb: 512 },
+            resources: { cpu: 'shared', memoryMb: 64, timeoutMs: 5000 },
             startedAt: now(),
             lastDeployAt: now(),
           });
         } else {
-          if (!host || host.status === 'deleted') fail(404, 'NOT_FOUND', 'Provision this app before managing its host.');
+          if (!host || host.status === 'deleted')
+            fail(
+              404,
+              'NOT_FOUND',
+              'Provision this app before managing its host.',
+            );
           expected(host, body.expectedVersion);
           if (['start', 'redeploy'].includes(body.action)) {
-            if (app.status !== 'active') fail(409, 'APP_PAUSED', 'Resume this app before starting its host.');
-            await checkGrant(repo, await repo.get('tool-grant', app.grantId), app);
+            if (app.status !== 'active')
+              fail(
+                409,
+                'APP_PAUSED',
+                'Resume this app before starting its host.',
+              );
+            await checkGrant(
+              repo,
+              await repo.get('tool-grant', app.grantId),
+              app,
+            );
           }
           if (body.action === 'start') {
-            if (host.status === 'running') fail(409, 'HOST_RUNNING', 'This host is already running.');
-            host.status = 'running'; host.startedAt = now();
+            if (host.status === 'running')
+              fail(409, 'HOST_RUNNING', 'This host is already running.');
+            host.status = 'running';
+            host.startedAt = now();
           }
           if (body.action === 'stop') {
-            if (host.status === 'stopped') fail(409, 'HOST_STOPPED', 'This host is already stopped.');
-            host.status = 'stopped'; host.stoppedAt = now();
+            if (host.status === 'stopped')
+              fail(409, 'HOST_STOPPED', 'This host is already stopped.');
+            host.status = 'stopped';
+            host.stoppedAt = now();
           }
           if (body.action === 'redeploy') {
-            host.status = 'running'; host.release++; host.lastDeployAt = now();
-            host.deployedAppVersion = app.version; host.packageHash = app.packageHash || null;
+            host.status = 'running';
+            host.release++;
+            host.lastDeployAt = now();
+            host.deployedAppVersion = app.version;
+            host.packageHash = app.packageHash || null;
           }
           if (body.action === 'deprovision') {
-            host.status = 'deleted'; host.deletedAt = now();
+            host.status = 'deleted';
+            host.deletedAt = now();
           }
           host.version++;
         }
         await repo.save('app-host', host);
-        await audit(repo, app, `host.${body.action}`, { hostId: host.id, release: host.release });
+        await audit(repo, app, `host.${body.action}`, {
+          hostId: host.id,
+          release: host.release,
+        });
         return { hostId: host.id, version: host.version, status: host.status };
       },
-      `app-host:${id}`,
+      `app:${id}`,
     );
   }
   async function review(actor, id, body, key) {
@@ -1373,6 +1496,7 @@ function createWorkspaceApps(context) {
               );
             const grant = await repo.get('tool-grant', app.grantId, true);
             const input = await checkGrant(repo, grant, app);
+            await executionHost(repo, app);
             if (input.provenance?.mode === 'live-file') {
               await context.driveBudget(repo, app.tenantId, now());
               result.admission = {
@@ -1413,7 +1537,15 @@ function createWorkspaceApps(context) {
             app.reason =
               error.code === 'DRIVE_WORKSPACE_LIMIT'
                 ? `${error.message} Resume this app after the allowance resets.`
-                : 'Review the latest result, source or permissions before resuming.';
+                : [
+                      'SUBSCRIPTION_REQUIRED',
+                      'HOST_STOPPED',
+                      'APP_WORKER_BUSY',
+                      'APP_WORKER_TIMEOUT',
+                      'APP_WORKER_FAILED',
+                    ].includes(error.code)
+                  ? error.message
+                  : 'Review the latest result, source or permissions before resuming.';
             await audit(repo, app, 'app.blocked', {
               code: error.code || 'INPUT_UNSUPPORTED',
             });

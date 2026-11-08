@@ -35,7 +35,7 @@ body.workspace-open {
 }
 
 /* Direct agent discovery and paid Relay hosting */
-.agent-market-workspace{max-width:1380px;margin:0 auto;padding:26px 30px 50px}.agent-market-title{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}.agent-market-title h1{font-size:22px;line-height:1.2;margin:0 0 7px}.agent-market-title p{color:var(--relay-muted);margin:0;max-width:720px}.agent-market-layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:28px}.agent-market-categories{position:sticky;top:24px;align-self:start}.market-category-group{display:flex;flex-direction:column;gap:3px;margin-bottom:20px}.market-category-group button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:34px;padding:7px 10px;border:0;border-radius:9px;background:transparent;color:var(--relay-muted);box-shadow:none;text-align:left}.market-category-group button:hover,.market-category-group button.active{background:var(--relay-active);color:var(--relay-text);transform:none}.market-category-group button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.market-category-group button small{font-size:11px;color:var(--relay-muted)}.market-group-label{display:block;margin:0 10px 7px;color:var(--relay-muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em}.agent-market-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 150px;gap:10px;margin:0 0 18px}.market-search{display:flex;align-items:center;gap:8px;min-height:38px;padding:0 12px;border-radius:11px;background:var(--relay-active);color:var(--relay-muted)}.market-search input,.market-type select{width:100%;min-height:0;padding:0;border:0;background:transparent;box-shadow:none}.market-search input:focus,.market-type select:focus{outline:0}.market-type{display:flex;align-items:center;padding:0 10px;border-radius:11px;background:var(--relay-active)}.agent-market-section-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.agent-market-section-heading h2{font-size:15px;margin:0}.agent-market-section-heading span{color:var(--relay-muted);font-size:12px}.agent-market-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.agent-market-card{display:flex;min-height:242px;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--relay-border);border-radius:16px;background:var(--relay-panel);transition:transform .18s ease,border-color .18s ease,background .18s ease}.agent-market-card:hover{transform:translateY(-2px);border-color:var(--relay-border-strong);background:var(--relay-panel-hover)}.agent-market-card header{display:flex;gap:10px;align-items:center}.agent-market-card header>div{min-width:0;flex:1}.agent-market-card h3,.agent-market-card p{margin:0}.agent-market-card h3{font-size:14px;line-height:1.25}.agent-market-card header p{color:var(--relay-muted);font-size:12px;margin-top:3px}.agent-avatar{width:34px;height:34px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--relay-border);border-radius:10px;background:var(--relay-active);font-size:13px;font-weight:700}.agent-status{width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:#686868}.agent-status.available{background:var(--relay-success);box-shadow:0 0 0 3px color-mix(in srgb,var(--relay-success) 14%,transparent)}.agent-market-purpose{display:-webkit-box;overflow:hidden;color:var(--relay-muted);font-size:13px;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:3}.agent-card-meta{display:flex;gap:6px;flex-wrap:wrap}.agent-card-meta span{padding:4px 7px;border-radius:7px;background:var(--relay-active);color:var(--relay-muted);font-size:10px}.agent-lead-capability{display:flex;min-width:0;flex-direction:column;gap:3px;margin-top:auto}.agent-lead-capability small{color:var(--relay-muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.agent-lead-capability strong{overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.agent-market-card footer{display:grid;grid-template-columns:auto 1fr;gap:7px}.agent-market-card footer button{min-height:32px;padding:6px 10px;font-size:11px}.agent-market-empty{grid-column:1/-1;padding:48px 24px;border:1px dashed var(--relay-border);border-radius:16px;text-align:center}.agent-market-empty h2{font-size:16px}.agent-market-note{margin:22px 0 0;color:var(--relay-muted);font-size:12px}.relay-hosting{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px;margin:24px 0;border:1px solid var(--relay-border);border-radius:20px;background:linear-gradient(135deg,var(--relay-panel),color-mix(in srgb,var(--relay-panel) 85%,#597bff 15%))}.hosting-copy{display:flex;gap:16px;align-items:flex-start;max-width:700px}.hosting-copy h2,.hosting-copy p{margin:4px 0}.hosting-plan{display:flex;min-width:220px;flex-direction:column;align-items:flex-start;gap:7px}.host-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.host-metrics span{display:flex;flex-direction:column;padding:12px;border:1px solid var(--relay-border);border-radius:12px}.host-metrics small{color:var(--relay-muted)}@media(max-width:1080px){.agent-market-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.agent-market-workspace{padding:18px 14px 40px}.agent-market-title{flex-direction:column}.agent-market-layout{grid-template-columns:1fr}.agent-market-categories{position:static;display:flex;overflow:auto;gap:7px;padding-bottom:4px}.market-category-group{display:contents}.market-group-label{display:none}.market-category-group button{width:auto;min-width:max-content;background:var(--relay-panel)}.agent-market-toolbar{grid-template-columns:1fr}.agent-market-grid{grid-template-columns:1fr}.relay-hosting{align-items:flex-start;flex-direction:column}.hosting-plan{min-width:0}.host-metrics{grid-template-columns:1fr}}
+.agent-market-workspace{max-width:1380px;margin:0 auto;padding:26px 30px 50px}.agent-market-title{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}.agent-market-title h1{font-size:22px;line-height:1.2;margin:0 0 7px}.agent-market-title p{color:var(--relay-muted);margin:0;max-width:720px}.agent-market-layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:28px}.agent-market-categories{position:sticky;top:24px;align-self:start}.market-category-group{display:flex;flex-direction:column;gap:3px;margin-bottom:20px}.market-category-group button{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:34px;padding:7px 10px;border:0;border-radius:9px;background:transparent;color:var(--relay-muted);box-shadow:none;text-align:left}.market-category-group button:hover,.market-category-group button.active{background:var(--relay-active);color:var(--relay-text);transform:none}.market-category-group button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.market-category-group button small{font-size:11px;color:var(--relay-muted)}.market-group-label{display:block;margin:0 10px 7px;color:var(--relay-muted);font-size:11px;text-transform:uppercase;letter-spacing:.1em}.agent-market-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 150px;gap:10px;margin:0 0 18px}.market-search{display:flex;align-items:center;gap:8px;min-height:38px;padding:0 12px;border-radius:11px;background:var(--relay-active);color:var(--relay-muted)}.market-search input,.market-type select{width:100%;min-height:0;padding:0;border:0;background:transparent;box-shadow:none}.market-search input:focus,.market-type select:focus{outline:0}.market-type{display:flex;align-items:center;padding:0 10px;border-radius:11px;background:var(--relay-active)}.agent-market-section-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.agent-market-section-heading h2{font-size:15px;margin:0}.agent-market-section-heading span{color:var(--relay-muted);font-size:12px}.agent-market-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:12px}.agent-market-card{display:flex;min-height:242px;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--relay-border);border-radius:16px;background:var(--relay-panel);transition:transform .18s ease,border-color .18s ease,background .18s ease}.agent-market-card:hover{transform:translateY(-2px);border-color:var(--relay-border-strong);background:var(--relay-panel-hover)}.agent-market-card header{display:flex;gap:10px;align-items:center}.agent-market-card header>div{min-width:0;flex:1}.agent-market-card h3,.agent-market-card p{margin:0}.agent-market-card h3{font-size:14px;line-height:1.25}.agent-market-card header p{color:var(--relay-muted);font-size:12px;margin-top:3px}.agent-avatar{width:34px;height:34px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--relay-border);border-radius:10px;background:var(--relay-active);font-size:13px;font-weight:700}.agent-status{width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:#686868}.agent-status.available{background:var(--relay-success);box-shadow:0 0 0 3px color-mix(in srgb,var(--relay-success) 14%,transparent)}.agent-market-purpose{display:-webkit-box;overflow:hidden;color:var(--relay-muted);font-size:13px;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:3}.agent-card-meta{display:flex;gap:6px;flex-wrap:wrap}.agent-card-meta span{padding:4px 7px;border-radius:7px;background:var(--relay-active);color:var(--relay-muted);font-size:10px}.agent-lead-capability{display:flex;min-width:0;flex-direction:column;gap:3px;margin-top:auto}.agent-lead-capability small{color:var(--relay-muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.agent-lead-capability strong{overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.agent-market-card footer{display:grid;grid-template-columns:auto 1fr;gap:7px}.agent-market-card footer button{min-height:32px;padding:6px 10px;font-size:11px}.agent-market-empty{grid-column:1/-1;padding:48px 24px;border:1px dashed var(--relay-border);border-radius:16px;text-align:center}.agent-market-empty h2{font-size:16px}.agent-market-note{margin:22px 0 0;color:var(--relay-muted);font-size:12px}.relay-hosting{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px;margin:24px 0;border:1px solid var(--relay-border);border-radius:20px;background:linear-gradient(135deg,var(--relay-panel),color-mix(in srgb,var(--relay-panel) 85%,#597bff 15%))}.hosting-copy{display:flex;gap:16px;align-items:flex-start;max-width:700px}.hosting-copy h2,.hosting-copy p{margin:4px 0}.hosting-plan{display:flex;min-width:220px;flex-direction:column;align-items:flex-start;gap:7px}.host-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.host-metrics span{display:flex;flex-direction:column;padding:12px;border:1px solid var(--relay-border);border-radius:12px}.host-metrics small{color:var(--relay-muted)}@media(max-width:760px){.agent-market-workspace{padding:18px 14px 40px}.agent-market-title{flex-direction:column}.agent-market-layout{grid-template-columns:1fr}.agent-market-categories{position:static;display:flex;overflow:auto;gap:7px;padding-bottom:4px}.market-category-group{display:contents}.market-group-label{display:none}.market-category-group button{width:auto;min-width:max-content;background:var(--relay-panel)}.agent-market-toolbar{grid-template-columns:1fr}.agent-market-grid{grid-template-columns:1fr}.relay-hosting{align-items:flex-start;flex-direction:column}.hosting-plan{min-width:0}.host-metrics{grid-template-columns:1fr}}
 
 body.workspace-open #app {
   min-height: 100dvh;
@@ -1429,4 +1429,216 @@ body.workspace-open :is(button, input, textarea, select, summary):focus-visible 
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+/* Explicit light palette. Scoped to authenticated workspaces; brand assets and
+   public landing colours are unchanged. */
+html[data-appearance='light'] body.workspace-open {
+  --relay-text: #20201e;
+  --relay-muted: #62625d;
+  --relay-border: #deded8;
+  --relay-border-strong: #bdbdb5;
+  --relay-surface: #ffffff;
+  --relay-panel: #ffffff;
+  --relay-panel-hover: #fafaf7;
+  --relay-subtle: #f0f0eb;
+  --relay-active: #eaeae4;
+  --relay-canvas: #f7f7f3;
+  --relay-accent: #20201e;
+  --relay-accent-hover: #383834;
+  --relay-accent-soft: #eaeae4;
+  --relay-accent-ink: #20201e;
+  --relay-accent-line: #bdbdb5;
+  --relay-focus: #39735f;
+  --relay-positive: #216b4b;
+  --relay-success: #216b4b;
+  --relay-shadow: 0 12px 36px #20201e0a;
+  color-scheme: light;
+  background: var(--relay-surface);
+}
+html[data-appearance='light'] body.workspace-open :is(
+  .workspace-header, .account-popover, .panel, .business-card, .task-card,
+  .work-activity, .delivery-submission, .delivery-file, .business-approval,
+  .offer-card, .app-card, .tool-card, .tool-library-card, .task-table,
+  .request-work .composer, .thread-composer, .notification-menu > summary,
+  #notification-slot > button, input, textarea, select, .tool-library-toolbar input,
+  .tool-library-toolbar select, .business-switcher select, .market-form, pre
+) {
+  color: var(--relay-text);
+  background: var(--relay-surface);
+  border-color: var(--relay-border);
+  box-shadow: none;
+}
+html[data-appearance='light'] body.workspace-open :is(
+  .brand, h1, h2, h3, .thread-message:not(.buyer), .request-work textarea,
+  .thread-composer textarea, .thread-composer .replybox textarea,
+  .work-index-row h3 button, .account-menu > summary, .workspace-switch,
+  .workspace-navigation nav button, .recent-conversations button
+) { color: var(--relay-text); }
+html[data-appearance='light'] body.workspace-open :is(
+  .workspace-caption, .request-welcome p, .conversation-heading h1,
+  .tool-availability, .tool-library-card small, .tool-coming, .task-status,
+  .recent-conversations h2, .workspace-navigation > summary
+) { color: var(--relay-muted); }
+html[data-appearance='light'] body.workspace-open :is(input, textarea)::placeholder {
+  color: #70706a;
+}
+html[data-appearance='light'] body.workspace-open :is(
+  .business-start, .business-context, .business-empty, .business-budget-stats,
+  .spending-transaction, .file-download, .delivery-preview pre, .company-context-bar,
+  .tag, .work-index-row-icon, .account-avatar, .tool-library-card:has(.tool-coming)
+) {
+  color: var(--relay-text);
+  background: var(--relay-subtle);
+  border-color: var(--relay-border);
+}
+html[data-appearance='light'] body.workspace-open button {
+  color: var(--relay-text);
+  background: var(--relay-surface);
+  border-color: var(--relay-border);
+}
+html[data-appearance='light'] body.workspace-open :is(
+  button:hover, button[aria-pressed='true'], .workspace-navigation nav button.active,
+  .recent-conversations button[aria-current='page'], .work-index-row:hover,
+  .work-index-row:focus-within, .notification-menu > summary:hover,
+  .tool-library-card:hover, .tool-library-card:has(.tool-coming):hover
+) {
+  color: var(--relay-text);
+  background: var(--relay-active);
+  border-color: var(--relay-border-strong);
+  box-shadow: none;
+}
+html[data-appearance='light'] body.workspace-open :is(
+  button.primary, .work-index-row-action, .thread-message.buyer
+) {
+  color: #fff;
+  background: #20201e;
+  border-color: #20201e;
+}
+html[data-appearance='light'] body.workspace-open :is(button.primary:hover, .work-index-row-action:hover) {
+  color: #fff;
+  background: #383834;
+}
+html[data-appearance='light'] body.workspace-open :is(
+  button.quiet, .spending-row-heading button, .work-index-row h3 button
+) { color: var(--relay-text); background: transparent; }
+html[data-appearance='light'] body.workspace-open .request-dock {
+  background: linear-gradient(180deg, transparent, var(--relay-canvas) 30%);
+}
+html[data-appearance='light'] body.workspace-open :is(
+  .conversation-heading, .recent-conversations, .task-filters
+) { border-color: var(--relay-border); }
+html[data-appearance='light'] body.workspace-open .work-activity-icon {
+  color: var(--relay-positive);
+  background: #e3f1e9;
+}
+html[data-appearance='light'] body.workspace-open :is(.request-work .composer:focus-within, .thread-composer:focus-within) {
+  border-color: var(--relay-focus);
+  box-shadow: 0 0 0 3px #39735f18;
+}
+
+/* Appearance is a compact utility, not another workspace destination. */
+body.workspace-open button.appearance-switch {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 8px;
+  align-self: flex-start;
+  border: 1px solid var(--relay-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--relay-muted);
+  box-shadow: none;
+}
+.appearance-switch svg { width: 18px; height: 18px; }
+.appearance-switch .appearance-moon { display: none; }
+html[data-appearance='light'] .appearance-switch .appearance-moon { display: block; }
+html[data-appearance='light'] .appearance-switch .appearance-sun { display: none; }
+body.workspace-open button.appearance-switch:hover {
+  background: var(--relay-subtle);
+  color: var(--relay-text);
+}
+html[data-appearance='light'] body.workspace-open .workspace-header {
+  border-right: 1px solid var(--relay-border);
+}
+html[data-appearance='light'] body.workspace-open :is(
+  .workspace-header nav button, .recent-conversations button,
+  .task-filters button, .workspace-switch, .work-index-row h3 button
+) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+html[data-appearance='light'] body.workspace-open :is(
+  .workspace-header nav button:hover, .workspace-header nav button.active,
+  .recent-conversations button:hover, .recent-conversations button[aria-current='page'],
+  .task-filters button:hover, .task-filters button[aria-pressed='true']
+) {
+  color: var(--relay-text);
+  background: var(--relay-active);
+  box-shadow: none;
+}
+html[data-appearance='light'] body.workspace-open :is(
+  .panel:hover, .business-card:hover, .task-card:hover, .app-card:hover,
+  .tool-card:hover, .tool-library-card:hover, .agent-market-card:hover
+) {
+  background: var(--relay-panel-hover);
+  border-color: var(--relay-border-strong);
+  box-shadow: 0 3px 12px #20201e06;
+}
+html[data-appearance='light'] body.workspace-open .task-table {
+  border-radius: 16px;
+  box-shadow: 0 2px 12px #20201e04;
+}
+html[data-appearance='light'] body.workspace-open .work-index-row:hover {
+  background: var(--relay-panel-hover);
+}
+html[data-appearance='light'] body.workspace-open .thread-message.buyer :is(p, small, strong, h1, h2, h3) {
+  color: inherit;
+}
+html[data-appearance='light'] body.workspace-open :is(.account-popover, .notification-popover) {
+  color: var(--relay-text);
+  background: var(--relay-surface);
+  border: 1px solid var(--relay-border);
+  box-shadow: var(--relay-shadow);
+}
+html[data-appearance='light'] body.workspace-open :is(button, input, textarea, select):disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* Keyboard bypass for the persistent workspace navigation. */
+.skip-workspace {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1000;
+  padding: 12px 18px;
+  border-radius: 10px;
+  background: #fff;
+  color: #171717;
+  transform: translateY(-160%);
+}
+.skip-workspace:focus { transform: translateY(0); outline: 2px solid #737373; }
+
+/* Agent storefront uses the same surfaces and type as marketplace discovery. */
+.agent-storefront { max-width: 1040px; margin: 0 auto; padding: 28px; }
+.storefront-back, .storefront-link { color: var(--relay-text); text-underline-offset: 4px; }
+.storefront-header { display: flex; align-items: center; gap: 18px; margin: 32px 0 18px; }
+.storefront-header h1 { margin: 6px 0; font-size: clamp(26px, 4vw, 38px); }
+.storefront-header p, .storefront-purpose { color: var(--relay-muted); }
+.storefront-purpose { max-width: 720px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.storefront-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; margin-top: 32px; }
+.storefront-capabilities { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.storefront-capabilities li, .storefront-request { padding: 22px; border: 1px solid var(--relay-border); border-radius: 16px; background: var(--relay-panel); overflow-wrap: anywhere; }
+.storefront-capabilities h3 { margin: 14px 0 8px; }
+.storefront-request { align-self: start; }
+.storefront-request button, .storefront-request input { width: 100%; }
+.storefront-request label { display: block; margin-top: 24px; }
+@media (max-width: 760px) {
+  .storefront-layout { grid-template-columns: 1fr; }
+  .agent-storefront { padding: 20px 14px; }
 }
