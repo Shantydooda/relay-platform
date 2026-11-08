@@ -89,7 +89,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
   function sessionCookie(value,clear=false) {
     return `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${clear?0:managed?3600:43200}${secure?'; Secure':''}`;
   }
-  const server=http.createServer(async(req,res)=>{
+  const requests = require('../../operations/src/http-shutdown.cjs').trackRequests(async(req,res)=>{
     const requestId=randomUUID();
     res.setHeader('X-Request-Id',requestId);
     res.setHeader('X-Content-Type-Options','nosniff');
@@ -379,6 +379,8 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       return send(500,{error:{code:'INTERNAL_ERROR',message:'Something went wrong. Please try again.',requestId}});
     }
   });
+  const server = http.createServer(requests.handle);
+  server.drainRequests = requests.drain;
   server.requestTimeout=10000;
   server.headersTimeout=10000;
   server.keepAliveTimeout=5000;

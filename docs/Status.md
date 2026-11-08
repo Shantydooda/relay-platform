@@ -29,3 +29,25 @@ The 8 November consolidated run recorded 587 passing checks, no skips/cancellati
 Local GitHub CI has previously passed core, native recovery and load groups. Required branch protection could not be configured on the existing private-repository plan. Do not describe that control as enabled.
 
 Keep the [icebox](Product-Icebox.md) deferred except for explicitly documented scope changes. Unit economics and production throughput remain unproven. No new live provider, paid service, hosted deployment or real-money transaction is authorized by this checklist.
+
+## Recovery CI follow-up — 8 November 2026
+
+The PR recovery job intermittently stalled while stopping its HTTP server during
+an independent supplier reconnect. Phase diagnostics reproduced the failure in
+CI: database recovery and delivery completed, but the HTTP close callback never
+arrived. A separate successful run did not establish that the intermittent issue
+was fixed.
+
+The local launcher now stops accepting connections, grants active requests five
+seconds, and closes remaining HTTP sockets. It separately waits for application
+request promises and background workers before closing storage. This avoids
+mistaking client disconnection for command completion. Socket shutdown follows
+[Node's HTTP close guidance](https://nodejs.org/api/http.html#servercloseallconnections).
+
+Recovery fixtures now use wall-clock polling deadlines, bounded child cleanup
+that fails if forced termination is needed, and database restoration in cleanup
+when an outage assertion fails. Regression tests cover incomplete headers,
+normal response completion, commands surviving disconnection, already-signaled
+children, unresponsive children and hung reads. Native recovery (37 checks) and
+web contracts (130 checks) passed locally after the fix. Exact-commit CI remains
+the release evidence; no deployment or real-money operation is part of this fix.

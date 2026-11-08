@@ -76,13 +76,18 @@ async function start() {
       workers.forEach(worker => worker.stop());
       signatureUpdater.stop();
       runtimeManager.close();
-      stopPromise = new Promise((done, reject) => {
-        server.close(async () => {
-          try { console.info('Relay shutdown: draining workers.'); await signatureUpdater.done(); await Promise.all(workers.map(worker => worker.done())); console.info('Relay shutdown: closing storage.'); await store.waitForScoping(); await native?.close(); applicationDb?.close(); authDb.close(); console.info('Relay shutdown: complete.'); done(); }
-          catch (error) { reject(error); }
-        });
-        server.closeIdleConnections();
-      });
+      stopPromise = (async () => {
+        await require('../../operations/src/http-shutdown.cjs').closeHttpServer(server);
+        console.info('Relay shutdown: draining workers.');
+        await signatureUpdater.done();
+        await Promise.all(workers.map(worker => worker.done()));
+        console.info('Relay shutdown: closing storage.');
+        await store.waitForScoping();
+        await native?.close();
+        applicationDb?.close();
+        authDb.close();
+        console.info('Relay shutdown: complete.');
+      })();
       return stopPromise;
     }
     server.on('error', error => {
