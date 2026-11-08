@@ -3,19 +3,12 @@
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { fork } = require('node:child_process');
-const { once } = require('node:events');
+const { stopChild, eventually } = require('./lifecycle.cjs');
 const { join } = require('node:path');
 const { openDatabase } = require('../../../poc-api/src/database.cjs');
 const { createStore } = require('../../../poc-api/src/store.cjs');
 const { paths, savePrivate, stopCluster, startCluster } = require('../../scripts/local-postgres.cjs');
 
-async function eventually(read, condition) {
-  for (let attempt = 0; attempt < 150; attempt++) {
-    try { const value = await read(); if (condition(value)) return value; } catch { /* Starting process. */ }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  assert.fail('Local HTTP flow did not reach its expected state.');
-}
 async function httpWorkflow(config, identityPath, port) {
   const origin = `http://127.0.0.1:${port}`;
   const db = openDatabase(identityPath), identity = createStore(db, Date.now, { identityOnly: true });
@@ -31,15 +24,17 @@ async function httpWorkflow(config, identityPath, port) {
   const scannerFixture = join(config.home, 'scanner-fixture.sh');
   require('node:fs').writeFileSync(scannerFixture, '#!/bin/sh\ncat >/dev/null\nprintf \"stdin: OK\\n\"\nexit 0\n', { mode: 0o700 });
   let child;
+  let databaseStopped = false;
   function launch() {
     child = fork(join(__dirname, '../../../poc-api/src/server.cjs'), [], {
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
       env: { ...process.env, NODE_ENV: 'test', RELAY_CLAMSCAN_PATH: scannerFixture, RELAY_POC_PORT: String(port), RELAY_DATABASE_PATH: identityPath, RELAY_LOCAL_PG_HOME: config.home }
     });
   }
   async function stop() {
-    if (!child || child.exitCode !== null) return;
-    const exited = once(child, 'exit'); child.kill('SIGTERM'); await exited; child = null;
+    const current = child;
+    child = null;
+    await stopChild(current, { name: 'Recovery HTTP server' });
   }
   async function request(path, who, body, key = randomUUID(), method) {
     return fetch(`${origin}${path}`, { method: method || (body ? 'POST' : 'GET'), headers: {
@@ -75,24 +70,35 @@ async function httpWorkflow(config, identityPath, port) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.equal(await (await request(downloadPath, buyer)).text(), 'name,city\r\nAcme,Paris\r\nZeta,London\r\n');
+    console.info('Recovery phase: restart application');
     await stop(); launch();
     await eventually(() => json('/health'), value => value.status === 'ok');
     assert.equal((await json(`/api/tasks/${task.taskId}`, buyer)).task.status, 'buyer_review');
     // Existing browser sessions and exact-submission acceptance survive restart.
     await json(`/api/tasks/${task.taskId}/accept-delivery`, buyer, { expectedVersion: (await json(`/api/tasks/${task.taskId}`, buyer)).task.version, submissionId: submission.id });
+    console.info('Recovery phase: database outage');
     stopCluster(config.home);
+    databaseStopped = true;
     assert.equal((await request('/health')).status, 503);
     assert.equal((await request('/health/live')).status, 200);
     const down = await request(`/api/tasks/${task.taskId}`, buyer);
     assert.equal(down.status, 503);
     assert.equal((await down.json()).error.code, 'DATABASE_UNAVAILABLE');
+    console.info('Recovery phase: database restore');
     startCluster(config.home);
+    databaseStopped = false;
     await eventually(() => json('/health'), value => value.status === 'ok');
     assert.equal((await json(`/api/tasks/${task.taskId}`, buyer)).task.status, 'accepted');
     assert.equal(await (await request(downloadPath, buyer)).text(), 'name,city\r\nAcme,Paris\r\nZeta,London\r\n');
+    console.info('Recovery phase: link supplier');
     await require('./link-http.cjs').linkHttp({ origin, home: config.home, buyer, builder, request, json, eventually });
     const { externalHttp } = require('./external-http.cjs');
+    console.info('Recovery phase: external supplier');
     await externalHttp({ origin, home: config.home, buyer, builder, request, json, eventually, restart: async () => { await stop(); launch(); await eventually(() => json('/health'), value => value.status === 'ok'); } });
-  } finally { await stop(); }
+  } finally {
+    // An assertion during the outage must not strand cleanup against a down DB.
+    try { if (databaseStopped) startCluster(config.home); }
+    finally { await stop(); }
+  }
 }
 module.exports = { httpWorkflow };

@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { fork } = require('node:child_process');
-const { once } = require('node:events');
+const { stopChild } = require('./lifecycle.cjs');
 const { writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 
@@ -44,7 +44,7 @@ async function linkHttp({ origin, home, buyer, builder, json, request, eventuall
     await json(`/api/tasks/${task.taskId}/accept-delivery`, buyer, { expectedVersion: delivered.task.version, submissionId: final.id });
     assert.equal((await detail()).task.status, 'accepted');
   } finally {
-    if (worker.exitCode === null) { const exited = once(worker, 'exit'); worker.kill('SIGTERM'); await exited; }
+    await stopChild(worker, { name: 'Link supplier' });
   }
 }
 module.exports = { linkHttp };

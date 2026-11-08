@@ -5,7 +5,7 @@ const { fork, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const executeFile = promisify(execFile);
 const { checkConnection } = require('../../../../packages/supplier-sdk/src/diagnostics.cjs');
-const { once } = require('node:events');
+const { stopChild } = require('./lifecycle.cjs');
 const { writeFileSync, readFileSync, existsSync } = require('node:fs');
 const { join } = require('node:path');
 const { randomUUID } = require('node:crypto');
@@ -22,8 +22,9 @@ async function externalHttp({ origin, home, buyer, builder, request, json, event
   const sdk = createSupplierClient({ origin, token: issued.token });
   let worker;
   async function stopWorker() {
-    if (worker && worker.exitCode === null) { const done = once(worker, 'exit'); worker.kill('SIGTERM'); await done; }
+    const current = worker;
     worker = null;
+    await stopChild(current, { name: 'CSV supplier' });
   }
   function launch() {
     worker = fork(join(__dirname, '../../../agent-runtime/src/cli.cjs'), ['--config', configPath, '--state', statePath], { stdio: ['ignore','ignore','ignore','ipc'], env: {} });
