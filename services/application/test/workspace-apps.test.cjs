@@ -758,6 +758,16 @@ for (const postgres of [false, true])
       app.requestToolPermission(f.principal, taskId, ask, randomUUID()),
     ]);
     assert.equal(requests[0].requestId, requests[1].requestId);
+    async function assertPermissionProjection(waiting) {
+      const detail = await app.detail(buyer, taskId);
+      assert.equal(detail.task.waitingForPermission, waiting);
+      assert.equal(detail.execution.waitingForPermission, waiting);
+      assert.equal((await app.supplierAssignment(f.principal, taskId)).waitingForPermission, waiting);
+      assert.equal((await app.supplierAssignments(f.principal)).assignments.find(item => item.taskId === taskId).waitingForPermission, waiting);
+      assert.equal((await app.assignments(f.principal)).find(item => item.taskId === taskId).waitingForPermission, waiting);
+      assert.equal((await app.executionQueue(buyer)).items.find(item => item.taskId === taskId).waitingForPermission, waiting);
+    }
+    await assertPermissionProjection(true);
     const beforeWait = (await app.detail(buyer, taskId)).execution.deadlineAt;
     f.setTime(beforeWait + 600000);
     await f.heartbeat();
@@ -795,6 +805,7 @@ for (const postgres of [false, true])
     );
     assert.equal(request.requestId, requests[0].requestId);
     assert.equal(request.status, 'declined');
+    await assertPermissionProjection(true);
     const grant = await app.grantTaskTool(
       buyer,
       taskId,
@@ -807,6 +818,7 @@ for (const postgres of [false, true])
       },
       randomUUID(),
     );
+    await assertPermissionProjection(false);
     const claim = await app.claim(
       f.principal,
       taskId,

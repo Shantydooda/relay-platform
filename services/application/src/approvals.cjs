@@ -72,11 +72,15 @@ function createApprovals(context) {
     return repository.read(async repo => {
       const budget = await repo.get('company-budget', tenantId);
       const rows = await repo.page('approval-request', m.role === 'employee' ? 'owner_id' : 'tenant_id', m.role === 'employee' ? actor.user.id : tenantId, page);
-      return { budget: budgetView(budget, now()), requests: rows.filter(r => r.tenantId === tenantId).map(r => {
+      return { budget: budgetView(budget, now()), requests: await Promise.all(rows.filter(r => r.tenantId === tenantId).map(async r => {
         const allocation = budget?.allocations[r.id];
         const expired = ['approved', 'pending'].includes(r.status) && r.agreement.expiresAt <= now() && allocation?.status !== 'committed';
-        return { ...r, status: expired ? 'expired' : r.status, reservation: allocation?.status || null };
-      }), nextCursor: rows.at(-1)?.id || after, hasMore: rows.length === page.limit };
+        const task = await repo.get('task', r.taskId);
+        const actions = task?.approval?.id === r.id
+          ? await approvalActions(repo, actor, task)
+          : Object.fromEntries(['request', 'approve', 'decline'].map(action => [action, { allowed: false, code: 'APPROVAL_STALE', reason: 'This request was replaced. Review the current request.' }]));
+        return { ...r, actions, status: expired ? 'expired' : r.status, reservation: allocation?.status || null };
+      })), nextCursor: rows.at(-1)?.id || after, hasMore: rows.length === page.limit };
     });
   }
   async function configureBudget(actor, tenantId, body, key) {
@@ -94,18 +98,23 @@ function createApprovals(context) {
       return budgetView(budget, now());
     }, `company-budget:${tenantId}`);
   }
+  async function checkRequest(repo, actor, task) {
+    await taskFor(repo, actor, task.id, true);
+    if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Approval is required for each individual run, not the recurring request.');
+    const requester = await member(actor, task.tenantId, ['owner', 'employee']);
+    if (task.assignment || task.settlement && !['expired', 'refunded'].includes(task.settlement.status)) fail(409, 'TASK_COMMITTED', 'This task is already committed.');
+    const terms = agreement(task);
+    if (task.status !== 'posted' || !terms || terms.expiresAt <= now() || terms.scopeVersion !== task.offers.find(o => o.id === terms.offerId).scopeVersion) fail(409, 'OFFER_UNAVAILABLE', 'Choose a current offer first.');
+    if (terms.currency !== 'USD') fail(409, 'CURRENCY_UNSUPPORTED', 'Company allowances currently use USD.');
+    if (['pending', 'approved'].includes(approvalView(task, now())?.status)) fail(409, 'APPROVAL_EXISTS', 'This offer already has an active approval request.');
+    return { requester, terms };
+  }
   async function requestApproval(actor, id, body, key) {
     exactKeys(body, ['expectedVersion', 'note']);
     const note = text(body.note, 'Reason for the request', 1, 2000);
     return command(actor.user.id, key, ['approval-request', id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
-      if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Approval is required for each individual run, not the recurring request.');
-      const requester = await member(actor, task.tenantId, ['owner', 'employee']);
-      if (task.assignment || task.settlement && !['expired', 'refunded'].includes(task.settlement.status)) fail(409, 'TASK_COMMITTED', 'This task is already committed.');
-      const terms = agreement(task);
-      if (task.status !== 'posted' || !terms || terms.expiresAt <= now() || terms.scopeVersion !== task.offers.find(o => o.id === terms.offerId).scopeVersion) fail(409, 'OFFER_UNAVAILABLE', 'Choose a current offer first.');
-      if (terms.currency !== 'USD') fail(409, 'CURRENCY_UNSUPPORTED', 'Company allowances currently use USD.');
-      if (['pending', 'approved'].includes(approvalView(task, now())?.status)) fail(409, 'APPROVAL_EXISTS', 'This offer already has an active approval request.');
+      const { requester, terms } = await checkRequest(repo, actor, task);
       if (task.approval) await repo.save('approval-request', { ...task.approval, superseded: true, taskId: task.id, tenantId: task.tenantId, ownerId: task.ownerId });
       task.companyApprovalRequired = true;
       task.approval = { previousSettlementId: task.settlement?.id || null, id: randomUUID(), status: 'pending', version: 1, agreement: terms, note, requesterEpoch: requester.accessEpoch ?? null, requestedBy: actor.user.id, requestedAt: now() };
@@ -113,6 +122,29 @@ function createApprovals(context) {
       await require('./supplier-feed.cjs').saveTask(repo, task);
       return { taskId: id, version: task.version };
     });
+  }
+  async function checkDecision(repo, actor, task, decision) {
+    await member(actor, task.tenantId, ['owner', 'approver']);
+    const a = task.approval;
+    if (!a || approvalView(task, now())?.status !== 'pending') fail(409, 'APPROVAL_STALE', 'This request changed or expired. Ask for a fresh request.');
+    // A removed requester cannot obtain a new allocation through an old queue entry.
+    if (resolveOperator) await member(await resolveOperator(a.requestedBy), task.tenantId, ['owner', 'employee']);
+    if (decision === 'approved') {
+      const budget = await repo.get('company-budget', task.tenantId, true);
+      if (!budget) fail(409, 'BUDGET_REQUIRED', 'An administrator must set the company allowance first.');
+      if (budgetView(budget, now()).availableMinor < a.agreement.amountMinor) fail(409, 'BUDGET_EXCEEDED', 'Not enough unreserved company budget.');
+      if (Object.keys(budget.allocations).length >= 1000) fail(409, 'BUDGET_HISTORY_LIMIT', 'This local allowance has reached its history limit.');
+      return budget;
+    }
+    return null;
+  }
+  async function approvalActions(repo, actor, task) {
+    const { availability } = require('./action-availability.cjs');
+    return {
+      request: await availability(() => checkRequest(repo, actor, task)),
+      approve: await availability(() => checkDecision(repo, actor, task, 'approved')),
+      decline: await availability(() => checkDecision(repo, actor, task, 'declined')),
+    };
   }
   async function decideApproval(actor, id, body, key) {
     exactKeys(body, ['approvalId', 'expectedVersion', 'decision', 'note']);
@@ -128,13 +160,8 @@ function createApprovals(context) {
     return command(actor.user.id, key, ['approval-decision', id, body], access, async repo => {
       const task = await access(repo), a = task.approval;
       if (!a || a.id !== body.approvalId || a.version !== body.expectedVersion || approvalView(task, now()).status !== 'pending') fail(409, 'APPROVAL_STALE', 'This request changed or expired. Ask for a fresh request.');
-      // A removed requester cannot obtain a new allocation through an old queue entry.
-      if (resolveOperator) await member(await resolveOperator(a.requestedBy), task.tenantId, ['owner', 'employee']);
+      const budget = await checkDecision(repo, actor, task, body.decision);
       if (body.decision === 'approved') {
-        const budget = await repo.get('company-budget', task.tenantId, true);
-        if (!budget) fail(409, 'BUDGET_REQUIRED', 'An administrator must set the company allowance first.');
-        if (budgetView(budget, now()).availableMinor < a.agreement.amountMinor) fail(409, 'BUDGET_EXCEEDED', 'Not enough unreserved company budget.');
-        if (Object.keys(budget.allocations).length >= 1000) fail(409, 'BUDGET_HISTORY_LIMIT', 'This local allowance has reached its history limit.');
         budget.allocations[a.id] = { taskId: id, amountMinor: a.agreement.amountMinor, expiresAt: a.agreement.expiresAt, status: 'reserved' };
         budget.version++; await repo.save('company-budget', budget);
       }
@@ -160,6 +187,6 @@ function createApprovals(context) {
     const allocation = budget?.allocations[a.id];
     if (!allocation || !held(allocation, now())) fail(409, 'RESERVATION_EXPIRED', 'The budget reservation expired. Request approval again.');
   }
-  return { companyBudget, configureBudget, requestApproval, decideApproval, requireApproval };
+  return { approvalActions, companyBudget, configureBudget, requestApproval, decideApproval, requireApproval };
 }
 module.exports = { createApprovals, approvalView, syncApproval, budgetView };

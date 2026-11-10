@@ -1,5 +1,7 @@
 'use strict';
 
+const { waitingForPermission } = require('../../../packages/domain/src/execution-state.cjs');
+
 const { randomUUID, createHash } = require('node:crypto');
 const { assertUnfunded, paymentView } = require('./payments.cjs');
 const { capabilityView } = require('./qualification.cjs');
@@ -43,6 +45,7 @@ function taskView(task, now) {
   const status = task.recurringScheduleId ? 'scheduled' : task.assignment?.status || (offer && offer.expiresAt > now ? 'selected' : task.status);
   const { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, input } = task;
   return { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, status,
+    waitingForPermission: waitingForPermission(task.assignment),
     companyApprovalRequired: !!task.companyApprovalRequired,
     approvalStatus: require('./approvals.cjs').approvalView(task, now)?.status || null,
     recurringScheduleId: task.recurringScheduleId || null, scheduleId: task.scheduleId || null, scheduledFor: task.scheduledFor || null,
@@ -337,7 +340,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         repeatHire = requestableAgent(agent, actor, now())
           ? { available: true, agentId: agent.id, name: agent.name } : { available: false };
       }
-      return { repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
+      return { actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
         approval: require('./approvals.cjs').approvalView(task, now()), execution: publicExecution(task), payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), submissions: task.submissions.map(publicSubmission) };
     });
   }
@@ -372,13 +375,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   async function offers(actor, id) {
     return repository.read(async repo => {
       const task = await taskFor(repo, actor, id);
-      return Promise.all(task.offers.map(async offer => {
-        const agent = await repo.get('agent', offer.agentId);
-        const capability = agent?.capabilities.find(item => item.id === offer.capabilityId);
-        const current = capability ? capabilityView(agent, capability, now()) : null;
-        return { ...offer, qualificationCurrent: current?.qualification === 'qualified' && current.assessment?.id === offer.qualificationEvidence?.id,
-          selected: task.assignment?.offerId === offer.id || (task.selectedOfferId === offer.id && offer.expiresAt > now()) };
-      }));
+      return require('./fair-exposure.cjs').offersWithExposure(repo, task, now());
     });
   }
   async function supplierTasks(actor) {
@@ -398,7 +395,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       }
       return Promise.all(tasks.map(async task => {
         const offer = task.offers.find(item => item.id === (task.assignment?.offerId || task.selectedOfferId));
-        return { ...taskView(task, now()), agentName: offer.agentName, offerId: offer.id, amountMinor: offer.amountMinor, currency: offer.currency || 'USD', deliveryMinutes: offer.deliveryMinutes, proposal: offer.proposal,
+        return { ...taskView(task, now()), actions: { version: task.version, payments: await payments.paymentActions(repo, actor, task) }, agentName: offer.agentName, offerId: offer.id, amountMinor: offer.amountMinor, currency: offer.currency || 'USD', deliveryMinutes: offer.deliveryMinutes, proposal: offer.proposal,
           acceptedAt: task.assignment?.authorizedAt || task.updatedAt, messages: task.messages.map(({authorId,...message})=>message), changeProposals: task.changeProposals || [], payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), execution: publicExecution(task), submissions: task.submissions.map(publicSubmission) };
       }));
     });
@@ -454,6 +451,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         return { ...listingView(agent, now()), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: agent.ownerId === actor.user.id };
       }),
       acquisition: require('./acquisition.cjs').createAcquisition(context),
+      recordExposure: require('./fair-exposure.cjs').createExposure(context).record,
       addPortfolio: portfolio.add, decidePortfolio: portfolio.decide,
       updateListing,
       addAgent, configure, opportunities, offers, accept: select, work: supplierTasks, quotes,
@@ -464,7 +462,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
 function publicExecution(task) {
   if (!task.assignment) return null;
   const { id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt } = task.assignment;
-  return { id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? (task.settlement?.status || 'unknown') : 'not_applicable_local_unpaid' };
+  return { waitingForPermission: waitingForPermission(task.assignment), id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? (task.settlement?.status || 'unknown') : 'not_applicable_local_unpaid' };
 }
 function publicSubmission(submission) {
   const { id, version, status, createdAt, evidence, files } = submission;

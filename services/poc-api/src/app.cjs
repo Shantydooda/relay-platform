@@ -32,6 +32,8 @@ const assets = {
   '/execution-ui.css':['execution-ui.css','text/css; charset=utf-8'],
   '/app.js':['app.js','text/javascript; charset=utf-8'],
   '/managed-auth.js':['managed-auth.js','text/javascript; charset=utf-8'],
+  '/chat-controller.js':['chat-controller.js','text/javascript; charset=utf-8'],
+  '/refresh-lifecycle.js':['refresh-lifecycle.js','text/javascript; charset=utf-8'],
   '/request.js':['request.js','text/javascript; charset=utf-8'],
   '/fonts.css':['fonts.css','text/css; charset=utf-8'],
   '/business-ui.css':['business-ui.css','text/css; charset=utf-8'],
@@ -346,6 +348,8 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if(path==='/api/work'&&method==='GET')return send(200,{tasks:await market.work(actor)});
         const agentPath=path.match(/^\/api\/agents\/([0-9a-f-]{36})$/);
         if(agentPath&&method==='PATCH')return send(200,await market.configure(actor,agentPath[1],await jsonBody(req),key));
+        const exposurePath = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/offer-exposure$/);
+        if (exposurePath && method === 'POST') return send(200, await market.recordExposure(actor, exposurePath[1], await jsonBody(req), key));
         const offerPath=path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(offers|accept|select)$/);
         if(offerPath){const [,id,action]=offerPath;
           if(action==='offers'&&method==='GET')return send(200,{offers:await market.offers(actor,id)});

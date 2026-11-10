@@ -1,10 +1,14 @@
 'use strict';
+function taskWaitingForPermission(task) {
+  if (typeof task.waitingForPermission === 'boolean') return task.waitingForPermission;
+  // Compatibility with older servers; current servers project the live assignment.
+  return ['queued', 'running'].includes(task.status) && Boolean(
+    task.permissionRequests?.some(request => ['pending', 'declined'].includes(request.status)),
+  );
+}
 const taskLabel = (task) =>
   task.orchestrationPlan ? (task.orchestrationPlan.status === 'accepted' ? 'Completed plan' : 'Plan in progress') :
-  ['queued', 'running'].includes(task.status) &&
-  task.permissionRequests?.some((request) =>
-    ['pending', 'declined'].includes(request.status),
-  )
+  taskWaitingForPermission(task)
     ? 'Permission needed'
     : task.recurringScheduleId
       ? 'Schedule enabled'
@@ -49,10 +53,7 @@ function taskNextStep(detail, offers = []) {
       'Your accepted delivery and earlier versions are saved below.',
     ];
   if (
-    ['queued', 'running'].includes(task.status) &&
-    task.permissionRequests?.some((item) =>
-      ['pending', 'declined'].includes(item.status),
-    )
+    taskWaitingForPermission(task)
   )
     return [
       'Your agent needs permission',
@@ -275,7 +276,7 @@ function taskView() {
  ${!(task.workPlan && task.workPlan.cadence !== 'once') && typeof RelayApprovals === 'object' ? (state.detail.execution && state.detail.approval?.status === 'approved' ? `<details><summary>Company approval · recorded</summary>${RelayApprovals.task(task, state.detail.approval)}</details>` : RelayApprovals.task(task, state.detail.approval)) : ''}
  ${!(task.workPlan && task.workPlan.cadence !== 'once') && typeof RelayPayments === 'object' ? RelayPayments.task(task, state.detail.payment, false, state.detail.execution) : ''}
  ${(!task.workPlan || task.workPlan.cadence === 'once') && !state.editing && state.reviewStart ? startReview(task) : ''}
- ${typeof RelayExecution === 'object' ? RelayExecution.delivery(task) : ''}${repeatHireCard()}
+ ${typeof RelayExecution === 'object' ? RelayExecution.delivery(task) : ''}${typeof RelayApps === 'object' ? RelayApps.permissionDecisions(task) : ''}${repeatHireCard()}
 ${typeof RelayPortfolio === 'object' ? RelayPortfolio.requests(state.detail.portfolioRequests) : ''}${changeProposalCards(task, state.detail.changeProposals)}${followUps}${state.sendingMessage ? `<article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p class="offer-details">${escape(state.sendingMessage)}</p></article>${activityCard('Sending your message', 'Waiting for Relay to save it.', true)}` : ''}
  ${!state.features?.scoping && messages.length > 1 && messages.at(-1)?.role !== 'supplier' && !state.editing ? `<article class="thread-message relay latest-guidance"><span class="thread-speaker">${relayCharacter()}Relay</span><p>${escape(conversationGuidance(task, messages))}</p></article>` : ''}
  ${task.status === 'cancelled' ? '<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><p>This request is closed. Your brief and conversation remain available.</p></article>' : ''}
@@ -348,11 +349,7 @@ function activityCard(title, description, active = false) {
 }
 function taskDashboard() {
   const requestedTasks = state.tasks.filter((task) => !task.orchestrationStep?.supersededBy && (task.status !== 'draft' || task.orchestrationPlan));
-  const needsPermission = (task) =>
-    ['queued', 'running'].includes(task.status) &&
-    task.permissionRequests?.some((request) =>
-      ['pending', 'declined'].includes(request.status),
-    );
+  const needsPermission = taskWaitingForPermission;
   const completed = (task) => ['accepted', 'cancelled'].includes(task.status);
   const active = (task) =>
     ['posted', 'queued', 'running'].includes(task.status) &&

@@ -2376,6 +2376,10 @@
           },
           "leaseUntil": {
             "type": "integer"
+          },
+          "waitingForPermission": {
+            "type": "boolean",
+            "description": "True while the current active assignment is paused for buyer permission. Do not claim while true. Informational only; claim and tool commands still revalidate authority. Optional for compatibility with older servers."
           }
         },
         "required": [
@@ -2486,6 +2490,10 @@
                 "status"
               ]
             }
+          },
+          "waitingForPermission": {
+            "type": "boolean",
+            "description": "True while the current active assignment is paused for buyer permission. Do not claim while true. Informational only; claim and tool commands still revalidate authority. Optional for compatibility with older servers."
           }
         },
         "required": [

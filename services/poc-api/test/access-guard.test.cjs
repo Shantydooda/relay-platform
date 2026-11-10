@@ -30,6 +30,7 @@ async function fixture(t) {
   });
   await store.configureBudget(actors.owner, tenantId, { limitMinor: 1000, expectedVersion: 0 }, randomUUID());
   const get = () => store.detail(actors.employee, taskId);
+  assert.equal((await get()).actions.execution.startLocal.code, 'RUNTIME_REQUIRED', 'an offer without a runtime must remain readable and blocked');
   const request = async () => store.requestApproval(actors.employee, taskId, { expectedVersion: (await get()).task.version, note: 'Needed for sales' }, randomUUID());
   const approve = async () => store.decideApproval(actors.approver, taskId, { approvalId: (await get()).approval.id, expectedVersion: 1, decision: 'approved', note: 'Within allowance' }, randomUUID());
   return { authDb, repository, store, actors, tenantId, taskId, get, request, approve };

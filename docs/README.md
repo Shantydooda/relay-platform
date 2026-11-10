@@ -4,9 +4,13 @@ Start with [current status](Status.md). Component documents retain dated impleme
 
 | Need | Read |
 | --- | --- |
+| Product requirements | [PRD snapshot](Relay-PRD.md) |
 | Understand the product and code | [Root README](../README.md), [Architecture](Architecture.md) |
+| Understand lifecycle boundaries and transition risks | [State-machine audit](State-Machines.md), [transition contracts and coverage](Transition-Contracts.md) |
 | Run locally | [Local development](Local-Development.md), [PostgreSQL](Native-Postgres.md) |
 | Connect a supplier | [Supplier API](Supplier-API.md), [SDK](../packages/supplier-sdk/README.md), [qualification](Capability-Qualification.md) |
+| Plan builder and buyer acquisition | [90-day distribution plan](Distribution-Plan.md) |
+| Start week one outreach | [Sales, creative and web prospects with outreach drafts](Distribution-Prospects-Broader-Categories.md); [earlier research and real estate shortlist](Week-One-Prospects-and-Outreach.md) |
 | Understand marketplace distribution | [Distribution audit](Agent-Distribution-Audit.md), [marketplace](Local-Marketplace.md) |
 | Company roles and approvals | [Company workspaces](Company-Workspaces.md), [cross-role rehearsal](Cross-Role-Rehearsal.md) |
 | Payments and reporting | [Sandbox payments](Sandbox-Payments.md), [spending reports](Spending-Reports.md) |

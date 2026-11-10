@@ -33,6 +33,7 @@ function fixture() {
   let renders = 0;
   const ctx = {
     state: { authMode: 'local', account: { user: { workspace: 'buyer' } }, detail: { task: { id: 'one', status: 'posted' } }, renderedViewKey: 'one', offers: [] },
+    RelayRefresh: require('../public/refresh-lifecycle.js'),
     actionRevision: 0, lastInteraction: Date.now(),
     document: { hidden: false, activeElement: null },
     root: { querySelector: () => null },
@@ -42,7 +43,7 @@ function fixture() {
     setInterval: () => {},
   };
   vm.createContext(ctx);
-  vm.runInContext(source.slice(source.indexOf('let workspacePolling'), source.indexOf('function agentDraftKey')), ctx);
+  vm.runInContext(source.slice(source.indexOf('const workspaceRefresh'), source.indexOf('function agentDraftKey')), ctx);
   return { ctx, renders: () => renders };
 }
 test('unchanged background reads never disable controls or redraw; queue clock is not a change', async () => {
@@ -87,4 +88,41 @@ test('overlapping polls are skipped and focusing input during a read prevents re
   await first;
   assert.equal(renders(), 0);
   assert.equal(ctx.state.offers.length, 0);
+});
+
+for (const change of ['tenant', 'side', 'identity', 'session']) test(`late refresh cannot overwrite a changed ${change}`, async () => {
+  const {ctx,renders}=fixture();
+  ctx.state.account.user.id='buyer';ctx.state.tenantId='first';
+  ctx.refresh=async(id,candidate)=>{
+    candidate.offers=[{id:'old-private-offer'}];
+    if(change==='tenant')ctx.state.tenantId='second';
+    if(change==='side')ctx.state.account.user.workspace='builder';
+    if(change==='identity')ctx.state.account={user:{id:'another',workspace:'buyer'}};
+    if(change==='session')ctx.state.account={user:{id:'buyer',workspace:'buyer'}};
+  };
+  await ctx.pollWorkspace();
+  assert.equal(renders(),0);
+  assert.deepEqual(ctx.state.offers,[]);
+});
+
+test('late authentication errors cannot sign out a replacement session', async()=>{
+  const {ctx,renders}=fixture();
+  ctx.refresh=async()=>{
+    ctx.state.account={user:{id:'new-session',workspace:'buyer'}};
+    throw Object.assign(new Error('Expired old session'),{status:401});
+  };
+  await ctx.pollWorkspace();
+  assert.equal(ctx.state.account.user.id,'new-session');
+  assert.equal(renders(),0);
+});
+
+test('delivery destination changes refresh with their receipts',async()=>{
+  const {ctx,renders}=fixture();
+  ctx.refresh=async(id,candidate)=>{
+    candidate.attio={connected:false};candidate.attioReceipts=[{status:'sent',id:'receipt'}];
+  };
+  await ctx.pollWorkspace();
+  assert.equal(ctx.state.attio.connected,false);
+  assert.equal(ctx.state.attioReceipts[0].id,'receipt');
+  assert.equal(renders(),1);
 });

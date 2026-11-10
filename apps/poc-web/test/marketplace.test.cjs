@@ -38,7 +38,7 @@ test('new-agent refresh restores only the authenticated account draft after iden
  const document={documentElement:{dataset:{}},body:{classList:{toggle(){}}},querySelector(selector){return selector==='#app'?app:notice;}};
  const payloads={'/api/config':{authMode:'local'},'/api/me':{user:{id:'account-one',name:'A',email:'a@example.test',workspace:'builder'},memberships:[]},'/api/agents':{agents:[]},'/api/opportunities':{tasks:[]},'/api/work':{tasks:[]},'/api/quotes':{offers:[]}};
  const ctx=vm.createContext({document,Intl,Date,location:{hash:'#agent-new',pathname:'/'},sessionStorage:{getItem(key){seen.push(key);return key==='relay-agent-draft:account-one'?JSON.stringify(draft):null;}},RelayRequest:{request:async path=>payloads[path]},setInterval(){},URLSearchParams,console});
- for(const file of ['marketplace.js','buyer-flow.js','app.js'])vm.runInContext(readFileSync(resolve(__dirname,'../public',file),'utf8'),ctx);
+ for(const file of ['refresh-lifecycle.js','marketplace.js','buyer-flow.js','app.js'])vm.runInContext(readFileSync(resolve(__dirname,'../public',file),'utf8'),ctx);
  await new Promise(setImmediate);assert.deepEqual(seen,['relay-agent-draft:account-one']);assert.match(app.innerHTML,/Restored agent/);assert.match(app.innerHTML,/Open-ended task/);
 });
 test('runtime UI distinguishes local permission from paid readiness and escapes delivered evidence',()=>{
@@ -244,7 +244,7 @@ test('buyer offer guidance does not invite selection of expired or stale-scope o
 test('delivery prioritizes the latest files and preserves revision history and scan gates', () => {
   const { state, ctx } = ui();
   vm.runInContext(readFileSync(resolve(__dirname, '../public/execution-ui.js'), 'utf8'), ctx);
-  state.detail = { task: { id: 'task', status: 'buyer_review' }, execution: { status: 'buyer_review', runtimeKind: 'supplier-hosted' }, submissions: [
+  state.detail = { actions: { execution: { accept: {allowed:false,code:'FILE_QUARANTINED',reason:'Awaiting scan'}, revise:{allowed:true},cancel:{allowed:true} } }, task: { id: 'task', status: 'buyer_review' }, execution: { status: 'buyer_review', runtimeKind: 'supplier-hosted' }, submissions: [
     { id: 'old', version: 1, status: 'revision_requested', evidence: 'Old result', files: [] },
     { id: 'latest', version: 2, status: 'ready', evidence: '<script>bad</script>', files: [{ id: 'file', filename: 'result.json', mime: 'application/json', size: 50, scan: { status: 'quarantined', reason: 'Awaiting scan' } }] }
   ] };
@@ -252,7 +252,7 @@ test('delivery prioritizes the latest files and preserves revision history and s
   assert.ok(html.indexOf('Delivery 2') < html.indexOf('Delivery 1'));
   assert.match(html, /Earlier deliveries \(1\)/);
   assert.match(html, /<details class="revision-request"><summary>Request changes/);
-  assert.match(html, /disabled.*data-action="accept-delivery"/);
+  assert.match(html, /<button(?=[^>]*disabled)(?=[^>]*data-action="accept-delivery")[^>]*>/);
   assert.doesNotMatch(html, /<script>|href=.*\/files\//);
 });
 
@@ -437,7 +437,8 @@ test('company funding and start controls require current approval without hiding
  for (const status of ['stale', 'pending', 'declined', null]) {
   ctx.task.approvalStatus = status;
   let html = vm.runInContext('RelayPayments.task(task, null)', ctx);
-  assert.doesNotMatch(html, /Fund with test payment/);
+  assert.doesNotMatch(html, /data-operation="fund"/);
+  assert.match(html, /button disabled/);
   assert.match(html, /fresh company approval|Waiting for your reviewer/);
   html = vm.runInContext('RelayPayments.task(task, {status:"funded",amountMinor:700})', ctx);
   assert.doesNotMatch(html, /Start funded sandbox task/);
@@ -463,4 +464,38 @@ test('acquisition displays exact saved totals with local-work definitions and an
   assert.match(html, /role="region" aria-label="Acquisition totals by source" tabindex="0"/);
   state.acquisitionReport=null;
   assert.doesNotMatch(vm.runInContext("agentAcquisition({id:'agent'})",ctx), /<strong>0<\/strong>/, 'missing report must not pretend to be zero');
+});
+
+test('offer exposure is explained separately from qualification and paid history',()=>{
+ const {state,ctx}=ui();
+ state.detail={task:{id:'task',status:'posted',scopeVersion:1}};
+ state.offers=[{id:'offer',agentName:'New specialist',operatorName:'Builder',capability:'CSV cleanup',scopeVersion:1,expiresAt:Date.now()+100000,amountMinor:100,deliveryMinutes:2,exposure:{featured:true,shortlisted:true,reason:'<untrusted>'},trackRecord:{capabilityAccepted:0,operatorAccepted:0}}];
+ const html=vm.runInContext('offerCards()',ctx);
+ assert.match(html,/Qualified newcomer opportunity/);assert.match(html,/&lt;untrusted&gt;/);assert.doesNotMatch(html,/<untrusted>/);
+ assert.match(html,/not a quality recommendation or guaranteed hire/);
+ assert.match(html,/not paid-customer proof/);
+ assert.match(html,/data-shortlisted="true"/);
+});
+
+test('shortlist telemetry requires a visible quarter-card and deduplicates rerenders', async () => {
+ const {state,ctx}=ui(), calls=[];
+ state.detail.task.id='task';state.account={user:{id:'buyer'}};
+ let callback;
+ const card={dataset:{offerExposure:'offer'}};
+ ctx.document={hidden:false,querySelectorAll:()=>[card]};
+ ctx.IntersectionObserver=class {constructor(fn){callback=fn;} disconnect(){} observe(){} unobserve(){}};
+ ctx.crypto={randomUUID:()=> 'key'};
+ ctx.api=async(path,options)=>{calls.push(options.body);};
+ vm.runInContext('observeOfferExposure()',ctx);
+ callback([{target:card,isIntersecting:true,intersectionRatio:.01}]);
+ assert.equal(calls.length,0,'a sliver of the card is not an impression');
+ ctx.document.hidden=true;
+ callback([{target:card,isIntersecting:true,intersectionRatio:1}]);
+ assert.equal(calls.length,0,'background tabs do not count');
+ ctx.document.hidden=false;
+ callback([{target:card,isIntersecting:true,intersectionRatio:.25}]);
+ assert.equal(calls.length,1);
+ vm.runInContext('observeOfferExposure()',ctx);
+ callback([{target:card,isIntersecting:true,intersectionRatio:1}]);
+ assert.equal(calls.length,1,'rerender does not inflate telemetry');
 });

@@ -24,6 +24,30 @@ function createRecurring(context, execution) {
     if (!member || !['owner', 'employee'].includes(member.role) || (member.accessEpoch ?? null) !== schedule.accessEpoch) fail(403, 'SCHEDULE_ACCESS_CHANGED', 'Owner access changed. Create a new schedule after reviewing permissions.');
     return actor;
   }
+  async function checkSource(repo, task, calendar, perRunLimitMinor) {
+    localOnly();
+    require('./orchestration.cjs').fixedScope(task);
+    if (task.recurringScheduleId) fail(409, 'SCHEDULE_EXISTS', 'This request already has a schedule. Manage it in Scheduled work.');
+    if (!task.workPlan || task.workPlan.cadence === 'once' || task.assignment) fail(409, 'RECURRING_REQUEST_REQUIRED', 'Start a recurring request and confirm its scope before enabling a schedule. Deliveries cannot be converted into recurring work.');
+    if (task.workPlan.openQuestions?.length) fail(409, 'SCOPING_INCOMPLETE', 'Resolve the open questions before scheduling.');
+    if (calendar && calendar.cadence !== task.workPlan.cadence) fail(409, 'CADENCE_CHANGED', 'The calendar must match the confirmed recurring request.');
+    const offer = task.offers.find(o => o.id === task.selectedOfferId);
+    if (task.status !== 'posted' || !offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now() || !offer.runtimeBid) fail(409, 'OFFER_UNAVAILABLE', 'Select a current runtime offer for this recurring request.');
+    if ((offer.currency || 'USD') !== 'USD') fail(409, 'CURRENCY_UNSUPPORTED', 'Recurring budgets currently require a USD offer.');
+    if (perRunLimitMinor !== undefined && offer.amountMinor > perRunLimitMinor) fail(400, 'INVALID_LIMIT', 'The run limit must cover the selected quote.');
+    const agent = await repo.get('agent', offer.agentId);
+    const capability = agent?.capabilities.find(c => c.id === offer.capabilityId);
+    if (!capability || capabilityView(agent, capability, now()).qualification !== 'qualified') fail(409, 'QUALIFICATION_REQUIRED', 'The selected capability needs a current qualification.');
+    return { offer };
+  }
+  async function scheduleCreationAction(repo, actor, task) {
+    const { availability } = require('./action-availability.cjs');
+    return availability(async () => {
+      localOnly();
+      await taskFor(repo, actor, task.id, true);
+      await checkSource(repo, task);
+    });
+  }
   async function create(actor, taskId, body, key) {
     localOnly();
     exactKeys(body, ['expectedVersion', 'calendar', 'perRunLimitMinor', 'monthlyLimitMinor', 'consent']);
@@ -34,17 +58,7 @@ function createRecurring(context, execution) {
       const task = await taskFor(repo, actor, taskId, true);
       require('./orchestration.cjs').fixedScope(task);
       expected(task, body.expectedVersion);
-      if (task.recurringScheduleId) fail(409, 'SCHEDULE_EXISTS', 'This request already has a schedule. Manage it in Scheduled work.');
-      if (!task.workPlan || task.workPlan.cadence === 'once' || task.assignment) fail(409, 'RECURRING_REQUEST_REQUIRED', 'Start a recurring request and confirm its scope before enabling a schedule. Deliveries cannot be converted into recurring work.');
-      if (task.workPlan.openQuestions?.length) fail(409, 'SCOPING_INCOMPLETE', 'Resolve the open questions before scheduling.');
-      if (calendar.cadence !== task.workPlan.cadence) fail(409, 'CADENCE_CHANGED', 'The calendar must match the confirmed recurring request.');
-      const offer = task.offers.find(o => o.id === task.selectedOfferId);
-      if (task.status !== 'posted' || !offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now() || !offer.runtimeBid) fail(409, 'OFFER_UNAVAILABLE', 'Select a current runtime offer for this recurring request.');
-      if ((offer.currency || 'USD') !== 'USD') fail(409, 'CURRENCY_UNSUPPORTED', 'Recurring budgets currently require a USD offer.');
-      if (offer.amountMinor > body.perRunLimitMinor) fail(400, 'INVALID_LIMIT', 'The run limit must cover the selected quote.');
-      const agent = await repo.get('agent', offer.agentId);
-      const capability = agent?.capabilities.find(c => c.id === offer.capabilityId);
-      if (!capability || capabilityView(agent, capability, now()).qualification !== 'qualified') fail(409, 'QUALIFICATION_REQUIRED', 'The selected capability needs a current qualification.');
+      const { offer } = await checkSource(repo, task, calendar, body.perRunLimitMinor);
       const actorNow = await resolveActor(actor.user.id), member = actorNow.memberships.find(m => m.id === task.tenantId);
       const id = randomUUID();
       const schedule = { id, ownerId: actor.user.id, tenantId: task.tenantId, status: 'active', version: 1, createdAt: now(), updatedAt: now(),
@@ -73,17 +87,27 @@ function createRecurring(context, execution) {
           history.push({ ...run, status: task?.assignment?.status || (task?.status === 'cancelled' ? 'cancelled' : task?.selectedOfferId ? 'awaiting_start' : 'finding_offer') });
         }
         const { input, ...knowledge } = schedule.context;
-        result.push({ ...schedule, context: { ...knowledge, contextReferences: (knowledge.contextReferences || []).map(({content,...ref}) => ref), input: input ? { filename: input.filename, notes: input.notes, sha256: input.sha256 } : null }, runs: history });
+        result.push({ ...schedule, actions: await scheduleActions(actor, schedule), context: { ...knowledge, contextReferences: (knowledge.contextReferences || []).map(({content,...ref}) => ref), input: input ? { filename: input.filename, notes: input.notes, sha256: input.sha256 } : null }, runs: history });
       }
       return { schedules: result };
     });
+  }
+  async function checkControl(actor, schedule, action) {
+    localOnly();
+    await access(actor, schedule);
+    if (action === 'resume') await currentOwner(schedule);
+  }
+  async function scheduleActions(actor, schedule) {
+    const { availability } = require('./action-availability.cjs');
+    return { pause: await availability(() => checkControl(actor, schedule, 'pause')),
+      resume: await availability(() => checkControl(actor, schedule, 'resume')) };
   }
   async function update(actor, id, body, key) {
     localOnly(); exactKeys(body, ['expectedVersion', 'action']);
     if (!['pause', 'resume'].includes(body.action)) fail(400, 'INVALID_ACTION', 'Choose pause or resume.');
     return command(actor.user.id, key, ['schedule-control', id, body], async repo => access(actor, await repo.get('schedule', id)), async repo => {
       const schedule = await repo.get('schedule', id, true); expected(schedule, body.expectedVersion);
-      if (body.action === 'resume') await currentOwner(schedule);
+      await checkControl(actor, schedule, body.action);
       schedule.status = body.action === 'pause' ? 'paused' : 'active';
       schedule.reason = body.action === 'pause' ? 'Paused by a workspace member. Existing work can be reviewed or cancelled in its conversation.' : null;
       if (body.action === 'resume') {
@@ -187,6 +211,6 @@ function createRecurring(context, execution) {
     }
     return { next: rows.length === 25 ? rows.at(-1).id : '' };
   }
-  return { createSchedule: create, listSchedules: list, updateSchedule: update, reconcileSchedules: tick };
+  return { scheduleCreationAction, scheduleActions, createSchedule: create, listSchedules: list, updateSchedule: update, reconcileSchedules: tick };
 }
 module.exports = { createRecurring };

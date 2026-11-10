@@ -6,9 +6,11 @@ const builderLabels = {dashboard:'Overview',agents:'Your agents',opportunities:'
 
 function offerCard(o, task) {
   const available = ['posted','selected'].includes(task.status) && scopeMatches(o,task) && o.expiresAt > Date.now();
-  return `<article class="panel offer-card ${o.selected?'chosen':''}">
+  return `<article data-offer-exposure="${escape(o.id)}" data-shortlisted="${Boolean(o.exposure?.shortlisted)}" class="panel offer-card ${o.selected?'chosen':''}">
     <div class="section-heading"><div><span class="eyebrow">${o.agentType==='general'?'General-purpose':'Domain specialist'}</span><h3>${escape(o.agentName)}</h3><small>Operated by ${escape(o.operatorName)}</small></div><strong>${money(o.amountMinor, o.currency)}<small>supplier quote · total not final</small></strong></div>
     <p>${escape(o.capability)}</p><span class="tag">${o.qualification==='qualified'?(o.qualificationCurrent?`${RelaySupplier.assessmentTitle(o.qualificationEvidence)} passed`:'Previous assessment pass · retest required'):'Not currently assessed'}</span>
+    ${o.exposure?.featured?`<p class="tag">Qualified newcomer opportunity</p><p class="hint">${escape(o.exposure.reason)}</p>`:''}
+    ${o.trackRecord?`<p class="hint">${o.trackRecord.capabilityAccepted} accepted deliveries for this capability · ${o.trackRecord.operatorAccepted} across this builder. Local and sandbox history, not paid-customer proof.</p>`:''}
     <p class="offer-details">${escape(o.proposal)}</p>
     <div class="offer-facts"><div><small>First delivery estimate</small><strong>${o.deliveryMinutes} min after starting</strong></div><div><small>Valid until</small><strong>${date(o.expiresAt)}</strong></div></div>
     <details class="quiet-details"><summary>Capability evidence and price details</summary>${typeof RelaySupplier==='object'?RelaySupplier.evidence(o.qualificationEvidence):''}<p>Qualification is a snapshot at quote time and covers only the displayed rubric. No paid-work reliability history is available.</p><p>${escape(o.currency || 'USD')} supplier quote. Relay fees, tax and payment collection are not configured locally. This is not a final checkout total.</p></details>
@@ -26,7 +28,7 @@ function offerCards(){
  const others=state.offers.filter(o=>!o.selected);
  return `<article class="thread-message relay offer-section" aria-label="Agent offers"><span class="thread-speaker">Relay</span>
  ${selected?`<section class="panel selected-agreement"><strong>Selected: ${escape(selected.agentName)}</strong><p>${money(selected.amountMinor, selected.currency)} supplier quote · ${selected.deliveryMinutes} min to first delivery after work starts</p><p class="hint">${selected.runtimeBid?'This is a local test offer. No real money moves. Explicit task permission is required before the runtime starts.':'This agent is selected. Work starts only after confirmed funding, readiness and required inputs.'}</p>${task.workPlan&&task.workPlan.cadence!=='once'?RelayRecurring.setup(task):state.detail.approval&&state.detail.approval.status!=='approved'?'<p class="hint">Company approval is needed. Continue in the approval card below.</p>':state.reviewStart?'':'<button class="primary" data-action="review-start">Review start requirements</button>'}</section><details class="thread-alternatives" ${state.reviewOffer?'open':''}><summary>Compare other offers</summary><div class="thread-offers">${[selected,...others].map(o=>offerCard(o,task)).join('')}</div></details>`:`<p>${state.offers.length?`${state.offers.length} ${state.offers.length===1?'agent has':'agents have'} offered to help. Compare their supplier prices and delivery estimates below.`:'I’m waiting for offers for this brief.'}</p><div class="thread-offers">${others.map(o=>offerCard(o,task)).join('')}</div>`}
- ${state.offers.length?'<details class="quiet-details"><summary>Recommendation & evidence</summary><p>No automatic recommendation yet: compare the scope of any test evidence alongside price and delivery estimates. Paid-work reliability has not been assessed. Agent type alone is not a qualification.</p></details>':'<p class="hint">Connected runtimes can bid automatically when their operator enables it. Manual local offers can also appear here.</p>'}
+ ${state.offers.length?'<details class="quiet-details"><summary>Recommendation & evidence</summary><p>One of the first four positions may rotate among currently qualified newcomers. Placement is an opportunity to compare, not a quality recommendation or guaranteed hire. All other offers remain available. Compare the scope of test evidence alongside price and delivery estimates. Paid-work reliability has not been assessed. Agent type alone is not a qualification.</p></details>':'<p class="hint">Connected runtimes can bid automatically when their operator enables it. Manual local offers can also appear here.</p>'}
  </article>`;
 }
 function availableAgents(task) {
@@ -73,9 +75,10 @@ function agentQuotingRules(agent, step = 3) {
 function agentAcquisition(agent) {
   const report = state.acquisitionReport?.agentId === agent.id ? state.acquisitionReport : null;
   const labels = {market:'Agent Market',storefront:'Direct storefront', 'builder-link':'Builder-shared link',unspecified:'Source not supplied','repeat-hire':'Repeat hire'};
-  return `<section class="panel"><h2>Acquisition</h2><p>Posted requests that started with this agent’s listing, including requests for its builder. Draft chats, open-market work and older requests without attribution are excluded.</p>
+  return `<section class="panel"><h2>Acquisition</h2><p>See how this agent reaches buyers and turns offers into accepted work. The marketplace funnel includes all sources; the direct-request breakdown tracks requests from its listing.</p>
     <label>Builder-sharing link<input readonly aria-label="Builder-sharing link" value="${escape(location.origin + '/#storefront=' + agent.id + '?source=builder')}"></label>
     <p class="hint">Requires a Relay account on this localhost instance. Source labels are reported entry points, not verified referrals or evidence of revenue.</p>
+    ${report?.funnel ? `<h3>Your marketplace funnel</h3><div class="dashboard-stats">${[['Tasks quoted','quoted'],['Shortlist shown','shortlisted'],['Offer reviewed','reviewed'],['Offer selected','selected'],['Delivery accepted','accepted']].map(([label,key])=>`<div class="panel"><span>${label}</span><strong>${report.funnel[key]}</strong></div>`).join('')}</div><p class="hint">Unique tasks across all sources, for this agent only. Shortlist shown means a first-four offer card entered a buyer’s viewport; reviewed means they opened its review. ${escape(report.funnel.exposureHistory)} ${escape(report.funnel.limitation)} Eligibility and invitation totals: not measured.</p><h3>Direct-request sources</h3><p class="hint">Listing-origin requests only, including requests for this builder. Drafts and unattributed open-market work are excluded from this breakdown.</p>` : ''}
     ${report ? `<div class="dashboard-stats">${[['Requests','requests'],['Quoted','quoted'],['Offer selected','selected'],['Delivery accepted','delivered']].map(([label,key])=>`<div class="panel"><span>${label}</span><strong>${report.totals[key]}</strong></div>`).join('')}</div>
     <div class="acquisition-table" role="region" aria-label="Acquisition totals by source" tabindex="0"><table><caption>All-time direct requests by reported source</caption><thead><tr><th>Source</th><th>Requests</th><th>Quoted</th><th>Selected</th><th>Accepted delivery</th></tr></thead><tbody>${report.rows.map(row=>`<tr><th scope="row">${labels[row.source]}</th><td>${row.requests}</td><td>${row.quoted}</td><td>${row.selected}</td><td>${row.delivered}</td></tr>`).join('')}</tbody></table></div>
     <p class="hint">Each task counts once per milestone. Quoted and selected count your own agents’ offers. Selected means there is evidence your offer was chosen, not that it was funded. Older selections without supplier evidence are excluded. Cancelled requests remain in history. Local unpaid and sandbox work are included; these are not paying-customer counts. Updated ${escape(date(report.asOf))}.</p>` : '<p>Open or refresh this agent to load acquisition totals.</p>'}
@@ -134,4 +137,29 @@ function builder() {
   if(typeof RelayPayments==='object'&&tab==='settings')content=RelayPayments.settings();
   if(typeof RelayPayments==='object'&&tab==='earnings')content=RelayPayments.earnings();
   return `<section class="market-workspace"><div class="section-heading"><div><span class="eyebrow">Builder workspace</span><h1>${tab==='dashboard'?'Dashboard':builderLabels[tab]}</h1><p class="muted">${tab==='dashboard'?'Your agents’ work, exceptions and earnings at a glance.':tab==='agents'?'Connect, qualify and configure how each agent works.':'Keep your runtime. Let Relay bring the right work.'}</p></div>${['dashboard','agents'].includes(tab)?'<button class="primary" data-action="add-agent">Add an agent</button>':'<button class="quiet" data-action="refresh">Refresh</button>'}</div>${content}</section>`;
+}
+
+// Non-consequential analytics are separate from task commands and never block hiring.
+let offerExposureObserver;
+const recordedOfferExposure = new Set();
+function recordOfferExposure(offerId, stage) {
+  const task = state.detail?.task;
+  if (!task || !state.account?.user?.id) return;
+  const identity = `${state.account.user.id}:${task.id}:${task.scopeVersion}:${offerId}:${stage}`;
+  if (recordedOfferExposure.has(identity)) return;
+  recordedOfferExposure.add(identity);
+  if (recordedOfferExposure.size > 2000) recordedOfferExposure.delete(recordedOfferExposure.values().next().value);
+  api(`/api/tasks/${task.id}/offer-exposure`, {method:'POST',body:{offerIds:[offerId],stage},key:crypto.randomUUID()})
+    .catch(() => recordedOfferExposure.delete(identity));
+}
+function observeOfferExposure() {
+  offerExposureObserver?.disconnect();
+  if (typeof IntersectionObserver === 'undefined') return;
+  offerExposureObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) if (entry.isIntersecting && entry.intersectionRatio >= .25 && !document.hidden) {
+      recordOfferExposure(entry.target.dataset.offerExposure,'shortlisted');
+      offerExposureObserver.unobserve(entry.target);
+    }
+  }, {threshold:.25});
+  document.querySelectorAll('[data-offer-exposure][data-shortlisted="true"]').forEach(card => offerExposureObserver.observe(card));
 }

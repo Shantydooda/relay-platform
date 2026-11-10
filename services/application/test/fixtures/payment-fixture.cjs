@@ -6,10 +6,13 @@ const { createSqliteRepository, createPostgresRepository } = require('../../src/
 const { createApplication } = require('../../src/service.cjs');
 // Provider double exists ONLY in isolated test databases. It cannot be selected
 // by the application launcher or an HTTP request.
-async function fixture(t, adapter='sqlite') {
-  const db = adapter==='sqlite'?new DatabaseSync(':memory:'):await PGlite.create();
-  t.after(()=>db.close());
-  const repository = adapter==='sqlite'?createSqliteRepository(db):await createPostgresRepository(db,{initialize:true});
+async function fixture(t, adapter='sqlite', sharedRepository = null) {
+  let repository = sharedRepository;
+  if (!repository) {
+    const db = adapter==='sqlite'?new DatabaseSync(':memory:'):await PGlite.create();
+    t.after(()=>db.close());
+    repository = adapter==='sqlite'?createSqliteRepository(db):await createPostgresRepository(db,{initialize:true});
+  }
   const actor = name=>({user:{id:randomUUID(),name},memberships:[{id:randomUUID(),role:'owner'}]});
   const buyer=actor('Buyer'), builder=actor('Builder'), stranger=actor('Stranger');
   let time=Date.now(), loseCheckout=false;
@@ -26,6 +29,18 @@ async function fixture(t, adapter='sqlite') {
     async payout(op){calls.push(['payout',op.id]);return{payoutId:'po_fixture',status:'pending'};},
     async payoutStatus(){return{status:'paid'};}
   };
+  // Shared matrix databases still need distinct provider objects per settlement.
+  // Keep the legacy fixture IDs for existing single-scenario tests.
+  if (sharedRepository) {
+    provider.checkout = async op => {
+      calls.push(['checkout', op.id]); unique.add(op.id);
+      return { sessionId: `cs_test_${op.id}`, url: 'https://checkout.stripe.com/fixture' };
+    };
+    provider.funding = async p => ({ status: 'funded', intentId: `pi_${p.id}`, chargeId: `ch_${p.id}` });
+    provider.refund = async op => { calls.push(['refund', op.id]); return { refundId: `re_${op.id}`, status: 'pending' }; };
+    provider.transfer = async op => { calls.push(['transfer', op.id]); return { transferId: `tr_${op.id}` }; };
+    provider.payout = async op => { calls.push(['payout', op.id]); return { payoutId: `po_${op.id}`, status: 'pending' }; };
+  }
   const options={repository,localExecution:true,now:()=>time,paymentProvider:provider};
   const app=createApplication(options);
   await app.onboardOperator(builder,{country:'US'},randomUUID());await app.refreshOperator(builder);

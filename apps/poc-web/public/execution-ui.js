@@ -1,6 +1,10 @@
 'use strict';
 
 const RelayExecution = {
+  control(task, action, label, attributes = '') {
+    const eligibility = state.detail?.task?.id === task.id ? state.detail.actions?.execution?.[action] : null;
+    return `<button ${attributes} ${eligibility?.allowed ? '' : 'disabled'}>${escape(label)}</button>${eligibility?.allowed ? '' : `<p class="hint">${escape(eligibility?.reason || 'Refresh to check whether this action is available.')}</p>`}`;
+  },
   clock(startedAt, completedAt, label = 'delivered') {
     if (!startedAt) return '';
     const elapsed = Math.max(0, (completedAt || Date.now()) - startedAt);
@@ -66,7 +70,7 @@ const RelayExecution = {
     return `<section class="panel start-review"><span class="eyebrow">Local execution permission</span><h2>${offer.runtimeKind === 'supplier-hosted' ? 'Ready to start this task?' : 'Ready to process your CSV?'}</h2>
       <p>This authorizes the selected runtime to work on your agreed brief and return files here. The quote is a test offer: no money is collected or paid. ${offer.qualificationCurrent ? 'This runtime passed the specific assessment shown on its offer; other capability claims remain unverified.' : 'No current capability assessment is attached to this offer.'}</p>
       <p>Only this task’s agreed brief and attached input are shared with the selected runtime. No Drive, CRM or external destinations are connected.</p>
-      <button class="primary" data-action="authorize-local">Run locally · no payment</button><button class="quiet" data-action="hide-start">Keep reviewing</button></section>`;
+      ${this.control(task, 'startLocal', 'Run locally · no payment', 'class="primary" data-action="authorize-local"')}<button class="quiet" data-action="hide-start">Keep reviewing</button></section>`;
   },
   async requestRevision(form, notes) {
     const task = state.detail.task;
@@ -134,17 +138,17 @@ const RelayExecution = {
     );
     return `<article class="thread-message relay execution-update"><span class="thread-speaker">${relayCharacter()}Relay</span>
       <div class="execution-progress-card"><p class="activity-heading"><strong>${escape(checking && execution.status === 'buyer_review' ? 'Files received · safety checks pending' : taskLabel(task))}</strong>${execution.startedAt ? ` · <span data-execution-clock data-started="${execution.startedAt}" data-completed="${execution.completedAt || execution.endedAt || ''}" data-end-label="${execution.completedAt ? 'delivered' : 'ended'}">${this.clock(execution.startedAt, execution.completedAt || execution.endedAt, execution.completedAt ? 'delivered' : 'ended')}</span>` : ''}</p>
-      ${['queued', 'running'].includes(execution.status) && !task.permissionRequests?.some((item) => ['pending', 'declined'].includes(item.status)) ? '<span class="activity-spinner" aria-hidden="true"></span>' : ''}<p>${escape(execution.status === 'accepted' ? 'The buyer accepted this delivery.' : execution.progress || 'Waiting for the runtime')}</p></div><details class="quiet-details"><summary>Execution details</summary><p class="hint">Actual local execution · ${execution.paymentStatus === 'not_applicable_local_unpaid' ? 'unpaid' : 'sandbox funded'} · attempt ${execution.attempt || 0}</p></details>
+      ${['queued', 'running'].includes(execution.status) && !taskWaitingForPermission(task) ? '<span class="activity-spinner" aria-hidden="true"></span>' : ''}<p>${escape(execution.status === 'accepted' ? 'The buyer accepted this delivery.' : execution.progress || 'Waiting for the runtime')}</p></div><details class="quiet-details"><summary>Execution details</summary><p class="hint">Actual local execution · ${execution.paymentStatus === 'not_applicable_local_unpaid' ? 'unpaid' : 'sandbox funded'} · attempt ${execution.attempt || 0}</p></details>
       <ol class="execution-milestones" aria-label="Task progress"><li class="done">Authorized</li><li class="${execution.startedAt ? 'done' : ''}">${execution.startedAt ? 'Started' : 'Waiting to start'}</li><li class="${current ? 'done' : ''}">${current ? 'Files received' : 'Delivery pending'}</li><li class="${execution.status === 'accepted' ? 'done' : ''}">${execution.status === 'accepted' ? 'Accepted' : 'Your review'}</li></ol>
       ${current ? this.files(task.id, [current]) : ''}
       ${submissions.length > 1 ? `<details class="delivery-history"><summary>Earlier deliveries (${submissions.length - 1})</summary>${this.files(task.id, submissions.slice(0, -1))}</details>` : ''}
       ${
         execution.status === 'buyer_review' && current
-          ? `<div class="delivery-review"><p>Preview or download the files before accepting this exact delivery. Quarantined files must pass scanning first. No payout is triggered.</p><button class="primary" ${current.files.some((file) => file.scan && file.scan.status !== 'clean') ? 'disabled' : ''} data-action="accept-delivery" data-id="${current.id}">Accept delivery ${current.version}</button>
-      <details class="revision-request"><summary>Request changes</summary><form id="delivery-revision" class="market-form" data-id="${current.id}">${execution.runtimeKind === 'supplier-hosted' ? '<label>Describe the revision<textarea name="notes" maxlength="2000" required></textarea></label>' : '<label>Request a supported CSV revision<select name="notes"><option>Sort rows descending</option><option>Keep duplicate rows</option><option>Sort rows ascending</option></select></label>'}<div class="form-error" role="alert"></div><button type="submit">Request revision</button></form></details></div>`
+          ? `<div class="delivery-review"><p>Preview or download the files before accepting this exact delivery. Quarantined files must pass scanning first. No payout is triggered.</p>${this.control(task, 'accept', `Accept delivery ${current.version}`, `class="primary" data-action="accept-delivery" data-id="${current.id}"`)}
+      <details class="revision-request"><summary>Request changes</summary><form id="delivery-revision" class="market-form" data-id="${current.id}">${execution.runtimeKind === 'supplier-hosted' ? '<label>Describe the revision<textarea name="notes" maxlength="2000" required></textarea></label>' : '<label>Request a supported CSV revision<select name="notes"><option>Sort rows descending</option><option>Keep duplicate rows</option><option>Sort rows ascending</option></select></label>'}<div class="form-error" role="alert"></div>${this.control(task, 'revise', 'Request revision', 'type="submit"')}</form></details></div>`
           : ''
       }
-      ${['queued', 'running', 'buyer_review'].includes(execution.status) ? '<details><summary>Cancel execution</summary><form id=\"execution-cancel\" class=\"market-form\"><label>Reason<textarea name=\"reason\" maxlength=\"1000\" required></textarea></label><p>Relay will reject further submissions. A supplier must stop its own tools; actions already taken cannot be undone here.</p><div class=\"form-error\" role=\"alert\"></div><button type=\"submit\">Cancel execution</button></form></details>' : ''}
+      ${['queued', 'running', 'buyer_review'].includes(execution.status) ? `<details><summary>Cancel execution</summary><form id=\"execution-cancel\" class=\"market-form\"><label>Reason<textarea name=\"reason\" maxlength=\"1000\" required></textarea></label><p>Relay will reject further submissions. A supplier must stop its own tools; actions already taken cannot be undone here.</p><div class=\"form-error\" role=\"alert\"></div>${this.control(task, 'cancel', 'Cancel execution', 'type="submit"')}</form></details>` : ''}
       ${typeof RelayApps === 'object' ? RelayApps.taskControls(task) : ''}
       ${typeof RelayRecurring === 'object' ? RelayRecurring.recovery(task) : ''}
       ${typeof RelayApps === 'object' ? RelayApps.attioDelivery(task, current) : ''}

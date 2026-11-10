@@ -1,5 +1,7 @@
 'use strict';
 
+const { waitingForPermission } = require('../../../packages/domain/src/execution-state.cjs');
+
 const { assertUnfunded } = require('./payments.cjs');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
 const { saveTask } = require('./supplier-feed.cjs');
@@ -79,7 +81,7 @@ function createExecution(context) {
       return authorizeWithin(repo, actor, task, body.mode);
     });
   }
-  async function authorizeWithin(repo, actor, task, mode) {
+  async function checkStart(repo, actor, task, mode) {
     require('./orchestration.cjs').ready(task);
     if (task.orchestrationStep && mode !== 'local-unpaid') fail(409, 'PLAN_LOCAL_ONLY', 'Orchestration currently supports local unpaid execution only.');
     if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Review and enable the recurring schedule. Each run gets its own execution.');
@@ -100,7 +102,7 @@ function createExecution(context) {
     const offer = task.offers.find(item => item.id === task.selectedOfferId);
     if (!offer || offer.expiresAt <= now() || offer.scopeVersion !== task.scopeVersion || task.status !== 'posted') fail(409, 'OFFER_UNAVAILABLE', 'Select a valid offer for the current scope.');
     require('./orchestration.cjs').withinBudget(task, offer.amountMinor);
-    const agent = await repo.get('agent', offer.agentId, true);
+    const agent = offer.agentId ? await repo.get('agent', offer.agentId, true) : null;
     if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !offer.runtimeBid) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
     if (agent.runtimeKind !== 'supplier-hosted' && (agent.runtimeKind !== 'bounded-csv-automation' || !task.input)) fail(409, 'INPUT_REQUIRED', 'The local CSV runtime requires an attached CSV.');
     if ((offer.currency || 'USD') !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'The operator changed quoting currency. Request a fresh offer.');
@@ -110,6 +112,10 @@ function createExecution(context) {
     await context.approvals.requireApproval(repo, actor, task);
     const member = actor.memberships.find(item => item.id === task.tenantId);
     if (member.role !== 'owner' && !task.companyApprovalRequired) fail(403, 'APPROVAL_REQUIRED', 'Corporate execution is not implemented in local unpaid mode.');
+    return { offer, agent };
+  }
+  async function authorizeWithin(repo, actor, task, mode) {
+    const { offer, agent } = await checkStart(repo, actor, task, mode);
     task.assignment = { id: randomUUID(), agentId: agent.id, operatorId: offer.operatorId, offerId: offer.id,
       status: 'queued', authorizedAt: now(), mode, attempt: 0, progress: 'Waiting for the runtime',
       runtimeKind: agent.runtimeKind, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + Math.min(86400000, Math.max(300000, offer.deliveryMinutes * 120000)),
@@ -125,7 +131,7 @@ function createExecution(context) {
       const grants = await repo.page('agent-grant', 'tenant_id', principal.agentId, { limit: 100, statuses: ['queued', 'running'] }), result = [];
       for (const grant of grants.filter(item => item.agentId === principal.agentId)) {
         const task = await repo.get('task', grant.taskId), assignment = task?.assignment;
-        if (assignment && ['queued', 'running'].includes(assignment.status)) result.push({ taskId: task.id, assignmentId: assignment.id, status: assignment.status, leaseUntil: assignment.leaseUntil || 0, attempt: assignment.attempt });
+        if (assignment && ['queued', 'running'].includes(assignment.status)) result.push({ taskId: task.id, assignmentId: assignment.id, status: assignment.status, waitingForPermission: waitingForPermission(assignment), leaseUntil: assignment.leaseUntil || 0, attempt: assignment.attempt });
       }
       return result;
     });
@@ -244,23 +250,44 @@ function createExecution(context) {
       return { taskId: id, status: 'failed', version: task.version };
     });
   }
+  async function checkReview(repo, task, action, submissionId) {
+    const submission = task.submissions.at(-1);
+    if (task.assignment?.status !== 'buyer_review' || !submission || submission.id !== submissionId || submission.status !== 'ready') fail(409, 'STALE_SUBMISSION', 'Review the current submission.');
+    if (action === 'accept-delivery') {
+      for (const file of submission.files) {
+        const artifact = await repo.get('artifact', file.id);
+        if (artifact?.submissionId !== submission.id) fail(409, 'FILE_UNAVAILABLE', 'Submission bytes are unavailable.');
+        verifiedBytes(file, artifact, task.id);
+      }
+    } else if (task.submissions.length >= 3) fail(409, 'REVISION_LIMIT', 'This local runtime supports two revisions.');
+    return submission;
+  }
+  async function executionActions(repo, actor, task) {
+    const { availability } = require('./action-availability.cjs');
+    const check = async action => {
+      await taskFor(repo, actor, task.id, true);
+      const snapshot = structuredClone(task);
+      if (action === 'startLocal' || action === 'startFunded') {
+        if (task.scheduleId) fail(409, 'SCHEDULE_MANAGED', 'The schedule starts this run automatically after its checks and any company approval.');
+        await checkStart(repo, actor, snapshot, action === 'startLocal' ? 'local-unpaid' : 'stripe-sandbox');
+      } else {
+        await checkReview(repo, snapshot, action === 'accept' ? 'accept-delivery' : 'request-revision', task.submissions.at(-1)?.id);
+      }
+    };
+    const actions = {};
+    for (const action of ['startLocal', 'startFunded', 'accept', 'revise']) actions[action] = await availability(() => check(action));
+    return actions;
+  }
   async function reviewDelivery(actor, id, action, body, key) {
     exactKeys(body, ['expectedVersion', 'submissionId', 'notes']);
     if (!['accept-delivery', 'request-revision'].includes(action)) fail(400, 'INVALID_INPUT', 'Unknown review action.');
     return command(actor.user.id, key, [action, id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
-      const submission = task.submissions.at(-1);
-      if (task.assignment?.status !== 'buyer_review' || submission?.id !== body.submissionId || submission.status !== 'ready') fail(409, 'STALE_SUBMISSION', 'Review the current submission.');
+      const submission = await checkReview(repo, task, action, body.submissionId);
       if (action === 'accept-delivery') {
-        for (const file of submission.files) {
-          const artifact = await repo.get('artifact', file.id);
-          if (artifact?.submissionId !== submission.id) fail(409, 'FILE_UNAVAILABLE', 'Submission bytes are unavailable.');
-          verifiedBytes(file, artifact, task.id);
-        }
         submission.status = 'accepted'; task.assignment.status = 'accepted'; task.assignment.acceptedAt = now();
         task.assignment.progress = 'The buyer accepted this delivery.';
       } else {
-        if (task.submissions.length >= 3) fail(409, 'REVISION_LIMIT', 'This local runtime supports two revisions.');
         const notes = text(body.notes, 'Revision notes', 1, 2000);
         if (task.assignment.runtimeKind !== 'supplier-hosted' && !['Sort rows descending', 'Keep duplicate rows', 'Sort rows ascending'].includes(notes)) fail(422, 'UNSUPPORTED_REVISION', 'Choose a supported CSV revision: Sort rows descending, Keep duplicate rows, or Sort rows ascending.');
         submission.status = 'revision_requested'; task.assignment.status = 'queued'; task.assignment.attempt = 0;
@@ -316,6 +343,6 @@ function createExecution(context) {
     const file = await download(actor, id, submissionId, fileId);
     return require('./file-preview.cjs').filePreview(file);
   }
-  return { authorizeWithin, scanFile, previewFile, issueCredential, issueSupplierCredential, revokeCredential, runtimePrincipal, heartbeat, addInput, authorizeLocal, assignments, claim, progress, submit, failExecution, reviewDelivery, download };
+  return { executionActions, authorizeWithin, scanFile, previewFile, issueCredential, issueSupplierCredential, revokeCredential, runtimePrincipal, heartbeat, addInput, authorizeLocal, assignments, claim, progress, submit, failExecution, reviewDelivery, download };
 }
 module.exports = { createExecution, MAX_FILE_BYTES };

@@ -29,6 +29,8 @@ Persist a random UUID **before** sending each command. Reuse that key and identi
 
 After buyer selection and authorization, `claim` returns the authorized brief/input and fenced lease. Renew with `progress` before lease expiry; a heartbeat does not renew the lease. Return files through `submit`. Quarantine/scanning still gates buyer downloads and acceptance. Revisions require a fresh claim; old leases must never be reused. Handle cancellation, expired deadlines and revoked credentials by stopping the affected work.
 
+Assignment feeds and task details expose `waitingForPermission`. When true, keep polling but do not claim: the assignment is paused for the buyer, even though its stored status remains `queued`. A false value is not permission to execute; `claim` and every tool command still check current authority. The field is optional for older-server compatibility. If a claim returns `PERMISSION_PENDING`, reconcile and wait rather than immediately retrying. Historical declined requests do not describe a replacement assignment's current state.
+
 `createSupplierClient` also accepts `signal` (AbortSignal) and `timeoutMs` (1–30000, default 8000 per attempt). Only explicit `http://127.0.0.1:<port>` origins are accepted; redirects are rejected. Credentials stay in headers. The caller must keep its machine, connection file and tools secure. This library does not sandbox supplier code, infer capabilities, automatically approve work, persist jobs or publish to npm.
 
 The independent CSV reference uses the same transport. It remains deterministic automation, not an AI model. Its integration test exercises bids, authorized execution, scanned downloads, application restart and revoked credentials on disposable native PostgreSQL.

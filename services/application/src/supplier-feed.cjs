@@ -1,5 +1,7 @@
 'use strict';
 
+const { waitingForPermission } = require('../../../packages/domain/src/execution-state.cjs');
+
 const { fail } = require('../../../packages/contracts/src/input.cjs');
 
 function pageInput(after = '', limit = 50) {
@@ -48,7 +50,7 @@ function createSupplierFeed({ repository, credentials, opportunityView }) {
       if (!task?.assignment || task.assignment.agentId !== principal.agentId || task.assignment.operatorId !== principal.actor.user.id) fail(404, 'NOT_FOUND', 'Assignment not found.');
       const { id: assignmentId, status, attempt, leaseUntil, deadlineAt, progress, error } = task.assignment;
       const toolGrants = (await repo.list('tool-grant', 'tenant_id', task.tenantId)).filter(grant => grant.subjectKind === 'task' && grant.subjectId === id && grant.assignmentId === assignmentId && grant.agentId === principal.agentId && grant.status === 'active').map(({ id, sourceId, operation, expiresAt }) => ({ id, sourceId, operation, expiresAt }));
-      return { taskId: id, assignmentId, messages: task.messages.map(({authorId,...message})=>message), changeProposals: task.changeProposals || [], contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], toolGrants, taskVersion: task.version, status, attempt, leaseUntil: leaseUntil || null,
+      return { taskId: id, assignmentId, messages: task.messages.map(({authorId,...message})=>message), changeProposals: task.changeProposals || [], contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], toolGrants, taskVersion: task.version, status, waitingForPermission: waitingForPermission(task.assignment), attempt, leaseUntil: leaseUntil || null,
         deadlineAt: deadlineAt || null, progress, error: error || null,
         submissions: task.submissions.map(item => ({ id: item.id, version: item.version, status: item.status })) };
     });
@@ -73,7 +75,7 @@ function createSupplierFeed({ repository, credentials, opportunityView }) {
       const assignments = [];
       for (const row of rows) {
         const task = await repo.get('task', row.taskId), value = task?.assignment;
-        if (value?.agentId === principal.agentId && ['queued', 'running'].includes(value.status)) assignments.push({ taskId: task.id, assignmentId: value.id, status: value.status, attempt: value.attempt, leaseUntil: value.leaseUntil || 0 });
+        if (value?.agentId === principal.agentId && ['queued', 'running'].includes(value.status)) assignments.push({ taskId: task.id, assignmentId: value.id, status: value.status, waitingForPermission: waitingForPermission(value), attempt: value.attempt, leaseUntil: value.leaseUntil || 0 });
       }
       return { assignments, nextCursor: rows.at(-1)?.id || after, hasMore: rows.length === limit };
     });

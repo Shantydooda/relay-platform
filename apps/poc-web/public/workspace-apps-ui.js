@@ -53,13 +53,38 @@ const RelayApps = {
       }
       ${task.contextReads?.length ? `<details><summary>Sources read by your agent</summary>${task.contextReads.map((read) => `<p>${escape(read.name)} · Relay version ${read.version} · ${escape(date(read.readAt))}<br><small>${escape(read.mode === 'live-file' ? 'Checked against Drive before use' : 'Saved source version')}</small></p>`).join('')}</details>` : ''}
       ${(task.permissionRequests || [])
+        .filter(request => !this.actionablePermission(task, request))
         .map((request) => {
           const ref = refs.find((item) => item.sourceId === request.sourceId);
-          return `<article class="permission-request"><h3>Agent requests read access</h3><p><strong>${escape(ref?.name || 'Selected source')}</strong> · ${escape(request.status)}</p><p>${escape(request.reason)}</p>
-          ${['pending', 'declined'].includes(request.status) && this.owner() && ['queued', 'running'].includes(task.status) ? `<form id="permission-${escape(request.id)}" data-permission-request="${escape(request.id)}" class="market-form"><input type="hidden" name="sourceId" value="${escape(request.sourceId)}"><p>Work waits for your approval; you can also cancel the task. Read only, this assignment, up to 24 hours. Revocable in Connected tools. No write or send permission.</p><button name="decision" value="approve">Allow read access</button>${request.status === 'pending' ? '<button name="decision" value="decline">Decline</button>' : ''}<div class="form-error" role="alert"></div></form>` : ''}</article>`;
+          return `<article class="permission-request"><h3>Agent requests read access</h3><p><strong>${escape(ref?.name || 'Selected source')}</strong> · ${escape(request.status)}</p><p>${escape(request.reason)}</p></article>`;
         })
         .join('')}
       </section>`;
+  },
+  actionablePermission(task, request) {
+    const execution = state.detail?.task?.id === task.id ? state.detail?.execution : null;
+    return Boolean(this.owner() && execution &&
+      ['queued', 'running'].includes(task.status) &&
+      task.waitingForPermission !== false &&
+      request.assignmentId === execution.id &&
+      ['pending', 'declined'].includes(request.status));
+  },
+  permissionDecisions(task) {
+    if (!state.features?.workspaceApps) return '';
+    const requests = (task.permissionRequests || []).filter(request =>
+      this.actionablePermission(task, request));
+    if (!requests.length) return '';
+    return `<section class="panel permission-decisions" aria-label="Agent permission requests">${requests.map(request => {
+      const ref = task.contextReferences?.find(item => item.sourceId === request.sourceId);
+      return `<article class="permission-request"><h3>${request.status === 'declined' ? 'Access declined · work is paused' : 'Your agent needs read access'}</h3>
+        <p><strong>${escape(ref?.name || 'Selected source')}</strong></p><p>${escape(request.reason)}</p>
+        <form id="permission-${escape(request.id)}" data-permission-request="${escape(request.id)}" class="market-form">
+          <input type="hidden" name="sourceId" value="${escape(request.sourceId)}">
+          <p>Read only, this assignment, up to 24 hours. Revocable in Connected tools. No write or send permission. Work stays paused until you allow access or cancel the task.</p>
+          <button name="decision" value="approve">Allow read access</button>${request.status === 'pending' ? '<button name="decision" value="decline">Decline</button>' : ''}
+          <div class="form-error" role="alert"></div>
+        </form></article>`;
+    }).join('')}</section>`;
   },
   taskControls(task) {
     if (!state.features?.workspaceApps || !this.owner()) return '';

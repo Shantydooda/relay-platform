@@ -101,10 +101,17 @@ test('context selection and permission review escape source text and require own
   assert.match(draft, /Add context · @/);
   assert.match(draft, /Save this version/);
   assert.doesNotMatch(draft, /<script>/);
+  f.state.detail = { task: { id: 'task' }, execution: { id: 'current' } };
   const pending =
-    "RelayApps.contextPicker({status:'queued',brief:'Use source',contextReferences:[{sourceId:'source',name:'<script>bad</script>',mode:'latest'}],permissionRequests:[{id:'request',sourceId:'source',status:'pending',reason:'<script>bad</script>'}]})";
+    "RelayApps.permissionDecisions({id:'task',status:'queued',brief:'Use source',contextReferences:[{sourceId:'source',name:'<script>bad</script>',mode:'latest'}],permissionRequests:[{id:'request',assignmentId:'current',sourceId:'source',status:'pending',reason:'<script>bad</script>'}]})";
   assert.match(f.render(pending), /Allow read access/);
   assert.doesNotMatch(f.render(pending), /<script>/);
+  f.state.detail.execution.id = 'replacement';
+  assert.doesNotMatch(f.render(pending), /Allow read access/);
+  f.state.detail.execution.id = 'current';
+  assert.doesNotMatch(f.render(pending.replace("status:'queued'", "status:'accepted'")), /Allow read access/);
+  assert.doesNotMatch(f.render(pending.replace("status:'queued'", "status:'queued',waitingForPermission:false")), /Allow read access/);
+  assert.doesNotMatch(f.render(pending.replace('permissionDecisions', 'contextPicker')), /Allow read access/);
   f.state.account.memberships[0].role = 'employee';
   assert.doesNotMatch(f.render(pending), /Allow read access/);
 });

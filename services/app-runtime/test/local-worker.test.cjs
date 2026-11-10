@@ -49,7 +49,9 @@ test('killed and stalled real child processes release slots for a fresh retry', 
     let first = true,
       failedChild;
     const run = createLocalAutomationWorker({
-      timeoutMs: 250,
+      // Use the production deadline for real processes. A 250 ms fixture budget
+      // also timed out the healthy retry during concurrent database tests,
+      // conflating slow process startup with failed slot recovery.
       spawnImpl(executable, args, options) {
         if (!first) return spawn(executable, args, options);
         first = false;

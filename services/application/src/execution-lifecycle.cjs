@@ -1,16 +1,39 @@
 'use strict';
 
+const { waitingForPermission } = require('../../../packages/domain/src/execution-state.cjs');
+
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
 
 function createLifecycle({ repository, command, taskFor, expected, now, touch, event, localExecution, approvals }) {
+  function checkCancel(task) {
+    if (!task.assignment || !['queued', 'running', 'buyer_review'].includes(task.assignment.status)) fail(409, 'STATE_CONFLICT', 'Only pending execution or a delivery awaiting review can be cancelled.');
+  }
+  async function checkRetry(repo, actor, task) {
+    if (!localExecution) fail(403, 'LOCAL_ONLY', 'Recovery is local only.');
+    const job = task.assignment;
+    if (!job || job.status !== 'failed' || job.mode !== 'local-unpaid' || task.submissions.length || (job.manualRetries || 0) >= 2 || task.scheduleId) fail(409, 'RECOVERY_BLOCKED', 'This execution cannot be safely retried here. Create a reviewed request instead.');
+    const agent = await repo.get('agent', job.agentId, true);
+    if (!agent?.credentialHash || agent.credentialExpiresAt <= now() || agent.connectedAt <= now() - 120000) fail(409, 'RUNTIME_REQUIRED', 'Reconnect the assigned runtime before retrying.');
+    await approvals.requireApproval(repo, actor, task);
+    return job;
+  }
+  async function lifecycleActions(repo, actor, task) {
+    const { availability } = require('./action-availability.cjs');
+    const check = async action => {
+      await taskFor(repo, actor, task.id, true);
+      if (action === 'cancel') checkCancel(task);
+      else await checkRetry(repo, actor, structuredClone(task));
+    };
+    return { cancel: await availability(() => check('cancel')), retry: await availability(() => check('retry')) };
+  }
   async function cancelExecution(actor, id, body, key) {
     exactKeys(body, ['expectedVersion', 'reason']);
     const reason = text(body.reason, 'Cancellation reason', 1, 1000);
     return command(actor.user.id, key, ['cancel-execution', id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true);
       expected(task, body.expectedVersion);
-      if (!task.assignment || !['queued', 'running', 'buyer_review'].includes(task.assignment.status)) fail(409, 'STATE_CONFLICT', 'Only pending execution or a delivery awaiting review can be cancelled.');
+      checkCancel(task);
       task.assignment.status = 'cancelled';
       task.assignment.cancelledAt = now();
       task.assignment.endedAt = now();
@@ -37,12 +60,13 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
         // Removed employees cannot retain access via task ownership.
         const buyerAccess = task.ownerId === actor.user.id && actor.memberships.some(m => m.id === task.tenantId);
         if (!buyerAccess && job.operatorId !== actor.user.id) continue;
-        items.push({ taskId: id, title: task.title, status: job.status, version: task.version,
+        const actions = await lifecycleActions(repo, actor, task);
+        items.push({ actions, taskId: id, title: task.title, status: job.status, version: task.version,
           waitingSince: job.authorizedAt, heartbeatAt: job.heartbeatAt || null,
-          waitingForPermission: Boolean(job.permissionWait),
+          waitingForPermission: waitingForPermission(job),
           overdue: job.permissionWait ? false : job.status === 'queued' ? job.queueDeadlineAt <= now() : job.status === 'running' && job.leaseUntil <= now(),
           attempt: job.attempt, error: job.error || null, progress: job.progress,
-          canRetry: buyerAccess && job.mode === 'local-unpaid' && job.status === 'failed' && !task.submissions.length && (job.manualRetries || 0) < 2 && !task.scheduleId });
+          canRetry: actions.retry.allowed });
       }
       return { items, limit: 100, checkedAt: now() };
     });
@@ -53,11 +77,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
     if (!localExecution) fail(403, 'LOCAL_ONLY', 'Recovery is local only.');
     return command(actor.user.id, key, ['retry-execution', id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
-      const job = task.assignment;
-      if (!job || job.status !== 'failed' || job.mode !== 'local-unpaid' || task.submissions.length || (job.manualRetries || 0) >= 2 || task.scheduleId) fail(409, 'RECOVERY_BLOCKED', 'This execution cannot be safely retried here. Create a reviewed request instead.');
-      const agent = await repo.get('agent', job.agentId, true);
-      if (!agent?.credentialHash || agent.credentialExpiresAt <= now() || agent.connectedAt <= now() - 120000) fail(409, 'RUNTIME_REQUIRED', 'Reconnect the assigned runtime before retrying.');
-      await approvals.requireApproval(repo, actor, task);
+      const job = await checkRetry(repo, actor, task);
       job.manualRetries = (job.manualRetries || 0) + 1;
       job.recoveryHistory = [...(job.recoveryHistory || []), { at: now(), actorId: actor.user.id, reason, error: job.error, attempt: job.attempt }];
       job.status = 'queued'; job.error = null; job.endedAt = null;
@@ -112,6 +132,6 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
     }
     return { cursors: next, changed };
   }
-  return { cancelExecution, reconcileExecutions, executionQueue, retryExecution };
+  return { lifecycleActions, cancelExecution, reconcileExecutions, executionQueue, retryExecution };
 }
 module.exports = { createLifecycle };

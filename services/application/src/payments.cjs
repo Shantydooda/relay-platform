@@ -121,6 +121,51 @@ function createPayments(context, provider) {
     });
     return { status: 'checked' };
   }
+  async function checkAction(repo, actor, task, action) {
+    configured(); active(actor);
+    const id = task.id, p = task.settlement;
+    await participant(repo, actor, id);
+    const sync = await repo.get('payment-job', `task:${id}`);
+    if (sync?.status === 'review') fail(409, 'RECONCILIATION_REQUIRED', 'Resolve the payment review before authorizing another operation.');
+    if (action === 'fund') {
+      if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Funding belongs to individual runs, not the recurring request.');
+      await taskFor(repo, actor, id, true);
+      if (!task.companyApprovalRequired && !actor.memberships.find(m => m.id === task.tenantId)?.company) await ownerBuyer(repo, actor, id);
+      assertUnfunded(task);
+      if (task.assignment || task.status !== 'posted') fail(409, 'FUNDING_UNAVAILABLE', 'Select an offer before funding.');
+      const offer = task.offers.find(o => o.id === task.selectedOfferId);
+      if (!offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now()) fail(409, 'OFFER_UNAVAILABLE', 'Select a current offer.');
+      if (!Number.isSafeInteger(offer.amountMinor) || offer.amountMinor < 50 || offer.amountMinor > 100000) fail(409, 'SANDBOX_AMOUNT_LIMIT', 'Sandbox funding supports 0.50–1,000 in the agreed currency.');
+      const op = await repo.get('sandbox-operator', offer.operatorId, true);
+      if (!ready(op)) fail(409, 'OPERATOR_NOT_READY', 'The operator must refresh sandbox verification and payout readiness.');
+      await context.approvals.requireApproval(repo, actor, task);
+    } else if (action === 'refund') {
+      await ownerBuyer(repo, actor, id);
+      if (p?.status !== 'funded' || (task.assignment && !['cancelled', 'failed'].includes(task.assignment.status))) {
+        fail(409, 'REFUND_UNAVAILABLE', 'Stop the task first. Refunds are available before transfer, for unstarted, cancelled or failed work.');
+      }
+    } else {
+      if (!p || p.operatorId !== actor.user.id) fail(403, 'FORBIDDEN', 'Only the selected operator can settle this task.');
+      const op = await repo.get('sandbox-operator', actor.user.id, true);
+      if (!ready(op) || op.accountId !== p.accountId) fail(409, 'OPERATOR_NOT_READY', 'Refresh sandbox payout readiness first.');
+      if (action === 'transfer') {
+        const submission = task.submissions.at(-1);
+        if (p.status !== 'funded' || task.assignment?.status !== 'accepted' || submission?.status !== 'accepted' || task.assignment.offerId !== p.offerId) {
+          fail(409, 'DELIVERY_NOT_ACCEPTED', 'Confirmed funding and accepted delivery are required before transfer.');
+        }
+      } else {
+        if (p.status !== 'transferred') fail(409, 'PAYOUT_UNAVAILABLE', 'A confirmed transfer is required before payout.');
+      }
+    }
+  }
+  async function paymentActions(repo, actor, task) {
+    const { availability } = require('./action-availability.cjs');
+    const actions = {};
+    for (const action of ['fund', 'refund', 'transfer', 'payout']) {
+      actions[action] = await availability(() => checkAction(repo, actor, structuredClone(task), action));
+    }
+    return actions;
+  }
   async function begin(actor, id, action, body, key) {
     configured(); active(actor); exactKeys(body, ['expectedVersion']);
     if (!['fund', 'refund', 'transfer', 'payout'].includes(action)) fail(404, 'NOT_FOUND', 'Unknown sandbox action.');
@@ -135,46 +180,23 @@ function createPayments(context, provider) {
     }
     await command(actor.user.id, key, ['sandbox', id, action, body], repo => participant(repo, actor, id), async repo => {
       const task = await participant(repo, actor, id); expected(task, body.expectedVersion);
-      const sync = await repo.get('payment-job', `task:${id}`);
-      if (sync?.status === 'review') fail(409, 'RECONCILIATION_REQUIRED', 'Resolve the payment review before authorizing another operation.');
+      await checkAction(repo, actor, task, action);
       let p = task.settlement;
       if (action === 'fund') {
-        if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Funding belongs to individual runs, not the recurring request.');
-        await taskFor(repo, actor, id, true);
-        if (!task.companyApprovalRequired && !actor.memberships.find(m => m.id === task.tenantId)?.company) await ownerBuyer(repo, actor, id);
-        assertUnfunded(task);
-        if (task.assignment || task.status !== 'posted') fail(409, 'FUNDING_UNAVAILABLE', 'Select an offer before funding.');
         const offer = task.offers.find(o => o.id === task.selectedOfferId);
-        if (!offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now()) fail(409, 'OFFER_UNAVAILABLE', 'Select a current offer.');
-        if (!Number.isSafeInteger(offer.amountMinor) || offer.amountMinor < 50 || offer.amountMinor > 100000) fail(409, 'SANDBOX_AMOUNT_LIMIT', 'Sandbox funding supports 0.50–1,000 in the agreed currency.');
         const op = await repo.get('sandbox-operator', offer.operatorId, true);
-        if (!ready(op)) fail(409, 'OPERATOR_NOT_READY', 'The operator must refresh sandbox verification and payout readiness.');
-        await context.approvals.requireApproval(repo, actor, task);
         if (p) await repo.save('sandbox-settlement-history', { ...p, ownerId: task.ownerId });
         p = { id: randomUUID(), ownerId: task.ownerId, taskId: id, operatorId: offer.operatorId,
           accountId: op.accountId, amountMinor: offer.amountMinor, currency: offer.currency || 'USD', offerId: offer.id,
           scopeVersion: task.scopeVersion, inputHash: task.input?.sha256 || null, ledger: [], status: 'creating_checkout' };
         task.settlement = p;
       } else if (action === 'refund') {
-        await ownerBuyer(repo, actor, id);
-        if (p?.status !== 'funded' || (task.assignment && !['cancelled', 'failed'].includes(task.assignment.status))) {
-          fail(409, 'REFUND_UNAVAILABLE', 'Stop the task first. Refunds are available before transfer, for unstarted, cancelled or failed work.');
-        }
         p.status = 'creating_refund';
+      } else if (action === 'transfer') {
+        p.acceptedSubmissionId = task.submissions.at(-1).id;
+        p.status = 'creating_transfer';
       } else {
-        if (!p || p.operatorId !== actor.user.id) fail(403, 'FORBIDDEN', 'Only the selected operator can settle this task.');
-        const op = await repo.get('sandbox-operator', actor.user.id, true);
-        if (!ready(op) || op.accountId !== p.accountId) fail(409, 'OPERATOR_NOT_READY', 'Refresh sandbox payout readiness first.');
-        if (action === 'transfer') {
-          const submission = task.submissions.at(-1);
-          if (p.status !== 'funded' || task.assignment?.status !== 'accepted' || submission?.status !== 'accepted' || task.assignment.offerId !== p.offerId) {
-            fail(409, 'DELIVERY_NOT_ACCEPTED', 'Confirmed funding and accepted delivery are required before transfer.');
-          }
-          p.acceptedSubmissionId = submission.id; p.status = 'creating_transfer';
-        } else {
-          if (p.status !== 'transferred') fail(409, 'PAYOUT_UNAVAILABLE', 'A confirmed transfer is required before payout.');
-          p.status = 'creating_payout';
-        }
+        p.status = 'creating_payout';
       }
       p.operationId = randomUUID(); p.createdAt = now(); p.updatedAt = now();
       touch(task, now()); event(task, actor.user.id, `sandbox.${action}.requested`, now());
@@ -262,7 +284,7 @@ function createPayments(context, provider) {
   }
   const jobs = createPaymentJobs({ repository, now, enabled, refreshOperator: refreshOperatorRecord,
     reconcileTask: id => reconcileRecord(id, repo => repo.get('task', id, true), 'system:payment-reconciliation', true) });
-  return { ...jobs, paymentRecovery: recovery.paymentRecovery, retryPaymentRecovery: recovery.retryPaymentRecovery, paymentStatus: status, spendingHistory, onboardOperator: onboard, refreshOperator, sandboxPayment: begin,
+  return { paymentActions, ...jobs, paymentRecovery: recovery.paymentRecovery, retryPaymentRecovery: recovery.retryPaymentRecovery, paymentStatus: status, spendingHistory, onboardOperator: onboard, refreshOperator, sandboxPayment: begin,
     reconcilePayment: reconcile, taskPayment, checkoutLink };
 }
 module.exports = { createPayments, assertUnfunded, paymentView };

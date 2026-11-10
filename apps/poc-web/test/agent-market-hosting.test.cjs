@@ -8,7 +8,7 @@ const vm = require('node:vm');
 test('buyer agent market preserves offer approval and hosting visibly requires a paid entitlement', () => {
   const market = readFileSync(resolve(__dirname, '../public/agent-market-ui.js'), 'utf8');
   const apps = readFileSync(resolve(__dirname, '../public/workspace-apps-ui.js'), 'utf8');
-  const shell = readFileSync(resolve(__dirname, '../public/app.js'), 'utf8');
+  const shell = readFileSync(resolve(__dirname, '../public/chat-controller.js'), 'utf8');
   assert.match(market, /does not hire it immediately/);
   assert.match(market, /Request agent/);
   assert.match(market, /Request builder/);

@@ -87,15 +87,23 @@ const RelayPayments = {
   task(task, payment, builder = false, execution = null) {
     if (!payment && (!state.payments?.configured || builder || !task.selectedOfferId)) return '';
     const labels = {creating_checkout:'Preparing checkout',awaiting_payment:'Awaiting test payment',funded:'Test funding confirmed',expired:'Checkout expired',creating_refund:'Requesting refund',refund_pending:'Refund pending',refunded:'Refund confirmed',refund_failed:'Refund needs review',creating_transfer:'Transferring test funds',transferred:'In operator balance',creating_payout:'Requesting payout',payout_pending:'Payout pending',paid:'Sandbox payout confirmed',payout_failed:'Payout needs review'};
-    const button = (action,label) => `<button data-action="sandbox-payment" data-operation="${action}" data-id="${escape(task.id)}" data-version="${task.version}">${label}</button>`;
+    const availability = task.actions?.payments || (state.detail?.task?.id === task.id ? state.detail.actions?.payments : null);
+    const button = (action, label) => {
+      const eligibility = availability?.[action];
+      // Checkout/reconciliation keep their existing dedicated controls.
+      if (['fund', 'refund', 'transfer', 'payout'].includes(action) && !eligibility?.allowed) {
+        return `<div><button disabled aria-describedby="payment-${escape(task.id)}-${action}-reason">${label}</button><p class="hint" id="payment-${escape(task.id)}-${action}-reason">${escape(eligibility?.reason || 'Refresh to check whether this action is available.')}</p></div>`;
+      }
+      return `<button data-action="sandbox-payment" data-operation="${action}" data-id="${escape(task.id)}" data-version="${task.version}">${label}</button>`;
+    };
     const needsReview = payment?.reconciliation?.status === 'needs_review';
     const approvalNeeded = !builder && task.companyApprovalRequired && task.approvalStatus !== 'approved';
     let actions = '';
-    if (!approvalNeeded && !builder && (!payment || ['expired','refunded'].includes(payment.status)) && !execution) actions += button('fund','Fund with test payment');
+    if (!builder && (!payment || ['expired','refunded'].includes(payment.status)) && !execution) actions += button('fund','Fund with test payment');
     if (payment?.status === 'awaiting_payment' && !builder) actions += button('checkout','Open sandbox checkout');
     if (payment && !['paid','refunded','expired','refund_failed','payout_failed'].includes(payment.status)) actions += button('reconcile','Check payment status');
     if (!builder && payment?.status === 'funded' && (!execution || ['cancelled','failed'].includes(execution.status))) actions += button('refund','Request full test refund');
-    if (!approvalNeeded && !builder && payment?.status === 'funded' && !execution) actions += `<button data-action="authorize-sandbox">Start funded sandbox task</button>`;
+    if (!approvalNeeded && !builder && payment?.status === 'funded' && !execution) actions += typeof RelayExecution === 'object' ? RelayExecution.control(task, 'startFunded', 'Start funded sandbox task', 'data-action="authorize-sandbox"') : '<button disabled>Start funded sandbox task</button>';
     if (builder && payment?.status === 'funded' && execution?.status === 'accepted') actions += button('transfer','Transfer accepted earnings');
     if (builder && payment?.status === 'transferred') actions += button('payout','Request sandbox payout');
     if (needsReview) actions = '';

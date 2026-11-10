@@ -51,3 +51,19 @@ normal response completion, commands surviving disconnection, already-signaled
 children, unresponsive children and hung reads. Native recovery (37 checks) and
 web contracts (130 checks) passed locally after the fix. Exact-commit CI remains
 the release evidence; no deployment or real-money operation is part of this fix.
+
+## Local audit follow-up — 9 November 2026
+
+Fair offer exposure now reserves one of the first four eligible offer positions
+for a currently qualified newcomer, with one rotation entry per operator. All
+offers remain available; the buyer chooses. Capability badges and an all-source
+builder funnel distinguish exposure/review/selection/accepted delivery from
+paid work. See [walkthrough evidence](Fair-Exposure-QA.md). Eligibility and invitation
+counts remain unmeasured; local qualification/history does not prove production
+commercial performance.
+
+The UI state-machine sequence continues with an explicit background refresh
+lifecycle, preventing stale workspace/session results from replacing current
+content. Next local controller scope: foreground chat/request state and navigation.
+External supplier, real connector, payout and independent review acceptance gates
+above remain open. No deployment or provider changes are implied by local tests.

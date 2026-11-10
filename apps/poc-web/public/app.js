@@ -31,6 +31,9 @@ function createClientState() {
     notifications: null, notificationUserId: null, notificationError: '',
     notificationsAt: 0, notificationsOpen: false, budgetAfter: '',
     filePreview: null, messageDrafts: {}, sendingRequest: null,
+    sendingRequestToken: null, sendingMessageToken: null,
+    sendingScope: null, sendingScopeToken: null,
+    savingBrief: false, savingBriefToken: null, uploadingInput: false, uploadingInputToken: null,
     sendingMessage: false, builderReplyDirty: false, followExecution: false,
     renderedScopingReply: null, renderedSubmissionId: null,
     renderedViewKey: null, scrollTarget: null, scrollToLatest: false,
@@ -168,6 +171,8 @@ function render(){
  const history=root.querySelector('.thread-history'),wasNearBottom=!history||history.scrollHeight-history.scrollTop-history.clientHeight<80,oldId=root.querySelector('.buyer-conversation')?.dataset.taskId,scrollTop=history?.scrollTop||0;
  document.body.classList.toggle('workspace-open',!!state.account&&!state.auth);
  root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${activeCompanyMembership()?'company-workspace-active':''}"><div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?builder():buyerPage()}</main></div>`);
+ if (typeof RelayLanding === 'object') RelayLanding.mount?.(root);
+ if (typeof observeOfferExposure === 'function') observeOfferExposure();
  if (!changedView) root.querySelectorAll('.canvas details').forEach(item => {
    if (expanded.includes(disclosureKey(item))) item.open = true;
  });
@@ -258,32 +263,11 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
     state.offers=id&&state.authMode==='local'?(await api(`/api/tasks/${id}/offers`)).offers:[];
   }
 }
-async function savePrompt() {
-  const brief = state.prompt.trim();
-  if (!brief) return;
-  state.sendingRequest = brief;
-  render();
-  try {
-    const result = await command('/api/tasks', 'POST', {
-      tenantId: state.tenantId || state.account.memberships[0].id,
-      title: brief.slice(0, 120), brief, ...(state.preferredAgent?.repeatFromTaskId ? {repeatFromTaskId:state.preferredAgent.repeatFromTaskId,expectedSourceVersion:state.preferredAgent.expectedSourceVersion} : {}), ...(state.preferredAgent?{preferredAgentId:state.preferredAgent.id,preferenceMode:state.preferredAgent.preferenceMode || 'agent',discoverySource:state.preferredAgent.discoverySource || 'unspecified'}:{})
-    });
-    state.prompt = '';
-    state.preferredAgent = null;
-    location.hash = `chat=${result.taskId}`;
-    await refresh(result.taskId);
-    state.sendingRequest = null;
-    render();
-    if (state.features?.scoping) {
-      try {
-        await command(`/api/tasks/${result.taskId}/assist`, 'POST', {expectedVersion: state.detail.task.version});
-      } finally { await refresh(result.taskId); }
-    }
-  } finally {
-    state.sendingRequest = null;
-    render();
-  }
+function chatController() {
+  return RelayChat.create({state, command, refresh, render, location,
+    revision: () => actionRevision, refreshedFields});
 }
+async function savePrompt() { return chatController().request(); }
 
 let actionRevision = 0;
 async function recoverUnavailableTask(error) {
@@ -442,9 +426,10 @@ root.addEventListener('submit',event=>{
       const result=await api('/api/auth/reset',{method:'POST',body:{password:data.get('password')}});
       state.account=null;state.auth='login';state.tasks=[];state.detail=null;render();notice.textContent=result.message;
     }else if(form.id==='task-input'){
-      const task=state.detail.task;
-      await command(`/api/tasks/${task.id}/input`,'POST',{expectedVersion:task.version,filename:data.get('file').name,base64:await csvFileBase64(data.get('file')),notes:data.get('notes')});
-      await refresh();render();notice.textContent=task.status==='draft'?'CSV attached. Review your updated brief before requesting work.':'CSV saved with the new scope. Prior offers need updating.';
+      const task=state.detail.task, file=data.get('file'), notes=data.get('notes');
+      const unchanged=()=>form.isConnected && form.elements.file.files[0]===file && form.elements.notes.value===notes;
+      const saved=await chatController().upload(file,notes,csvFileBase64,unchanged);
+      if(saved)notice.textContent=task.status==='draft'?'CSV attached. Review your updated brief before requesting work.':'CSV saved with the new scope. Prior offers need updating.';
     }else if(form.id==='supplier-credential'){
       await RelaySupplier.issue(form,data);
     }else if(form.id==='execution-cancel'){
@@ -475,21 +460,11 @@ root.addEventListener('submit',event=>{
       await command(`/api/tasks/${form.dataset.quote}/offers`,'POST',{agentId:agent.id,capabilityId,expectedVersion:Number(form.dataset.version),amountMinor:Math.round(Number(data.get('price'))*100),currency:data.get('currency')||'USD',deliveryMinutes:Number(data.get('minutes')),proposal:data.get('proposal')});
       state.builderTab='quotes';await refresh();render();notice.textContent='Offer sent to the buyer.';
     }else if(form.id==='message'){
-      const task=state.detail.task;
-      const scoping=state.features?.scoping&&!task.orchestrationStep&&!task.orchestrationPlan&&['draft','posted','selected'].includes(task.status);
-      state.sendingMessage = String(data.get('brief'));
-      state.messageDrafts[task.id] = state.sendingMessage;
-      state.scrollToLatest = true;
-      render();
-      try {
-        await command(`/api/tasks/${task.id}/${scoping?'assist':'messages'}`,'POST',{expectedVersion:task.version,...(scoping?{message:data.get('brief')}:{body:data.get('brief')})});
-        delete state.messageDrafts[task.id];
-        await refresh();
-      } finally { state.sendingMessage = null; render(); }
+      await chatController().message(String(data.get('brief')));
     }else if(form.id==='edit'){
-      const task=state.detail.task;
-      await command(`/api/tasks/${task.id}/scope`,'POST',{expectedVersion:task.version,title:data.get('title'),brief:data.get('brief')});
-      state.editing=false;state.reviewStart=false;await refresh();render();
+      const values={title:data.get('title'),brief:data.get('brief')};
+      const unchanged=()=>form.isConnected && form.elements.title.value===values.title && form.elements.brief.value===values.brief;
+      await chatController().edit(values,unchanged);
     }
   },form);
 });
@@ -614,15 +589,8 @@ root.addEventListener('click',event=>{
     else if(action==='authorize-sandbox'){
       await command(`/api/tasks/${state.detail.task.id}/authorize-local`,'POST',{expectedVersion:state.detail.task.version,mode:'stripe-sandbox'});await refresh();render();
     }
-    else if(action==='cancel-reply'){
-      const task=state.detail.task;
-      await command(`/api/tasks/${task.id}/cancel-reply`,'POST',{expectedVersion:task.version,jobId:task.scoping.id});
-      await refresh();render();
-    }
-    else if(action==='analyze-brief'||action==='confirm-scope'||action==='read-chat-context'){
-      const task=state.detail.task;
-      await command(`/api/tasks/${task.id}/${action==='confirm-scope'?'confirm-scope':'assist'}`,'POST',{expectedVersion:task.version,...(action==='confirm-scope'?{proposalId:task.scoping.id}:action==='read-chat-context'?{useContext:true}:{})});
-      await refresh();render();
+    else if(['cancel-reply','analyze-brief','confirm-scope','read-chat-context'].includes(action)){
+      await chatController().scope(action);
     }
     else if(action==='start-qualification'){
       const agent=state.agents.find(item=>item.id===button.dataset.id);
@@ -692,6 +660,7 @@ root.addEventListener('click',event=>{
     else if(action==='review-start'){state.reviewStart=true;state.scrollTarget='.start-review';render();}
     else if(action==='review-offer'||action==='close-review'){
       const reviewing = action === 'review-offer';
+      if (reviewing && typeof recordOfferExposure === 'function') recordOfferExposure(button.dataset.id, 'reviewed');
       const offerId = reviewing ? button.dataset.id : state.reviewOffer;
       state.reviewOffer = reviewing ? offerId : null;
       state.scrollTarget = reviewing ? '.offer-confirm' : null;
@@ -758,37 +727,37 @@ boot();
 // This is discovery/status refresh, never an automatic mutation or offer acceptance.
 let lastInteraction=Date.now();
 for(const type of ['pointerdown','keydown','input'])root.addEventListener(type,()=>{lastInteraction=Date.now();});
-let workspacePolling = false;
-const refreshedFields = ['spendingHistory','account','auth','tenantId','payments','recoveryData','operationsBacklog','operationsBacklogUser','schedules','executionQueue','workspaceApps','drive','team','teamHistory','companyBudget','tasks','agents','opportunities','work','quotes','detail','offers'];
+const workspaceRefresh = RelayRefresh.create();
+const refreshedFields = ['attio','attioReceipts','spendingHistory','account','auth','tenantId','payments','recoveryData','operationsBacklog','operationsBacklogUser','schedules','executionQueue','workspaceApps','drive','team','teamHistory','companyBudget','tasks','agents','opportunities','work','quotes','detail','offers'];
 function workspaceSnapshot(value) {
   return JSON.stringify(refreshedFields.map(field => field === 'executionQueue' ? value[field]?.items : value[field]));
 }
 async function pollWorkspace() {
   if(typeof RelayExecution==='object')RelayExecution.updateClock();
-  if(workspacePolling||state.authMode!=='local'||!state.account||state.auth||state.busy||state.filePreview||document.hidden||state.editing||state.addingAgent||(state.setupAgentId&&state.setupStage!==3)||state.reviewOffer||(state.builderReplyDirty&&root.querySelector('[data-supplier-message],[data-change-propose]'))||Date.now()-lastInteraction>300000)return;
+  if(workspaceRefresh.pending||state.authMode!=='local'||!state.account||state.auth||state.busy||state.filePreview||document.hidden||state.editing||state.addingAgent||(state.setupAgentId&&state.setupStage!==3)||state.reviewOffer||(state.builderReplyDirty&&root.querySelector('[data-supplier-message],[data-change-propose]'))||Date.now()-lastInteraction>300000)return;
   const interacting = () => (document.activeElement?.matches('input,textarea,select')&&state.detail?.task.scoping?.status!=='pending')||root.querySelector('.account-menu[open]')||document.activeElement?.closest('details[open]:not(.workspace-navigation)');
   if(interacting())return;
   if(!state.recoveryOpen&&!['scheduled','apps','tools'].includes(state.buyerTab)&&state.account.user.workspace==='buyer'&&(!state.detail||(state.detail.task.status==='draft'&&state.detail.task.scoping?.status!=='pending')))return;
-  workspacePolling = true;
-  const revision = actionRevision, view = state.renderedViewKey;
+  const token = workspaceRefresh.begin(state, actionRevision);
+  if (!token) return;
   const candidate = { ...state };
   try {
     await refresh(state.detail?.task.id, candidate, true);
     // A background read cannot win over navigation, a command, or newly focused input.
-    if(state.busy||actionRevision!==revision||state.renderedViewKey!==view||interacting())return;
+    if(state.busy||!workspaceRefresh.current(token,state,actionRevision)||interacting())return;
     if(workspaceSnapshot(candidate)!==workspaceSnapshot(state)) {
       for(const field of refreshedFields)state[field]=candidate[field];
       render();
     }
   } catch(error) {
-    if(actionRevision===revision&&state.renderedViewKey===view&&!state.busy) {
+    if(workspaceRefresh.current(token,state,actionRevision)&&!state.busy) {
       if(error.status===401)showError(error);
       else if ([403,404].includes(error.status)) {
         try { await recoverUnavailableTask(error); } catch (refreshError) { showError(refreshError); }
       }
     }
     // Transient polling failures retry on the next interval without flashing UI.
-  } finally { workspacePolling = false; }
+  } finally { workspaceRefresh.finish(token); }
 }
 setInterval(pollWorkspace,2000);
 

@@ -82,7 +82,7 @@ function createRuntime({ origin, token, fetchImpl = fetch, pollMs = 2000, transp
     }
     const assignments = await collection('assignments', 'assignments');
     for (const assignment of assignments) {
-      if (stopped || assignment.status === 'running' && assignment.leaseUntil > Date.now()) continue;
+      if (stopped || assignment.waitingForPermission || assignment.status === 'running' && assignment.leaseUntil > Date.now()) continue;
       let job;
       try {
         job = await request(`/api/runtime/tasks/${assignment.taskId}/claim`, { assignmentId: assignment.assignmentId });

@@ -15,7 +15,8 @@ function selectedByOperator(task, operatorId) {
   if (task.selectedOfferId) selectedIds.add(task.selectedOfferId);
   return task.offers.some(offer => offer.operatorId === operatorId && selectedIds.has(offer.id));
 }
-function createAcquisition({ repository, agentFor, now }) {
+function createAcquisition(context) {
+  const { repository, agentFor, now } = context;
   return async (actor, agentId) => repository.read(async repo => {
     await agentFor(repo, actor, agentId);
     const rows = SOURCES.map(source => ({ source, requests: 0, quoted: 0, selected: 0, delivered: 0 }));
@@ -38,7 +39,8 @@ function createAcquisition({ repository, agentFor, now }) {
       for (const field of ['requests', 'quoted', 'selected', 'delivered']) sum[field] += row[field];
       return sum;
     }, { requests: 0, quoted: 0, selected: 0, delivered: 0 });
-    return { agentId, asOf: now(), rows, totals, basis: 'posted-direct-requests-v2' };
+    const funnel = await require('./fair-exposure.cjs').createExposure(context).funnel(repo, actor, agentId);
+    return { agentId, asOf: now(), rows, totals, funnel, basis: 'posted-direct-requests-v2' };
   });
 }
 module.exports = { acquisition, createAcquisition };

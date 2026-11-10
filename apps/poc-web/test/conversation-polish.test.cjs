@@ -22,6 +22,16 @@ function context(tasks = []) {
   );
   return ctx;
 }
+test('current server permission state overrides historical requests after agent replacement', () => {
+  const ctx = context();
+  ctx.task = { status: 'queued', waitingForPermission: false, permissionRequests: [{ assignmentId: 'old', status: 'declined' }] };
+  assert.equal(vm.runInContext('taskLabel(task)', ctx), 'Agent getting ready');
+  ctx.task.waitingForPermission = true;
+  assert.equal(vm.runInContext('taskLabel(task)', ctx), 'Permission needed');
+  // An older server still gets its existing presentation behavior.
+  delete ctx.task.waitingForPermission;
+  assert.equal(vm.runInContext('taskLabel(task)', ctx), 'Permission needed');
+});
 test('dashboard separates review, active work and completed delivery without exposing IDs in copy', () => {
   const ctx = context([
     { id: 'secret-id-1', title: 'Review me', status: 'buyer_review' },
@@ -95,12 +105,14 @@ test('request displays pending feedback before storage and keeps the brief on fa
     'utf8',
   );
   const fn = source.slice(
-    source.indexOf('async function savePrompt()'),
-    source.indexOf('\nasync function run'),
+    source.indexOf('function chatController()'),
+    source.indexOf('\nlet actionRevision'),
   );
   const seen = [];
   const ctx = {
     state: { prompt: 'Keep my brief', tenantId: 'tenant' },
+    RelayChat: require('../public/chat-controller.js'),
+    refresh: async()=>{}, location:{hash:''}, actionRevision:0, refreshedFields:[],
     render() {
       seen.push(ctx.state.sendingRequest);
     },
