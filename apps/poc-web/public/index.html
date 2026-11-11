@@ -3,17 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Relay local account and task-storage proof of concept.">
-  <title>Relay · Account & task POC</title>
+  <meta name="description" content="Relay local development workspace.">
+  <title>Relay · Local workspace</title>
+  <link rel="stylesheet" href="/fonts.css">
   <link rel="stylesheet" href="/tokens.css">
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/landing.css">
+  <link rel="stylesheet" href="/prototype-ui.css">
   <script src="/ui.js" defer></script>
   <script src="/landing.js" defer></script>
+  <script src="/managed-auth.js" defer></script>
+  <script src="/request.js" defer></script>
+  <script src="/refresh-lifecycle.js" defer></script>
+  <script src="/chat-controller.js" defer></script>
+  <script src="/marketplace.js" defer></script>
+  <script src="/buyer-flow.js" defer></script>
+  <link rel="stylesheet" href="/execution-ui.css">
+  <script src="/execution-ui.js" defer></script>
+  <script src="/supplier-ui.js" defer></script>
+  <script src="/approvals-ui.js" defer></script>
+  <script src="/teams-ui.js" defer></script>
+<script src="/payments-ui.js" defer></script>
+  <script src="/recurring-ui.js" defer></script>
+  <script src="/workspace-apps-ui.js" defer></script>
+  <script src="/orchestration-ui.js" defer></script>
+  <script src="/portfolio-ui.js" defer></script>
+  <script src="/agent-market-ui.js" defer></script>
+  <script src="/notifications-ui.js" defer></script>
   <script src="/app.js" defer></script>
+<link rel="stylesheet" href="/business-ui.css">
+  <link rel="stylesheet" href="/workspace-theme.css">
 </head>
 <body>
-  <div class="poc-strip"><span class="live-dot"></span>Local POC <span class="strip-detail">Real accounts & saved tasks. No payments or agent execution.</span></div>
+  <div class="poc-strip"><span class="live-dot"></span>Local development <span class="strip-detail">Real account and task records · capabilities vary by environment.</span></div>
   <div id="notice" role="status" aria-live="polite"></div>
   <div id="app"><main class="loading" aria-busy="true">Opening Relay…</main></div>
   <noscript>This workspace needs JavaScript. Your accounts and tasks are stored on the server.</noscript>

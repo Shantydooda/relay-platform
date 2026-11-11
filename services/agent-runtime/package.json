@@ -1,0 +1,8 @@
+{
+  "name": "@relay/agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "engines": { "node": ">=24 <26" },
+  "scripts": { "test": "node --test test/*.test.cjs" },
+  "dependencies": { "@relay/contracts": "0.1.0" }
+}

@@ -1,0 +1,115 @@
+name: Relay CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relay-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core and browser contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use the repository Node version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install the locked dependency graph
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Test backend and shared contracts
+        run: npm test
+
+      - name: Test browser modules and syntax
+        run: npm run test:web
+
+      - name: Ensure tests did not rewrite source
+        run: git diff --exit-code
+
+  postgres-recovery:
+    name: Native PostgreSQL and recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use the repository Node version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install PostgreSQL utilities
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql postgresql-client
+
+      - name: Install the locked dependency graph
+        run: npm ci
+
+      - name: Bootstrap isolated CI database
+        run: npm run db:local:setup
+
+      - name: Exercise migrations, concurrency, restart and recovery
+        run: npm run test:postgres
+
+      - name: Ensure recovery tests did not rewrite source
+        run: git diff --exit-code
+
+  load:
+    name: Bounded local load profiles
+    if: github.event_name != 'pull_request'
+    needs: [core, postgres-recovery]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [limits, steady]
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use the repository Node version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install the locked dependency graph
+        run: npm ci
+
+      - name: Install PostgreSQL utilities
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql postgresql-client
+
+      - name: Bootstrap isolated load-test database
+        run: npm run db:local:setup
+
+      - name: Run the ${{ matrix.mode }} profile
+        env:
+          RELAY_LOAD_SECONDS: '60'
+          RELAY_LOAD_MODE: ${{ matrix.mode }}
+        run: npm run test:load
+
+      - name: Ensure load tests did not rewrite source
+        run: git diff --exit-code

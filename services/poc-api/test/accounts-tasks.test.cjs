@@ -100,7 +100,7 @@ test('task transitions are explicit; stale sessions cannot overwrite newer chang
   assert.throws(()=>store.mutateTask(actor,id,'post',{expectedVersion:3},randomUUID()),{code:'INVALID_TRANSITION'});
   store.mutateTask(actor,id,'cancel',{expectedVersion:3},randomUUID());
   assert.throws(()=>store.mutateTask(actor,id,'messages',{expectedVersion:4,body:'after close'},randomUUID()),{code:'TASK_CLOSED'});
-  assert.deepEqual(store.detail(actor,id).events.map(e=>e.type),['task.created','task.edited','task.posted','task.cancelled']);
+  assert.deepEqual(store.detail(actor,id).events.map(e=>e.type),['task.created','scope.updated','task.posted','task.cancelled']);
 });
 test('bad task input rolls back all writes and does not consume the retry key',async t=>{
   const {store,actor,create}=await fixture(t),id=create().taskId,key=randomUUID();

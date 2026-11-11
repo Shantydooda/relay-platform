@@ -3,9 +3,10 @@ const { randomUUID } = require('node:crypto');
 const { transaction } = require('./database.cjs');
 const { fail, digest, token, hashPassword, verifyPassword, text, passwordInput, emailInput, exactKeys, equal } = require('./security.cjs');
 const ABSOLUTE_MS = 12 * 60 * 60 * 1000;
+const { marketplace } = require('./marketplace.cjs');
 const IDLE_MS = 30 * 60 * 1000;
 
-function createStore(db, now = Date.now) {
+function createStore(db, now = Date.now, { identityOnly = false } = {}) {
   const get = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
@@ -40,7 +41,7 @@ function createStore(db, now = Date.now) {
     }
     run('UPDATE sessions SET last_seen_at=? WHERE token_hash=?', time, row.token_hash);
     return { user: { id:row.user_id, name:row.name, email:row.email, emailVerified:!!row.email_verified, workspace:row.preferred_workspace }, csrf:row.csrf, tokenHash:row.token_hash,
-      memberships:all('SELECT t.id,t.name,m.role FROM memberships m JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=? ORDER BY t.created_at,t.id', row.user_id) };
+      memberships:all('SELECT t.id,t.name,m.role,EXISTS(SELECT 1 FROM company_workspaces c WHERE c.tenant_id=t.id) AS company FROM memberships m JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=? ORDER BY t.created_at,t.id', row.user_id) };
   }
   function csrf(actor, supplied) {
     if (!equal(actor.csrf, supplied)) fail(403, 'CSRF_FAILED', 'Refresh the page before trying again.');
@@ -70,6 +71,17 @@ function createStore(db, now = Date.now) {
     if (!user || !valid) fail(401,'INVALID_CREDENTIALS','Email or password is incorrect.');
     return transaction(db, () => session(user.id, previousToken));
   }
+  if (identityOnly) return {
+    ...require('./teams.cjs').createTeams(db, now),
+    register, login, principal, csrf,
+    logout(actor) { run('DELETE FROM sessions WHERE token_hash=?', actor.tokenHash); },
+    workspace(actor, body) {
+      exactKeys(body, ['workspace']);
+      if (!['buyer', 'builder'].includes(body.workspace)) fail(400, 'INVALID_WORKSPACE', 'Choose a workspace.');
+      run('UPDATE users SET preferred_workspace=? WHERE id=?', body.workspace, actor.user.id);
+    }
+  };
+
   function tenant(actor, id, writable=false) {
     const membership=actor.memberships.find(m => m.id===id);
     if (!membership) fail(404,'NOT_FOUND','Task or workspace not found.');
@@ -85,11 +97,15 @@ function createStore(db, now = Date.now) {
     return row;
   }
   function view(row) {
-    return { id:row.id,tenantId:row.tenant_id,title:row.title,brief:row.brief,status:row.status,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at };
+    const assigned=!!get('SELECT 1 FROM assignments WHERE task_id=?',row.id);
+    const selection=get('SELECT s.offer_id,o.expires_at FROM offer_selections s JOIN offers o ON o.id=s.offer_id WHERE s.task_id=?',row.id);
+    const selected=selection&&selection.expires_at>now();
+    return { id:row.id,tenantId:row.tenant_id,title:row.title,brief:row.brief,status:assigned?'assigned':selected?'selected':row.status,scopeVersion:row.scope_version,selectedOfferId:selected?selection.offer_id:null,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at };
   }
   function detail(actor,id) {
     const row=task(actor,id);
     return { task:view(row), messages:all('SELECT m.id,m.body,m.created_at AS createdAt,u.name AS authorName FROM messages m JOIN users u ON u.id=m.author_id WHERE m.task_id=? ORDER BY m.created_at,m.rowid',id),
+      scopes:all('SELECT version,title,brief,created_at AS createdAt FROM scope_versions WHERE task_id=? ORDER BY version',id),
       events:all('SELECT sequence,type,version,created_at AS createdAt FROM events WHERE task_id=? ORDER BY sequence',id) };
   }
   function event(id,actor,type,version) { run('INSERT INTO events(task_id,actor_id,type,version,created_at) VALUES (?,?,?,?,?)',id,actor.user.id,type,version,now()); }
@@ -115,14 +131,15 @@ function createStore(db, now = Date.now) {
     const title=text(body.title,'Title',1,120),brief=text(body.brief,'Brief',1,10000);
     return command(actor,key,digest(JSON.stringify(['create',body])),() => {
       const id=randomUUID(),time=now();
-      run('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?)',id,body.tenantId,actor.user.id,title,brief,'draft',1,time,time);
+      run('INSERT INTO tasks(id,tenant_id,created_by,title,brief,status,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',id,body.tenantId,actor.user.id,title,brief,'draft',1,time,time);
       run('INSERT INTO messages VALUES (?,?,?,?,?)',randomUUID(),id,actor.user.id,brief,time);
+      run('INSERT INTO scope_versions VALUES (?,?,?,?,?)',id,1,title,brief,time);
       event(id,actor,'task.created',1);
       return {taskId:id,version:1};
     });
   }
   function mutateTask(actor,id,action,body,key) {
-    const allowed = action==='edit'?['expectedVersion','title','brief']:action==='messages'?['expectedVersion','body']:['expectedVersion'];
+    const allowed = ['edit','scope'].includes(action)?['expectedVersion','title','brief']:action==='messages'?['expectedVersion','body']:['expectedVersion'];
     exactKeys(body,allowed);
     if (!Number.isSafeInteger(body.expectedVersion)||body.expectedVersion<1) fail(400,'VERSION_REQUIRED','The current task version is required.');
     task(actor,id,true);
@@ -132,24 +149,30 @@ function createStore(db, now = Date.now) {
       if(row.status==='cancelled') fail(409,'TASK_CLOSED','Cancelled tasks cannot be changed.');
       const version=row.version+1,time=now();
       let type;
-      if(action==='edit') {
-        if(row.status!=='draft') fail(409,'INVALID_TRANSITION','Only drafts can be edited. Add context as a message after posting.');
-        run('UPDATE tasks SET title=?,brief=?,version=?,updated_at=? WHERE id=?',text(body.title,'Title',1,120),text(body.brief,'Brief',1,10000),version,time,id);
-        type='task.edited';
+      if(action==='edit'||action==='scope') {
+        if(get('SELECT 1 FROM assignments WHERE task_id=?',id))fail(409,'TASK_ASSIGNED','Changes after award require an agreed change request.');
+        if(action==='edit'&&row.status!=='draft') fail(409,'INVALID_TRANSITION','Only drafts can be edited. Add context as a message after posting.');
+        const title=text(body.title,'Title',1,120),brief=text(body.brief,'Brief',1,10000);
+        run('UPDATE tasks SET title=?,brief=?,version=?,scope_version=scope_version+1,updated_at=? WHERE id=?',title,brief,version,time,id);
+        run('INSERT INTO scope_versions VALUES (?,?,?,?,?)',id,row.scope_version+1,title,brief,time);
+        run('DELETE FROM offer_selections WHERE task_id=?',id);
+        type='scope.updated';
       } else if(action==='messages') {
         run('INSERT INTO messages VALUES (?,?,?,?,?)',randomUUID(),id,actor.user.id,text(body.body,'Message',1,10000),time);
         run('UPDATE tasks SET version=?,updated_at=? WHERE id=?',version,time,id);
         type='message.added';
       } else if(action==='post'||action==='cancel') {
+        if(action==='cancel'&&get('SELECT 1 FROM assignments WHERE task_id=?',id)) fail(409,'TASK_ASSIGNED','An assigned task cannot be cancelled in this release.');
         if(action==='post'&&row.status!=='draft') fail(409,'INVALID_TRANSITION','Only a draft can be posted.');
         run('UPDATE tasks SET status=?,version=?,updated_at=? WHERE id=?',action==='post'?'posted':'cancelled',version,time,id);
+        if(action==='cancel')run('DELETE FROM offer_selections WHERE task_id=?',id);
         type=action==='post'?'task.posted':'task.cancelled';
       } else fail(404,'NOT_FOUND','Action not found.');
       event(id,actor,type,version);
       return {taskId:id,version};
     });
   }
-  return {register,login,principal,csrf,createTask,mutateTask,detail,
+  return {marketplace:marketplace(db,now),register,login,principal,csrf,createTask,mutateTask,detail,
     list(actor,tenantId) { tenant(actor,tenantId); return all('SELECT * FROM tasks WHERE tenant_id=? AND (created_by=? OR ?=1) ORDER BY updated_at DESC,id',tenantId,actor.user.id,actor.memberships.find(m=>m.id===tenantId).role==='owner'?1:0).map(view); },
     logout(actor) { run('DELETE FROM sessions WHERE token_hash=?',actor.tokenHash); },
     workspace(actor,body) { exactKeys(body,['workspace']); if(!['buyer','builder'].includes(body.workspace)) fail(400,'INVALID_WORKSPACE','Choose a workspace.'); run('UPDATE users SET preferred_workspace=? WHERE id=?',body.workspace,actor.user.id); }

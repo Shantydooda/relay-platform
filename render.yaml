@@ -1,0 +1,28 @@
+# New staging service only. No demo hosting configuration is used.
+# Region remains subject to founder confirmation before applying this blueprint.
+services:
+  - type: web
+    name: relay-staging
+    runtime: node
+    plan: free
+    region: virginia
+    branch: main
+    autoDeployTrigger: 'off'
+    buildCommand: npm ci --omit=dev --ignore-scripts
+    startCommand: node services/staging-api/src/server.cjs
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: '24'
+      - key: NODE_ENV
+        value: production
+      - key: RELAY_APP_ORIGIN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: RELAY_SESSION_KEY
+        generateValue: true
