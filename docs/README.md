@@ -8,6 +8,8 @@ Start with [current status](Status.md). Component documents retain dated impleme
 | Understand the product and code | [Root README](../README.md), [Architecture](Architecture.md) |
 | Understand lifecycle boundaries and transition risks | [State-machine audit](State-Machines.md), [transition contracts and coverage](Transition-Contracts.md) |
 | Run locally | [Local development](Local-Development.md), [PostgreSQL](Native-Postgres.md) |
+| Prepare isolated hosting | [Private hosted pilot](Private-Hosted-Pilot.md) |
+| Rehearse the first independent task | [First-builder pilot](First-Builder-Pilot.md) |
 | Connect a supplier | [Supplier API](Supplier-API.md), [SDK](../packages/supplier-sdk/README.md), [qualification](Capability-Qualification.md) |
 | Plan builder and buyer acquisition | [90-day distribution plan](Distribution-Plan.md) |
 | Start week one outreach | [Sales, creative and web prospects with outreach drafts](Distribution-Prospects-Broader-Categories.md); [earlier research and real estate shortlist](Week-One-Prospects-and-Outreach.md) |

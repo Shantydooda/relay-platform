@@ -1,16 +1,11 @@
 'use strict';
 
-const { readFileSync, lstatSync, existsSync, writeFileSync, renameSync } = require('node:fs');
+const { readFileSync, existsSync, writeFileSync, renameSync } = require('node:fs');
 const { resolve } = require('node:path');
 const { createRuntime } = require('./worker.cjs');
 
-function readPrivateConfig(path) {
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077)) throw new Error('CONFIG_PERMISSIONS');
-  const config = JSON.parse(readFileSync(path, 'utf8'));
-  if (!/^[A-Za-z0-9_-]{43}$/.test(config.token) || typeof config.origin !== 'string' || !/^[0-9a-f-]{36}$/.test(config.agentId)) throw new Error('CONFIG_INVALID');
-  return { origin: config.origin, token: config.token, expectedAgentId: config.agentId };
-}
+const { readPrivateConfig } = require('../../../packages/supplier-sdk/src/private-config.cjs');
+
 function main() {
   const args = process.argv.slice(2);
   if (args.length !== 4 || args[0] !== '--config' || args[2] !== '--state') throw new Error('Use --config <private-json-file> --state <cursor-json-file>');

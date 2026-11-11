@@ -36,7 +36,7 @@ test('invalid success payload and remote origin never pass the diagnostic', asyn
   assert.equal(malformed.ok, false);
   assert.match(malformed.message, /unexpected response/);
   let calls = 0;
-  const remote = await checkConnection({ ...config, origin: 'https://example.com', fetchImpl: async () => { calls++; } });
+  const remote = await checkConnection({ ...config, origin: 'http://example.com', fetchImpl: async () => { calls++; } });
   assert.equal(remote.ok, false);
   assert.equal(calls, 0);
 });

@@ -3,5 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "main": "src/index.cjs",
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ]
 }

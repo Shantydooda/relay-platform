@@ -67,3 +67,28 @@ lifecycle, preventing stale workspace/session results from replacing current
 content. Next local controller scope: foreground chat/request state and navigation.
 External supplier, real connector, payout and independent review acceptance gates
 above remain open. No deployment or provider changes are implied by local tests.
+
+## First independent builder preparation — 10 November 2026
+
+See [pilot checklist](First-Builder-Pilot.md) for the existing implementation,
+remaining connectivity/qualification/provider-mapping gates and end-to-end evidence.
+The supplier diagnostic is now standalone instead of importing internal runtime
+source. This prepares a source-only handoff; it does not constitute an independent
+builder integration or enable remote access, hosted deployment or live money.
+
+## Fresh consolidated verification — 10 November 2026
+
+All 990 local release checks passed, including native recovery and both sustained
+load profiles, with unchanged source during verification. Production dependency
+audit: zero known vulnerabilities. See Release-Acceptance.md for the fingerprint,
+Node 25 vs CI Node 24 caveat and prioritized external acceptance gates. No new
+browser or independent supplier/provider acceptance is claimed.
+
+## Hosted pilot preparation — 11 November 2026
+
+Deployment is requested but not completed. The supplier SDK now supports explicit
+HTTPS with normal TLS verification, no redirects and existing bounded/idempotent
+retries. The old staging launcher is not the full unified backend and must not be
+reused as a functioning buyer/builder pilot. Provider sign-in, managed composition,
+explicit pilot execution policy, durable storage/scanning and email delivery gates
+remain open. See Private-Hosted-Pilot.md. Existing environments are unchanged.

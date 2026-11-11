@@ -1,6 +1,6 @@
-# Local supplier SDK
+# Supplier SDK
 
-Unpublished JavaScript/CommonJS package for Node.js 22+. Localhost, unpaid integration only. No Stripe, hosted demo or staging connection. This wraps Supplier API v1.1; the backend remains authoritative.
+Unpublished JavaScript/CommonJS package for Node.js 22+. Supports explicit localhost HTTP and hosted HTTPS origins. HTTPS transport does not itself deploy or enable a hosted supplier backend. No Stripe connection is created by this SDK. This wraps Supplier API v1.1; the backend remains authoritative.
 
 In builder setup, choose **JavaScript SDK**, save, create a scoped key and save the connection file privately (`chmod 600`). Never commit it or put credentials in command arguments, URLs or logs. The built-in CSV shortcut still uses HTTP API; your separately running reference or custom runtime may use SDK.
 
@@ -31,7 +31,7 @@ After buyer selection and authorization, `claim` returns the authorized brief/in
 
 Assignment feeds and task details expose `waitingForPermission`. When true, keep polling but do not claim: the assignment is paused for the buyer, even though its stored status remains `queued`. A false value is not permission to execute; `claim` and every tool command still check current authority. The field is optional for older-server compatibility. If a claim returns `PERMISSION_PENDING`, reconcile and wait rather than immediately retrying. Historical declined requests do not describe a replacement assignment's current state.
 
-`createSupplierClient` also accepts `signal` (AbortSignal) and `timeoutMs` (1–30000, default 8000 per attempt). Only explicit `http://127.0.0.1:<port>` origins are accepted; redirects are rejected. Credentials stay in headers. The caller must keep its machine, connection file and tools secure. This library does not sandbox supplier code, infer capabilities, automatically approve work, persist jobs or publish to npm.
+`createSupplierClient` also accepts `signal` (AbortSignal) and `timeoutMs` (1–30000, default 8000 per attempt). Only canonical HTTPS origins or explicit `http://127.0.0.1:<port>` origins are accepted. Paths, query strings, fragments, embedded credentials and redirects are rejected. Standard certificate validation remains enabled; never disable it or set `NODE_TLS_REJECT_UNAUTHORIZED=0`. Obtain the exact pilot origin and its own credential from the pilot operator; never reuse localhost or staging keys. Credentials stay in headers. The caller must keep its machine, connection file and tools secure. This library does not sandbox supplier code, infer capabilities, automatically approve work, persist jobs or publish to npm.
 
 The independent CSV reference uses the same transport. It remains deterministic automation, not an AI model. Its integration test exercises bids, authorized execution, scanned downloads, application restart and revoked credentials on disposable native PostgreSQL.
 
@@ -68,3 +68,13 @@ The timeout covers body consumption, and caller cancellation stops retries.
 Transient connection/5xx failures retain the same serialized command and idempotency
 key across at most three attempts. Do not create a new command key after an
 ambiguous failure: check authoritative task state before deciding what to do next.
+
+### Standalone builder handoff
+
+The SDK and read-only connection checker can run outside the Relay repository.
+Create a local archive with `npm pack ./packages/supplier-sdk --pack-destination /tmp`,
+extract it, then run `node src/check-connection.cjs --config /private/path/relay-agent.json`.
+The package remains unpublished. The bundled reference runtimes are still local-only; HTTPS SDK support does not change their execution policy. Share source separately from
+credentials. See [first-builder pilot](../../docs/First-Builder-Pilot.md) in the
+repository for acceptance gates; repository-relative documentation links are not
+bundled into the archive.

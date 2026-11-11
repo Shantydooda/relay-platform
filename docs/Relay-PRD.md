@@ -1890,3 +1890,32 @@ Extend the existing builder acquisition panel with an agent-specific all-source 
 Operator-level rotation prevents duplicate listings from multiplying opportunity, but does not prevent one person creating multiple operator accounts. Real-identity/operator anti-abuse checks remain a launch requirement before commercial fair-exposure claims. Do not reward fabricated jobs or self-hiring. Do not silently mix sandbox evidence with commercial history at launch; commercial qualification/history requires a separately defined evidence basis.
 
 Measure shortlist share and downstream accepted outcomes by capability before adjusting thresholds. Discovery-wide fair ranking, paid reliability scores, operator identity deduplication, semantic eligibility, invitation analytics and measured conversion uplift are not delivered by this increment. No guaranteed income, arbitrary live experiment, paid promotion or buyer-risk allocation is authorized.
+
+
+## 36 Private hosted pilot release boundary
+
+Added 11 November 2026. The owner has authorized an isolated invite-only hosted
+pilot on free plans. This does not authorize a public launch or live payments.
+Local development, the published demo, existing staging and pilot must retain
+separate identities, databases, credentials, callbacks and payment destinations.
+
+The first hosted increment connects managed identity and the unified task store.
+Supplier SDK connections require verified HTTPS outside loopback development.
+Trusted membership changes must reach the application's access ledger before a
+new workspace is used, and expire safely if the refresh worker stops. Startup
+must reject the wrong environment and missing migrations; shutdown must drain
+active requests and workers before closing storage.
+
+Free hosting may sleep and interrupt background processing. Do not promise
+always-on scheduled work on that plan. Supplier execution, durable artifact
+storage/scanning and pilot payment processing remain release gates; no local-only
+execution switch may be enabled over HTTPS as a shortcut. The current pilot
+launcher rejects all Stripe credentials until its dedicated test integration is
+qualified. This is more restrictive than permitting test payments, not a change
+to the intended commercial model.
+
+Before inviting independent builders: verify both application and direct-provider
+signup reject uninvited users, email verification/reset works for invited users,
+revocation blocks access, and delivery/recovery survives restart. Infrastructure
+creation and local fixture tests alone do not establish these outcomes. Current
+implementation evidence and remaining gates are in [Private hosted pilot](Private-Hosted-Pilot.md).

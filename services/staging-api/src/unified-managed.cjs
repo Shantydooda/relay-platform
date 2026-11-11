@@ -7,7 +7,7 @@ const {
 const { createMembershipAuthority } = require('./membership-authority.cjs');
 const { createManagedStore } = require('./store.cjs');
 
-// Opt-in only. No hosted launcher invokes this composition.
+// Opt-in composition used by the separate private-pilot launcher.
 function createUnifiedManagedStore({
   provider,
   sessionKey,

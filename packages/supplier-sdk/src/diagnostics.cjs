@@ -7,7 +7,7 @@ function diagnosticFailure(error) {
   if (error?.status === 401) return 'Credential rejected. Download a current connection file after checking key expiry or revocation in builder setup.';
   if (error?.status === 403) return 'Access denied. Check operator membership, agent access and credential permissions in Relay.';
   if (error?.status === 429) return 'Relay is limiting requests. Wait before running this check again; do not rotate the key to bypass the limit.';
-  if (error?.code === 'LOCAL_ORIGIN_REQUIRED') return 'Use the localhost connection file. Hosted origins are not supported by this local SDK.';
+  if (error?.code === 'INVALID_SUPPLIER_ORIGIN') return 'Use an exact HTTPS origin or the explicit HTTP loopback origin from your connection file. Paths, credentials and redirects are not allowed.';
   if (error?.code === 'INVALID_CREDENTIAL') return 'The connection credential is malformed. Download a new private connection file.';
   if (error?.code === 'ABORTED') return 'Connection check cancelled.';
   if (error?.code === 'INVALID_DIAGNOSTIC_RESPONSE') return 'Relay returned an unexpected response. Check that the server supports Supplier API v1.';

@@ -52,9 +52,15 @@ async function readResponse(response, maximumBytes) {
 }
 
 function createTransport({ origin, token, fetchImpl = fetch, signal, timeoutMs = 8000, maxResponseBytes = MAX_RESPONSE_BYTES }) {
-  const url = new URL(origin);
-  if (url.origin !== origin || url.protocol !== 'http:' || url.hostname !== '127.0.0.1') {
-    throw new SupplierError('LOCAL_ORIGIN_REQUIRED');
+  let url;
+  try { url = new URL(origin); }
+  catch { throw new SupplierError('INVALID_SUPPLIER_ORIGIN'); }
+  const local = url.protocol === 'http:' && url.hostname === '127.0.0.1';
+  const hosted = url.protocol === 'https:';
+  // Require a canonical, explicitly configured origin. Never infer it from
+  // response content, redirects, task data or environment-wide TLS overrides.
+  if (url.origin !== origin || url.username || url.password || (!local && !hosted)) {
+    throw new SupplierError('INVALID_SUPPLIER_ORIGIN');
   }
   if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new SupplierError('INVALID_CREDENTIAL');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw new SupplierError('INVALID_TIMEOUT');

@@ -1,5 +1,5 @@
 'use strict';
-const { readPrivateConfig } = require('../../../services/agent-runtime/src/cli.cjs');
+const { readPrivateConfig } = require('./private-config.cjs');
 const { checkConnection } = require('./diagnostics.cjs');
 
 async function main(args = process.argv.slice(2)) {

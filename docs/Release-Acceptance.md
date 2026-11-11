@@ -127,3 +127,42 @@ Added local fixtures for Attio 401/403/429/500/503 responses, network and body i
 Final `verify:local` run `ea64b28d-6853-4c0e-9684-1a146b9d1332`: **579 checks passed** (412 backend, 128 web, 37 native PostgreSQL, 2 sustained-load checks). Zero failures, skips or cancellations; `sourceChanged: false`. Fingerprint: `0bb7da24f83f6d140c1287f63f1508992e7efc3bcd00f4e454a7baa6c5e3a82b`. Documentation was appended afterward. An earlier run interrupted before formatting was superseded by this final run.
 
 This pass used automated local fixtures; the prior delivery-recovery browser walkthrough was not repeated or relabeled as new browser evidence. No real Google/Attio traffic, real-money actions, demo deployment or staging changes. Live provider acceptance, independent supplier acceptance and independent release review remain open.
+
+## Production preparation rehearsal — 10 November 2026
+
+Frozen-source run `99f6cd0b-cbf3-4f5e-b338-caedafe27ab3` passed all five stages:
+769 backend, 182 web/shared UI, 37 native PostgreSQL recovery and two 60-second
+load profiles: **990 checks**, zero failures, skips or cancellations.
+`sourceChanged: false`; source fingerprint
+`5736f37fa7d84e40dcf7ff44e41f937f93db4fbbe26813742b6cd41ddfb88deb`.
+The current npm production-dependency advisory audit returned zero vulnerabilities.
+Local runtime was Node 25.2.1; CI pins Node 24. This result does not replace a
+fresh Node 24 CI result for the eventual review commit. Documentation was updated
+after verification; application code was not changed during or after the run.
+
+No new browser QA or independent-provider acceptance was performed in this pass.
+No deployment, real-money activity, demo/staging update or secret change occurred.
+No regression failure justified an application change.
+
+### Next release gates, in order
+
+1. **Independent supplier rehearsal:** obtain the builder API contract and a real
+   buyer brief; implement its input/output adapter and suitable qualification
+   rubric. Follow First-Builder-Pilot.md, including revision and failure evidence.
+   Do not claim remote access while the supported SDK remains loopback-only.
+2. **Provider acceptance:** inspect the existing Stripe test payout operation
+   before any retry; confirm provider state, webhook and ledger together. Configure
+   authorized Google/Attio test accounts and verify consent, delivery and revocation.
+   Fixtures and unpaid supplier acceptance do not close these gates.
+3. **Release-candidate browser/CI gate:** exercise current buyer, employee, approver
+   and builder paths, including narrow-screen/keyboard recovery. Push reviewed
+   source only when authorized and require the Node 24 checks on that exact commit.
+4. **Separate hosted pilot rehearsal:** needs explicit deployment authorization.
+   Validate auth, workers, private storage, scanner, alerts, restore and rollback
+   together; leave the demo and existing staging untouched.
+5. **Real-money/public release:** requires independent security/payment/operations
+   review and live-provider readiness. Keep payments test-only until then.
+
+These are acceptance tasks, not a reason to add deferred enterprise or marketplace
+features. Hosted subscriptions/arbitrary-app execution remain explicitly limited
+as documented in Status.md and Workspace-Apps.md.

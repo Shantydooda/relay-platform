@@ -6,8 +6,8 @@ const { createSupplierClient } = require('../src/index.cjs');
 const config = { origin: 'http://127.0.0.1:4180', token: 'a'.repeat(43) };
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
 
-test('SDK rejects remote origins, URL credentials, invalid keys and page injection', () => {
-  for (const origin of ['https://relay.example', 'http://localhost:4180', 'http://127.0.0.1:4180/', 'http://user@127.0.0.1:4180']) {
+test('SDK rejects insecure remote origins, URL credentials, invalid keys and page injection', () => {
+  for (const origin of ['http://relay.example', 'https://user:secret@relay.example', 'https://relay.example/path', 'https://relay.example?token=secret', 'https://relay.example#fragment', 'http://localhost:4180', 'http://127.0.0.1:4180/', 'http://user@127.0.0.1:4180']) {
     assert.throws(() => createSupplierClient({ ...config, origin }));
   }
   assert.throws(() => createSupplierClient({ ...config, token: 'secret' }));

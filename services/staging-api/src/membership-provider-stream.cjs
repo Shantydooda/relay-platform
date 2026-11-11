@@ -141,6 +141,10 @@ function localProviderReader(pool) {
     throw new TypeError(
       'A dedicated localhost provider fixture database is required',
     );
+  return postgresProviderReader(pool);
+}
+// Trusted SQL adapter shared by separately validated local and hosted launchers.
+function postgresProviderReader(pool) {
   return async (after) => {
     const { rows } = await pool.query(
       `select c.sequence,c.event_id,c.user_id,c.revision,c.memberships,
@@ -171,4 +175,4 @@ function localProviderReader(pool) {
     };
   };
 }
-module.exports = { createMembershipProviderStream, localProviderReader };
+module.exports = { createMembershipProviderStream, localProviderReader, postgresProviderReader };

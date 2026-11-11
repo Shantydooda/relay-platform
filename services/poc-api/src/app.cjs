@@ -81,8 +81,8 @@ function cookieToken(req,name) {
 function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now,logger=console,runtimeManager,paymentWebhookVerifier,getWorkerHealth}) {
   const expected = new URL(origin);
   if (!['http:','https:'].includes(expected.protocol)||expected.pathname!=='/'||expected.search||expected.hash||expected.username||expected.password) throw new Error('Invalid application origin');
-  const managed=mode==='managed-staging';
-  if(!['local-only','managed-staging'].includes(mode))throw new Error('Unknown server mode');
+  const managed=['managed-staging','managed-pilot'].includes(mode);
+  if(!['local-only','managed-staging','managed-pilot'].includes(mode))throw new Error('Unknown server mode');
   if(managed&&(!providedStore||expected.protocol!=='https:'))throw new Error('Managed staging requires HTTPS and an explicit managed store');
   const store=providedStore||require('./store.cjs').createStore(db,now),secure=expected.protocol==='https:';
   // Browsers share cookies across ports: keep independent local launchers isolated.
