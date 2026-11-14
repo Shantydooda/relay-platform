@@ -185,7 +185,11 @@ function render(){
  const changedView=state.renderedViewKey!==viewKey;state.renderedViewKey=viewKey;
  const disclosureKey = item => item.dataset.disclosureKey || [item.closest('[data-app-id]')?.dataset.appId || '', item.closest('[data-run-id]')?.dataset.runId || '', item.querySelector('summary')?.textContent].join(':');
  const expanded = !changedView ? [...root.querySelectorAll('.canvas details')].filter(item => item.open).map(disclosureKey) : [];
- const history=root.querySelector('.thread-history'),wasNearBottom=!history||history.scrollHeight-history.scrollTop-history.clientHeight<80,oldId=root.querySelector('.buyer-conversation')?.dataset.taskId,scrollTop=history?.scrollTop||0;
+ const history = root.querySelector('.thread-history');
+ const scrollOwner = document.scrollingElement || document.documentElement;
+ const wasNearBottom = !history || scrollOwner.scrollHeight - scrollOwner.scrollTop - scrollOwner.clientHeight < 80;
+ const oldId = root.querySelector('.buyer-conversation')?.dataset.taskId;
+ const scrollTop = scrollOwner.scrollTop;
  document.body.classList.toggle('workspace-open',!!state.account&&!state.auth);
  root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${activeCompanyMembership()?'company-workspace-active':''}"><div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?builder():buyerPage()}</main></div>`);
  if (typeof RelayLanding === 'object') RelayLanding.mount?.(root);
@@ -201,7 +205,9 @@ function render(){
  }
  settleWorkspaceNavigation(changedView);
  if(changedView&&typeof window!=='undefined')window.scrollTo?.(0,0);
- const next=root.querySelector('.thread-history');if(next)next.scrollTop=state.scrollToLatest||oldId!==state.detail?.task.id?next.scrollHeight:scrollTop;state.scrollToLatest=false;
+ const next = root.querySelector('.thread-history');
+ if (next) scrollOwner.scrollTop = state.scrollToLatest ? scrollOwner.scrollHeight : changedView ? 0 : scrollTop;
+ state.scrollToLatest = false;
  const submissionId=state.detail?.submissions?.at(-1)?.id;
  if(next&&submissionId&&state.renderedSubmissionId!==submissionId&&((oldId===state.detail?.task.id&&wasNearBottom)||state.followExecution)&&!state.scrollTarget){state.scrollTarget='.delivery-submission:last-of-type';state.followExecution=false;}
  state.renderedSubmissionId=submissionId;
@@ -213,7 +219,7 @@ function render(){
  }
  resizeChatComposer(root.querySelector('#message-text'));
  if(replySelection&&!changedView){const input=root.querySelector('#message-text');input?.focus({preventScroll:true});input?.setSelectionRange(replySelection.start,replySelection.end);}
- if(state.scrollTarget){const target=root.querySelector(state.scrollTarget);if(next&&target&&next.contains(target))next.scrollTop+=target.getBoundingClientRect().top-next.getBoundingClientRect().top-12;else target?.scrollIntoView({block:'nearest'});state.scrollTarget=null;}
+ if(state.scrollTarget){const target=root.querySelector(state.scrollTarget);target?.scrollIntoView({block:'nearest'});state.scrollTarget=null;}
 }
 function showError(error,form){
   if(error.status===401&&state.account){if(typeof RelaySupplier==='object')RelaySupplier.clear();resetClientSession({auth:'login'});retries.clear();render();}
@@ -871,6 +877,10 @@ root.addEventListener('change', event => {
 
 root.addEventListener('toggle', event => {
   if (event.target.matches('.notification-menu')) state.notificationsOpen = event.target.open;
+  if (event.target.matches('.conversation-details') && !event.target.open &&
+      (event.target.contains(document.activeElement) || document.activeElement === document.body)) {
+    root.querySelector('.conversation-details-trigger')?.focus({ preventScroll: true });
+  }
 }, true);
 root.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;

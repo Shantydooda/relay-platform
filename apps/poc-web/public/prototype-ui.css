@@ -577,12 +577,12 @@ button.primary:hover {
   margin-top: 24px !important;
 }
 .thread-composer {
-  position: static !important;
+  position: static;
   padding: 12px 16px !important;
   border: 1px solid var(--relay-border);
   border-radius: 16px;
   box-shadow: none;
-  margin: 12px 0 0 !important;
+  margin: 12px 0 0;
   flex-shrink: 0;
 }
 .thread-composer > label {
@@ -2219,9 +2219,9 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
   }
 }
 
-/* Conversation viewport shares space with navigation and workspace notices. */
+/* Conversations use document scrolling; only the reading column is bounded. */
 #app:has(.buyer-conversation) {
-  height: 100dvh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -2242,9 +2242,9 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
   padding-bottom: 16px;
 }
 .buyer-conversation {
-  max-width: 940px;
+  max-width: none;
   margin-inline: auto;
-  height: 100%;
+  height: auto;
   min-height: 240px;
   display: flex;
   flex-direction: column;

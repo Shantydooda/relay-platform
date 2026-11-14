@@ -155,3 +155,8 @@ change. Arbitrary active-task instructions (pause/reassign/change price) must be
 mapped to reviewed server commands before claiming full conversational control.
 Model outage recovery and a successful model-backed user walkthrough remain needed.
 Localhost stays running; pilot, demo, staging and payment settings unchanged.
+
+
+### 2026-11-14 — Open conversation canvas (local)
+
+Removed the outer rounded shell on buyer conversations, bounded only the 840px reading/composer column, and moved context access to a header action. Conversations now use document scrolling with a sticky composer; render updates preserve document position instead of a nested transcript scrollbar. Draft and posted-task commands are unchanged. Desktop and 390px long-thread layout fixtures verify no horizontal overflow or nested transcript scrolling. Authenticated localhost draft walkthrough passed: review stays inline, Keep chatting focuses the composer, header context controls open/close, and the sticky composer remains within desktop and 390px viewports. Found and removed an additional shared-token override forcing static composer positioning. No tasks were posted. No hosted deployment in this increment.

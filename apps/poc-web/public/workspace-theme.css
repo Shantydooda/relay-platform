@@ -409,8 +409,87 @@ body.workspace-open .thread-composer .replybox button {
   border-radius: 13px;
 }
 
+/* Open conversation canvas. This owns layout for both draft and posted work. */
+body.workspace-open .workspace-content:has(.buyer-conversation) {
+  margin-top: 0;
+  margin-right: 0;
+  margin-bottom: 0;
+  min-height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+body.workspace-open .workspace-content > .canvas:has(.buyer-conversation) {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 24px clamp(16px, 3vw, 48px) 0;
+}
 body.workspace-open .buyer-conversation {
-  max-width: 1040px;
+  width: 100%;
+  max-width: none;
+  min-height: calc(100dvh - 24px);
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+body.workspace-open .buyer-conversation .thread-layout {
+  width: min(100%, 840px);
+  margin-inline: auto;
+  flex: 1;
+}
+body.workspace-open .buyer-conversation .thread-main {
+  flex: 1;
+  height: auto;
+}
+body.workspace-open .buyer-conversation .thread-history {
+  flex: 1;
+  overflow: visible;
+  max-height: none;
+  padding: 40px 0 32px;
+  scrollbar-gutter: auto;
+}
+body.workspace-open .buyer-conversation .thread-composer {
+  position: sticky;
+  bottom: 12px;
+  margin-top: auto;
+  margin-bottom: 12px;
+  z-index: 5;
+  width: 100%;
+}
+body.workspace-open .buyer-conversation .thread-context {
+  max-height: none;
+  overflow: visible;
+}
+body.workspace-open .buyer-conversation .thread-context:not(:has(.conversation-details[open])) {
+  display: none;
+}
+body.workspace-open .buyer-conversation .conversation-heading {
+  gap: 16px;
+  margin-bottom: 0;
+}
+body.workspace-open .buyer-conversation .conversation-details-trigger {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  body.workspace-open .buyer-conversation {
+    min-height: calc(100dvh - 100px);
+  }
+  body.workspace-open .buyer-conversation .conversation-heading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  body.workspace-open .buyer-conversation .conversation-heading > div {
+    flex-basis: 100%;
+  }
+  body.workspace-open .buyer-conversation .thread-history {
+    padding-top: 24px;
+  }
 }
 
 body.workspace-open .conversation-heading {
@@ -1879,7 +1958,7 @@ html[data-design='community'] .community-topbar nav button { font-size: 14px; fo
 html[data-design='community'] body.workspace-open .workspace-header { width: var(--community-sidebar); top: var(--community-header); height: calc(100dvh - var(--community-header)); padding: 22px 14px 14px; }
 html[data-design='community'][data-appearance='light'] body.workspace-open .workspace-header { background: #fafbfc; border-right: 1px solid #edf0f3; }
 html[data-design='community'] body.workspace-open .workspace-content { margin: 0 0 0 var(--community-sidebar); overflow: visible; }
-html[data-design='community'] body.workspace-open .workspace-content > .canvas { max-width: 1400px; padding: 20px 26px 44px; margin: 0 auto; }
+html[data-design='community'] body.workspace-open .workspace-content > .canvas:not(:has(.buyer-conversation)) { max-width: 1400px; padding: 20px 26px 44px; margin: 0 auto; }
 html[data-design='community'] body.workspace-open .workspace-identity { padding: 0 8px 24px; min-height: 0; }
 html[data-design='community'] .community-profile { display: flex; flex-direction: column; gap: 5px; }
 html[data-design='community'] .community-profile strong { font-size: 15px; }
@@ -1935,7 +2014,7 @@ html[data-design='community'] body.workspace-open .task-empty { background: tran
   html[data-design='community'] .community-topbar nav button { font-size: 12px; padding: 6px; }
   html[data-design='community'] body.workspace-open .workspace-header { top: 0; width: 100%; height: auto; padding: 12px 16px; }
   html[data-design='community'] body.workspace-open .workspace-content { margin: 0; }
-  html[data-design='community'] body.workspace-open .workspace-content > .canvas { padding: 22px 16px; }
+  html[data-design='community'] body.workspace-open .workspace-content > .canvas:not(:has(.buyer-conversation)) { padding: 22px 16px; }
 }
 
 html[data-design='community'] body.workspace-open :is(h1,h2,h3,h4,button,input,textarea,select) {
