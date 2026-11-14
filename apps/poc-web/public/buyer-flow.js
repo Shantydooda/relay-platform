@@ -188,7 +188,33 @@ function taskNextStep(detail, offers = []) {
       ];
 }
 function scopeRecap(task) {
-  return `<section class="panel scope-recap"><span class="eyebrow">Agreed work starts with a clear brief</span><h2>Your scope</h2><p class="offer-details">${escape(task.brief)}</p>${recurringPlan(task.workPlan)}<div class="scope-footer"><small>Scope ${task.scopeVersion ?? task.version} · reviewed brief</small>${!task.orchestrationStep && ['draft', 'posted', 'selected'].includes(task.status) ? '<button class="quiet" data-action="edit">Change brief</button>' : ''}</div>${task.orchestrationStep?.dependencies.some(id=>!task.orchestrationStep.handoffs.some(h=>h.sourceTaskId===id)) ? '<p>Approve upstream handovers in the parent plan before posting.</p>' : task.status === 'draft' && task.scoping?.status === 'pending' ? '<p class="hint">Preparing your local reply. You can edit the brief manually at any time.</p>' : task.status === 'draft' && task.workPlan?.openQuestions?.length ? '<p class="hint">Answer the remaining questions in the conversation before requesting offers.</p>' : task.status === 'draft' ? '<p class="hint">Posting shares the reviewed brief and input metadata with local builders. Conversation and file contents stay private until you authorize the selected runtime. Remove confidential details from the public brief.</p><button class="primary" data-action="post">Looks good · get offers</button>' : ''}</section>`;
+  const missingHandover = task.orchestrationStep?.dependencies.some(
+    id => !task.orchestrationStep.handoffs.some(handoff => handoff.sourceTaskId === id),
+  );
+  const pendingReply = task.scoping?.status === 'pending';
+  const openQuestions = task.workPlan?.openQuestions?.length;
+  const canPost = task.status === 'draft' && !missingHandover && !pendingReply && !openQuestions;
+  const canEdit = !task.orchestrationStep && ['draft', 'posted', 'selected'].includes(task.status);
+  const title = task.title && task.title !== task.brief ? task.title : 'Your request';
+  const blocker = missingHandover
+    ? 'Approve the required handovers before requesting offers.'
+    : pendingReply
+      ? 'Waiting for your reply to finish. You can keep editing the brief.'
+      : openQuestions
+        ? 'Answer the remaining questions before requesting offers.'
+        : '';
+  return `<section class="scope-recap" aria-label="Request proposal">
+    <span class="eyebrow">${canPost ? 'Ready for offers' : 'Your brief'}</span>
+    <h2>${escape(title)}</h2>
+    <p class="offer-details">${escape(task.brief)}</p>
+    ${recurringPlan(task.workPlan)}
+    ${blocker ? `<p class="hint">${blocker}</p>` : ''}
+    <div class="inline-actions">
+      ${canPost ? '<button class="primary" data-action="post">Find my agent</button>' : ''}
+      ${canEdit ? '<button class="quiet" data-action="edit">Edit details</button>' : ''}
+    </div>
+    ${canPost ? '<p class="hint">Compare prices and timing before choosing an agent.</p><details><summary>What gets shared?</summary><p>Only this brief and file metadata are shared for quotes. Keep confidential details out. Your conversation and file contents stay private until you authorize access.</p></details>' : ''}
+  </section>`;
 }
 function startReview(task) {
   if (
@@ -205,30 +231,6 @@ function startReview(task) {
 function deliveryDesk(task) {
   if (!['selected', 'assigned'].includes(task.status)) return '';
   return `<section class="panel delivery-placeholder"><span class="eyebrow">Delivery · in this conversation</span><h2>Your result will arrive here.</h2><p>Review files and evidence, download originals, request a revision and accept the exact submission—all on this task.</p><div class="delivery-empty">No delivery received. Waiting for authorized work to begin.</div><small>Previews, downloads and acceptance become available when real files are submitted. Nothing has been accepted or paid out.</small></section>`;
-}
-function conversationGuidance(task, messages) {
-  const last = messages.length > 1 ? messages[messages.length - 1].body : '';
-  if (
-    ['queued', 'running', 'buyer_review', 'accepted', 'failed'].includes(
-      task.status,
-    )
-  )
-    return `This task is ${taskLabel(task).toLowerCase()}. The updates and files remain in this conversation. Your message has not changed the agreed scope or authorized another action.`;
-  if (/\b(cost|price|budget|how much)\b/i.test(last))
-    return 'Suppliers set their own quotes for this brief. Compare the price, deliverables and estimate in each offer. A planning estimate is not a confirmed quote, and Relay fees and checkout totals are not configured locally. Your question has not changed the scope.';
-  if (/\b(how long|when|start|delivery time|ETA)\b/i.test(last))
-    return 'Time to start and time to deliver are different. Each offer gives a delivery estimate after execution starts. Work still needs valid funding, readiness and inputs; there is no running timer yet. Your question has not changed the scope.';
-  if (
-    /\b(what if|suppose|instead|make it|change|could we|can you)\b/i.test(last)
-  )
-    return 'That message is saved as conversation, not a confirmed change. Use Change brief to review and confirm any new requirements. Only that confirmation creates a new scope version and invalidates affected offers.';
-  return task.status === 'draft'
-    ? 'Here’s the request you’ve saved. Review the exact scope below, or keep talking before you ask for offers.'
-    : task.status === 'posted'
-      ? 'Your request is open for offers. Compare the terms here when a supplier responds.'
-      : task.status === 'selected'
-        ? 'Your selected offer stays with this conversation. The next step is checking the start requirements.'
-        : 'Your brief and conversation stay together on this task.';
 }
 function repeatHireCard() {
   const repeat = state.detail?.repeatHire;
@@ -253,6 +255,7 @@ function taskView() {
   };
   const renderMessages = (items) =>
     items
+      .filter(message => !isAssistantSystemNotice(message))
       .map(
         (m, i) =>
           `<article id="scope-reply-${escape(m.id)}" class="thread-message ${['assistant', 'supplier'].includes(m.role) ? 'relay' : 'buyer'}"><span class="thread-speaker">${m.role === 'supplier' ? escape(m.authorName) : m.role === 'assistant' ? relayCharacter() + 'Relay' : i === 0 || m.authorName === state.account?.user.name ? 'You' : escape(m.authorName)}</span><div><p class="offer-details">${escape(m.body)}</p></div></article>`,
@@ -270,7 +273,7 @@ function taskView() {
   return `<section class="buyer-conversation" data-task-id="${task.id}"><header class="conversation-heading"><div><span class="conversation-brand">${relayCharacter()}Relay</span><h1>${escape(posted ? task.title : 'Let’s get it done.')}</h1></div><span class="tag ${task.status}" role="status">${task.status === 'buyer_review' && state.detail.submissions?.at(-1)?.files.some((file) => file.scan && file.scan.status !== 'clean') ? 'Checking delivery' : taskLabel(task)}</span></header><div class="thread-layout"><section class="thread-main" aria-label="Conversation and reply"><div class="thread-history" aria-label="Task conversation">${task.scheduleId ? '<article class="thread-message relay"><strong>Scheduled run</strong><p>This task uses its saved context and execution rules.</p><button class="quiet" data-action="buyer-nav" data-tab="scheduled">View schedule & context</button></article>' : ''}${transcript}${typeof RelayOrchestration === 'object' ? RelayOrchestration.step(task) : ''}
  ${state.editing ? editor : state.features?.scoping && task.scoping?.status === 'completed' && ['request', 'change'].includes(task.scoping.proposal.intent) ? `<details><summary>Current brief · scope v${task.scopeVersion}</summary><p>${escape(task.brief)}</p></details>` : posted ? '' : `<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><p>${task.workPlan && task.workPlan.cadence !== 'once' ? 'Here’s your recurring request. Confirm the work and cadence before requesting offers.' : 'Here’s the brief I’ll send to agents. Does this capture what you need?'}</p>${scopeRecap(task)}</article>`}
 
- ${!state.editing ? scopingReview(task) : ''}
+ ${!state.editing && !['failed', 'cancelled'].includes(task.scoping?.status) ? scopingReview(task) : ''}
  ${!state.editing && task.status !== 'posted' && typeof RelayExecution === 'object' ? RelayExecution.input(task) : ''}
  ${!state.editing && state.authMode === 'local' ? offerCards() : ''}
  ${!(task.workPlan && task.workPlan.cadence !== 'once') && typeof RelayApprovals === 'object' ? (state.detail.execution && state.detail.approval?.status === 'approved' ? `<details><summary>Company approval · recorded</summary>${RelayApprovals.task(task, state.detail.approval)}</details>` : RelayApprovals.task(task, state.detail.approval)) : ''}
@@ -278,9 +281,9 @@ function taskView() {
  ${(!task.workPlan || task.workPlan.cadence === 'once') && !state.editing && state.reviewStart ? startReview(task) : ''}
  ${typeof RelayExecution === 'object' ? RelayExecution.delivery(task) : ''}${typeof RelayApps === 'object' ? RelayApps.permissionDecisions(task) : ''}${repeatHireCard()}
 ${typeof RelayPortfolio === 'object' ? RelayPortfolio.requests(state.detail.portfolioRequests) : ''}${changeProposalCards(task, state.detail.changeProposals)}${followUps}${state.sendingMessage ? `<article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p class="offer-details">${escape(state.sendingMessage)}</p></article>${activityCard('Sending your message', 'Waiting for Relay to save it.', true)}` : ''}
- ${!state.features?.scoping && messages.length > 1 && messages.at(-1)?.role !== 'supplier' && !state.editing ? `<article class="thread-message relay latest-guidance"><span class="thread-speaker">${relayCharacter()}Relay</span><p>${escape(conversationGuidance(task, messages))}</p></article>` : ''}
+
  ${task.status === 'cancelled' ? '<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><p>This request is closed. Your brief and conversation remain available.</p></article>' : ''}
- </div>${task.status !== 'cancelled' && !state.editing ? composer('message', ['draft', 'posted'].includes(task.status) ? 'Add details or ask Relay a question…' : 'Ask a question or message your agent…', 'Send', state.messageDrafts[task.id] || '', 'Enter to send · Shift + Enter for a new line') : ''}</section><aside class="thread-context"><details class="conversation-details" data-disclosure-key="conversation-details"><summary>Context & details</summary><div class="conversation-details-body">${!state.editing && task.status === 'posted' && typeof RelayExecution === 'object' ? RelayExecution.input(task) : ''}${typeof RelayApps === 'object' ? RelayApps.contextPicker(task) : ''}
+ </div>${!state.editing && ['draft', 'posted'].includes(task.status) ? assistantAvailability(task) : ''}${task.status !== 'cancelled' && !state.editing ? conversationComposer(task) : ''}</section><aside class="thread-context"><details class="conversation-details" id="conversation-details-panel" data-disclosure-key="conversation-details"><summary>Context & details</summary><div class="conversation-details-body">${!state.editing && task.status === 'posted' && typeof RelayExecution === 'object' ? RelayExecution.input(task) : ''}${typeof RelayApps === 'object' ? RelayApps.contextPicker(task) : ''}
  ${posted ? `<details><summary>${posted ? 'Agreed scope' : 'Your brief'} · v${task.scopeVersion ?? task.version}</summary><p>${escape(task.brief)}</p>${!task.orchestrationStep && ['draft', 'posted', 'selected'].includes(task.status) ? '<button class="quiet" data-action="edit">Change scope & refresh offers</button>' : ''}</details>` : ''}
  <details><summary>Samples & references</summary><p>CSV task input can be attached in this conversation. Other input formats are not supported yet. Delivery files are scanned separately. Input bytes are shared only after execution is authorized.</p></details>
  <details><summary>Activity & agreement history</summary><ol class="steps">${events.map((e) => `<li>${escape(labels[e.type] || e.type)}<small>${date(e.createdAt)}</small></li>`).join('')}</ol>${state.detail.scopes?.length ? `<details><summary>Previous scope versions</summary>${state.detail.scopes.map((v) => `<p><strong>Scope ${v.version}</strong><br>${escape(v.brief)}</p>`).join('')}</details>` : ''}</details>
@@ -320,11 +323,11 @@ function scopingReview(task) {
     if (['question', 'hypothetical'].includes(proposal.intent))
       return '<p class="hint">Your question did not change the agreed brief.</p>';
     const recurring = proposal.cadence !== 'once';
-    return `<section class="panel scope-recap"><span class="eyebrow">Suggested scope · not yet agreed</span><h2>${escape(proposal.title)}</h2><p class="offer-details">${escape(proposal.brief)}</p>
+    return `<section class="scope-recap" aria-label="Proposed work"><span class="eyebrow">Here’s the plan</span><h2>${escape(proposal.title)}</h2><p class="offer-details">${escape(proposal.brief)}</p>
       ${proposal.assumptions.length ? `<h3>Assumptions to review</h3><ul>${proposal.assumptions.map((item) => `<li>${escape(item)}</li>`).join('')}</ul>` : ''}
       ${proposal.questions.length ? '<p class="hint">Answer the questions in the conversation, or edit the brief yourself before confirming it. A recurring draft can be saved with open questions, but cannot run.</p>' : ''}
       ${recurring ? recurringPlan({ ...proposal, openQuestions: [] }) : ''}
-      <div class="inline-actions">${recurring || !proposal.questions.length ? `<button class="primary" data-action="confirm-scope">${recurring ? 'Save recurring draft' : 'Use this scope'}</button>` : ''}<button class="quiet" data-action="edit">Edit myself</button></div><small>Nothing is posted by this confirmation. Existing offers need updating when scope changes.</small></section>`;
+      <div class="inline-actions">${recurring || !proposal.questions.length ? `<button class="primary" data-action="confirm-scope">${recurring ? 'Save recurring draft' : 'Confirm brief'}</button>` : ''}<button class="quiet" data-action="edit">Edit details</button></div><small>Price and timing come with agent offers. Nothing starts until you approve.</small></section>`;
   }
   return `<section class="panel"><p>${escape(result?.error || 'Ask Relay to read the conversation and suggest a clear brief. Your agreed scope stays unchanged until you confirm.')}</p><button data-action="analyze-brief">${['failed', 'cancelled'].includes(result?.status) ? 'Retry reply' : 'Review brief with Relay'}</button></section>`;
 }
@@ -403,31 +406,73 @@ function taskDashboard() {
         .join('')}</div></section>`;
     })
     .join('');
-  return `<section class="market-workspace task-dashboard"><header class="builder-page-title"><div><h1>My tasks</h1><p>Everything you’ve requested, in one place.</p></div><button class="primary" data-action="buyer-nav" data-tab="request">Start a conversation</button></header>
+  const community = globalThis.document?.documentElement?.dataset.design === 'community';
+  const rail = community ? `<aside class="community-task-rail"><h2>Your workspace</h2><article><h3>Work at a glance</h3>${groups.map(([label]) => `<button data-action="task-filter" data-filter="${label}"><span>${label}</span><strong>${count(label)}</strong></button>`).join('')}</article><article class="community-feature"><span>FIND YOUR NEXT SPECIALIST</span><h3>The right agent for the job.</h3><p>Explore capabilities and review evidence before requesting a quote.</p><button data-action="buyer-nav" data-tab="market">Explore agents</button></article><p>Every task keeps its offers, decisions and deliveries together.</p></aside>` : '';
+  return `${community ? '<div class="community-task-layout">' : ''}<section class="market-workspace task-dashboard"><header class="builder-page-title"><div><h1>My tasks</h1><p>Everything you’ve requested, in one place.</p></div><button class="primary" data-action="buyer-nav" data-tab="request">Start a conversation</button></header>
     <nav class="task-filters" aria-label="Filter tasks">${['All', ...groups.map(([label]) => label)].map((label) => `<button data-action="task-filter" data-filter="${label}" aria-pressed="${filter === label}">${label}<span>${count(label)}</span></button>`).join('')}</nav>
     ${rows || `<section class="task-empty">${relayCharacter('large')}<h2>${requestedTasks.length ? 'You’re all caught up here.' : 'Your work will live here.'}</h2><p>${requestedTasks.length ? 'Choose another view to find the rest of your tasks.' : 'Start with a conversation. Tasks appear here when you’re ready to request the work.'}</p>${requestedTasks.length ? '<button data-action="task-filter" data-filter="All">View all tasks</button>' : '<button class="primary" data-action="buyer-nav" data-tab="request">Start a conversation</button>'}</section>`}
-  </section>`;
+  </section>${rail}${community ? '</div>' : ''}`;
+}
+
+// Historical availability notices are system state, not assistant conversation.
+// Match only known system copy; never hide a buyer or supplier message.
+function isAssistantSystemNotice(message) {
+  return message.role === 'assistant' && [
+    'Your message is saved. Conversational replies need the local model to be connected. You can keep notes here or review a request yourself.',
+    'Live scoping is unavailable. You can save notes here and review the brief yourself.',
+  ].includes(message.body);
+}
+
+function assistantAvailability(task) {
+  if (state.features?.scoping && !['failed', 'cancelled'].includes(task.scoping?.status)) return '';
+  const stopped = task.scoping?.status === 'cancelled';
+  return `<div class="conversation-system-state" role="status"><span class="availability-dot" aria-hidden="true"></span><span>${stopped ? 'Reply stopped. Your message is saved.' : 'Relay assistant unavailable · your messages are saved.'}</span>${state.features?.scoping ? '<button class="quiet" data-action="analyze-brief">Retry reply</button>' : ''}</div>`;
+}
+
+function conversationComposer(task) {
+  return composer('message', 'Message Relay…', 'Send', state.messageDrafts[task.id] || '', 'Enter to send · Shift + Enter for a new line')
+    .replaceAll('Message about this task', 'Message Relay')
+    .replace('<div class="replybox">', '<button type="button" class="composer-context-button" data-action="conversation-context" aria-controls="conversation-details-panel" aria-label="Add files or choose context">+ Files & context</button><div class="replybox">');
+}
+
+// Drafts stay conversational: expose a ready proposal without an extra review screen.
+function draftProposal(task) {
+  const result = task.scoping;
+  if (result?.status === 'pending') {
+    return scopingReview(task);
+  }
+  if (result?.status === 'completed') {
+    const proposal = result.proposal;
+    if (!['request', 'change'].includes(proposal.intent)) return '';
+    if (proposal.questions.length) {
+      return `<section class="draft-clarifications" aria-label="Details to clarify"><h2>Before I find your agent</h2><ul>${proposal.questions.map(question => `<li>${escape(question)}</li>`).join('')}</ul><p class="hint">Reply below. Nothing has been posted or charged.</p></section>`;
+    }
+    return scopingReview(task);
+  }
+  const reviewed = state.detail.events?.some(event => ['scope.reviewed', 'scope.updated'].includes(event.type));
+  if (reviewed || state.reviewChatRequest) {
+    return `${scopeRecap(task)}${!reviewed ? '<button class="quiet" data-action="keep-chatting">Keep chatting</button>' : ''}`;
+  }
+  return '<div class="chat-request-action"><span>When you’re ready, review what you’d like done.</span><button data-action="review-chat-request">Review task request</button></div>';
 }
 
 function draftConversation() {
   const task = state.detail.task;
-  const proposal = task.scoping?.proposal;
   const pending = task.scoping?.status === 'pending';
   const transcript = state.detail.messages
+    .filter(message => !isAssistantSystemNotice(message))
     .map(
       (message) =>
         `<article id="scope-reply-${escape(message.id)}" class="thread-message ${message.role === 'assistant' ? 'relay' : 'buyer'}"><span class="thread-speaker">${message.role === 'assistant' ? relayCharacter() + 'Relay' : 'You'}</span><p class="offer-details">${escape(message.body)}</p></article>`,
     )
     .join('');
   const sourceReads = task.scoping?.contextReads || [];
-  return `<section class="buyer-conversation draft-conversation" data-task-id="${escape(task.id)}"><header class="conversation-heading"><div><span class="conversation-brand">${relayCharacter()}Relay</span><h1>${escape(task.title || 'New conversation')}</h1></div><span class="tag">Not requested yet</span></header><div class="thread-layout"><section class="thread-main" aria-label="Conversation and reply"><div class="thread-history" aria-label="Conversation">
+  return `<section class="buyer-conversation draft-conversation" data-task-id="${escape(task.id)}"><header class="conversation-heading"><div><span class="conversation-brand">${relayCharacter()}Relay</span><h1>${escape(task.title || 'New conversation')}</h1></div><span class="tag" role="status">Draft</span></header><div class="thread-layout"><section class="thread-main" aria-label="Conversation and reply"><div class="thread-history" aria-label="Conversation">
     ${transcript}
     ${state.sendingMessage ? `<article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p>${escape(state.sendingMessage)}</p></article>` : ''}
     ${sourceReads.length ? `<section class="live-activity"><strong>${pending ? 'Using your selected context' : 'Context used for this response'}</strong>${sourceReads.map((read) => `<p>✓ Read ${escape(read.name)} · saved version ${read.version}</p>`).join('')}<small>Saved copies in Relay. No live external lookup.</small></section>` : ''}
-    ${pending || ['failed', 'cancelled'].includes(task.scoping?.status) ? scopingReview(task) : ''}
-    ${!state.features?.scoping ? `<article class="thread-message relay">${relayCharacter()}<p>Your message is saved. Conversational replies need the local model to be connected. You can keep notes here or review a request yourself.</p></article>` : ''}
-    ${typeof RelayOrchestration === 'object' ? RelayOrchestration.setup(task) : ''}${state.reviewChatRequest ? `<section class="panel scope-recap"><h2>Review before requesting</h2>${typeof RelayExecution === 'object' ? RelayExecution.input(task) : ''}${proposal && ['request', 'change'].includes(proposal.intent) ? scopingReview(task) : scopeRecap(task)}<button class="quiet" data-action="keep-chatting">Keep chatting</button></section>` : !pending ? '<div class="chat-request-action"><span>Ready to turn this into work?</span><button data-action="review-chat-request">Review task request</button></div>' : ''}
-  </div>${composer('message', 'Say more…', 'Send', state.messageDrafts[task.id] || '', 'Enter to send · Shift + Enter for a new line').replaceAll('Message about this task', 'Message Relay')}</section><aside class="thread-context"><details class="conversation-details" data-disclosure-key="conversation-details"><summary>Context & details</summary><div class="conversation-details-body">${typeof RelayApps === 'object' ? RelayApps.contextPicker(task) : ''}${task.contextReferences?.length && state.features?.scoping ? '<p>Use selected saved copies to help Relay respond. This does not grant a builder access.</p><button data-action="read-chat-context">Read selected sources & respond</button>' : ''}<small>Only requested work appears in My tasks. Find this chat in Recent conversations.</small></div></details></aside></div></section>`;
+    ${draftProposal(task)}
+  </div>${assistantAvailability(task)}${conversationComposer(task)}</section><aside class="thread-context"><details class="conversation-details" id="conversation-details-panel" data-disclosure-key="conversation-details"><summary>Files & context</summary><div class="conversation-details-body">${typeof RelayExecution === 'object' ? RelayExecution.input(task) : ''}${typeof RelayApps === 'object' ? RelayApps.contextPicker(task) : ''}${task.contextReferences?.length && state.features?.scoping ? '<p>Use selected saved copies to help Relay respond. This does not grant a builder access.</p><button data-action="read-chat-context">Read selected sources & respond</button>' : ''}<small>Only requested work appears in My tasks. This conversation stays in your recent chats.</small><details class="advanced-planning" data-disclosure-key="advanced-planning"><summary>Advanced planning</summary><p>Optional manual controls for work you want to split yourself. Nothing starts without your approval.</p>${typeof RelayOrchestration === 'object' ? RelayOrchestration.setup(task) : ''}</details></div></details></aside></div></section>`;
 }
 
 function changeProposalCards(task, proposals = [], buyer = true) {

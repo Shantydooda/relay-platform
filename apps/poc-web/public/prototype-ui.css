@@ -488,7 +488,7 @@ button.primary:hover {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 12px 16px 0;
+  padding: 16px 12px 24px 0;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: #d8d8d3 transparent;
@@ -512,7 +512,9 @@ button.primary:hover {
   background: var(--relay-subtle);
   border-radius: 16px;
   padding: 12px 20px;
-  margin-left: 38px;
+  margin-left: auto;
+  width: fit-content;
+  max-width: 88%;
 }
 .thread-message.buyer p {
   margin: 8px 0 0;
@@ -2206,7 +2208,6 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid var(--relay-border);
   padding: 18px 0;
   font-size: 13px;
   color: var(--relay-muted);
@@ -2256,6 +2257,7 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
   font-size: 14px;
 }
 .conversation-heading > div {
+  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -2277,6 +2279,10 @@ form:has([name='cadence'] option[value='daily']:checked) [data-calendar-day] {
   flex-shrink: 0;
 }
 @media (max-width: 600px) {
+  .buyer-conversation .conversation-heading {
+    flex-direction: row;
+    align-items: center;
+  }
   .conversation-heading > div {
     gap: 8px;
   }

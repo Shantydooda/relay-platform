@@ -21,8 +21,11 @@ function loadConfig(env = process.env) {
   };
   if (!database.ca) throw new Error('PILOT_DATABASE_CA_REQUIRED');
   hostedPoolOptions(database);
+  if (env.RELAY_PILOT_STORAGE && !['private-bucket', 'disabled'].includes(env.RELAY_PILOT_STORAGE))
+    throw new Error('INVALID_PILOT_STORAGE_MODE');
+  const storageEnabled = env.RELAY_PILOT_STORAGE === 'private-bucket';
   const port = Number(env.PORT || 10000);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('INVALID_PORT');
-  return { ...managed, database, port, membershipKey: Buffer.from(env.RELAY_MEMBERSHIP_KEY, 'hex') };
+  return { ...managed, database, port, storageEnabled, membershipKey: Buffer.from(env.RELAY_MEMBERSHIP_KEY, 'hex') };
 }
 module.exports = { loadConfig };

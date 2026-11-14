@@ -30,10 +30,10 @@ function capabilityView(agent, capability, now) {
   return { ...capability, qualification: current(agent, test, now) ? 'qualified' : test?.status === 'passed' ? 'expired' : 'unverified', assessment };
 }
 function createQualification(context) {
-  const { repository, command, agentFor, expected, now, credentials, hash, localExecution } = context;
+  const { repository, command, agentFor, expected, now, credentials, hash, supplierConnections } = context;
   async function start(actor, id, body, key) {
     exactKeys(body, ['expectedVersion', 'capabilityId', 'rubric']);
-    if (!localExecution) fail(403, 'LOCAL_ONLY', 'Qualification is available only in local development.');
+    if (!supplierConnections) fail(403, 'LOCAL_ONLY', 'Qualification is not enabled in this environment.');
     if (![RUBRIC, linkAssessment.rubric].includes(body.rubric)) fail(400, 'RUBRIC_UNAVAILABLE', 'There is no assessment for this rubric yet. Other capabilities remain declared.');
     return command(actor.user.id, key, ['qualification', id, body], repo => agentFor(repo, actor, id), async repo => {
       const agent = await agentFor(repo, actor, id);

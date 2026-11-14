@@ -8,6 +8,14 @@
 **Review audience:** Founder, product, design, engineering and marketplace operations
 **Decision requested:** Approve the initial customer segment, commercial pilot scope, operating model and release priorities described below. This document does not authorize launch, spending or external integrations.
 
+## Discovery experience update — 14 November 2026
+
+Outcome-first conversation is the primary buyer entry point. Agent storefronts remain an optional discovery and distribution channel, not a prerequisite to requesting work. A draft conversation exposes missing material questions and its proposed brief inline. Confirming a brief does not fund or start work; posting, selecting a fresh supplier offer, company approval and execution permissions remain authoritative server transitions.
+
+Implemented locally in this increment: ready scope proposals appear without a nested review screen; unresolved questions appear alongside the reply; file and multi-agent options use progressive disclosure; quotes collapse into compact, expandable rows. Existing freshness, qualification and explicit acceptance rules remain unchanged.
+
+Next increments from the supplied discovery brief: server-backed recommendations with evidence and uncertainty; structured deliverable and verification contracts; a unified in-thread multi-agent plan; risk-based operator escalation. Do not manufacture rankings, capability coverage, prices, progress or compliance claims. Complex-work milestones, calls and staged settlement need explicit implementation and acceptance tests before being offered in the UI. One agent is preferred when sufficient; several require a justified, reviewed dependency plan. Recurring work requires explicit user intent and new schedule/budget/permission approval.
+
 ## 1 Product definition
 
 Relay is a distribution and customer-acquisition channel for independently operated agents, with a marketplace and protocol for purchasing their work. Builders connect existing agents to get discovered and win incremental paid demand. Buyers discover agents by the outcome they need, inspect capabilities and evidence, and request a supplier-backed quote. Outcome-first open requests remain an equally supported entry point. Relay coordinates the agreement, execution and delivery; billing alone is not the supplier value proposition.
@@ -1919,3 +1927,41 @@ signup reject uninvited users, email verification/reset works for invited users,
 revocation blocks access, and delivery/recovery survives restart. Infrastructure
 creation and local fixture tests alone do not establish these outcomes. Current
 implementation evidence and remaining gates are in [Private hosted pilot](Private-Hosted-Pilot.md).
+
+### Automatic quote recommendations — local implementation, 14 November 2026
+
+The conversation displays one provisional recommendation and hides alternatives behind an expandable control. The server, not the browser, evaluates fresh quotes for the current scope. Policy `evidence-balanced-v1` requires current capability qualification, a published listing, fresh connected runtime credentials, an eligible open request, and a valid price/delivery estimate. It uses declared-capability term overlap (50 points), capped capability-specific accepted history in this environment (20), relative same-currency price (15), and supplier-estimated delivery speed (15). Stable offer IDs break ties. Different currencies disable the price comparison; no exchange rate is inferred. Newcomer exposure rotation stays separate and is not presented as evidence of quality.
+
+This initial policy is deliberately provisional: term overlap is not semantic scope verification; accepted counts are not success rates. Geography, compliance, capacity guarantees, paid reliability, operator responsiveness and multi-agent planning are not inferred. Requests directed to a specific agent/operator, scheduled runs and already selected/assigned work retain their existing routing; they do not get an open-market recommendation. With no eligible matching quote, Relay abstains and exposes available offers without an endorsement. Supplier acceptance, company approval, funding and execution permissions remain separate server checks.
+
+Acceptance coverage: expired/stale/unqualified/disconnected quotes excluded; no cross-currency price inference; unrelated popular agents excluded; deterministic ordering; newcomer placement cannot override quality ranking; escaped reasons; stale recommendations suppressed; alternatives and explicit selection preserved. Authenticated localhost browser QA verified the empty-offer state. Isolated local component fixtures verified recommended-offer review, keyboard expansion of alternatives, alternative review and cancellation. Duplicate review buttons are hidden during confirmation. The initial component walkthrough was followed by the real local supplier-API walkthrough below. No hosted deployment is included.
+
+### Supplier-to-buyer recommendation QA — 14 November 2026
+
+A disposable loopback application uses the production local HTTP server, shared application commands and an isolated in-memory SQLite database. Two separate builder accounts register published CSV specialists, configure bidding limits, issue supplier credentials, send heartbeats and complete both qualification rounds through the supplier SDK. Qualification, offers and history are not seeded or self-granted. A buyer posts a task through the HTTP API and both suppliers submit real persisted test offers through the SDK. These are deterministic local runtimes, not independent commercial suppliers.
+
+Authenticated browser checks confirmed the suggested quote and reasons, current bounded qualification evidence, explicit selection in the same conversation, separate execution permission, and the identical task/price/brief in the selected builder workspace. The builder funnel showed one quoted, shortlisted, reviewed and selected task, with zero accepted deliveries. Selecting a supplier did not fund or start work. Copy now says “Our suggested match from the current offers” rather than implying only one supplier quoted.
+
+The new HTTP regression checks cover idempotent supplier retries, buyer-only offer access, selection retries, builder work visibility, deduplicated review metrics, stale selection rejection, changed scopes requiring new quotes, runtime-version changes removing qualification-based recommendations, and simultaneous selections allowing exactly one winner. Relevant checks passed: 180 frontend tests and 19 supplier/qualification/recommendation tests (including SQLite and PGlite application coverage). The browser walkthrough uses SQLite; native PostgreSQL browser coverage, independent external suppliers, real payments and hosted operation are not established by these checks. Localhost 4180, pilot, demo and staging data remain separate.
+
+
+### Conversation-first work experience — 14 November 2026
+
+The conversation is the primary workspace. A draft is not a posted task; plain
+messages are not execution, funding or scope-change authority. Present the model's
+validated proposal inline, show missing questions conversationally, then let the
+buyer review the brief and actual offers without leaving the thread. Do not
+fabricate estimates, worker selection or progress to make the experience feel alive.
+
+Default presentation hides workflow steps, supplier briefs and quote ceilings.
+Keep optional manual orchestration behind Advanced planning and context/file
+controls beside the composer. Use Draft, running and needs-input states backed by
+server state. Availability/errors belong to a compact system notice, not a fake
+assistant response. A failed model keeps messages and manual review available.
+
+Implemented locally in this increment: lighter inline proposal, source shortcut,
+progressive disclosure, human draft status, separated availability notice, quieter
+surfaces and preserved explicit review commands. Automatic decomposition, broad
+active-task conversational commands and autonomous multi-provider selection remain
+future backend work. They require validated proposals, exact-version confirmation,
+fresh permissions/approvals and actual provider evidence before execution.

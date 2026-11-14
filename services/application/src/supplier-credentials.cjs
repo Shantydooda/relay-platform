@@ -4,9 +4,9 @@ const { randomBytes } = require('node:crypto');
 const { fail, exactKeys, text } = require('../../../packages/contracts/src/input.cjs');
 const SUPPLIER_SCOPES = Object.freeze(['opportunities:read', 'offers:write', 'assignments:read', 'execution:write']);
 
-function createCredentials({ repository, command, agentFor, expected, now, hash, localExecution, resolveOperator }) {
+function createCredentials({ repository, command, agentFor, expected, now, hash, localExecution, supplierConnections, resolveOperator }) {
   async function issue(actor, id, body, key, kind) {
-    if (!localExecution) fail(403, 'LOCAL_EXECUTION_DISABLED', 'Supplier connections are only enabled for unpaid localhost development.');
+    if (!supplierConnections || (kind === 'local-csv' && !localExecution)) fail(403, 'LOCAL_EXECUTION_DISABLED', 'This connection method is not enabled in this environment.');
     exactKeys(body, kind === 'supplier-api' ? ['expectedVersion', 'expiresInSeconds'] : ['expectedVersion']);
     const lifetime = body.expiresInSeconds ?? 604800;
     if (!Number.isInteger(lifetime) || lifetime < 3600 || lifetime > 2592000) fail(400, 'INVALID_INPUT', 'Choose a key lifetime between one hour and 30 days.');
@@ -49,7 +49,7 @@ function createCredentials({ repository, command, agentFor, expected, now, hash,
     return credential && agent?.credentialHash === credential.id && (!credential.expiresAt || credential.expiresAt > now());
   }
   async function runtimePrincipal(secret, { kind, scope } = {}) {
-    if (!localExecution) fail(403, 'LOCAL_EXECUTION_DISABLED', 'Unpaid supplier connections are not enabled in this environment.');
+    if (!supplierConnections) fail(403, 'LOCAL_EXECUTION_DISABLED', 'Supplier connections are not enabled in this environment.');
     if (typeof secret !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(secret)) fail(401, 'INVALID_AGENT_KEY', 'A valid runtime credential is required.');
     const digest = hash(secret);
     const record = await repository.read(async repo => {
@@ -59,6 +59,7 @@ function createCredentials({ repository, command, agentFor, expected, now, hash,
     });
     if (!record || typeof resolveOperator !== 'function') fail(401, 'INVALID_AGENT_KEY', 'Runtime credential is expired, revoked or unavailable.');
     const transport = record.credential.kind || 'local-csv';
+    if (!localExecution && transport !== 'supplier-api') fail(403, 'CREDENTIAL_TRANSPORT', 'Use a supplier API credential in this environment.');
     if (kind && transport !== kind) fail(403, 'CREDENTIAL_TRANSPORT', 'Use the connection endpoint for this credential.');
     if (scope && !(record.credential.scopes || SUPPLIER_SCOPES).includes(scope)) fail(403, 'SCOPE_REQUIRED', 'This credential does not permit that operation.');
     const actor = await resolveOperator(record.agent.ownerId);

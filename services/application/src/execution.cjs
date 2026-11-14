@@ -24,12 +24,12 @@ function decode(value, limit = MAX_FILE_BYTES, binary = false) {
 function createExecution(context) {
   const { objectStore, fileScanner, repository, command, taskFor, now, localExecution, hash, expected, touch, event } = context;
   const { runtimeAgent, runtimePrincipal, heartbeat, issueCredential, issueSupplierCredential, revokeCredential } = context.credentials;
-  function verifiedBytes(metadata, artifact, taskId) {
+  async function verifiedBytes(metadata, artifact, taskId) {
     if (!artifact || artifact.taskId !== taskId || (!artifact.objectKey && typeof artifact.base64 !== 'string')) fail(409, 'FILE_UNAVAILABLE', 'File bytes are unavailable.');
     if (metadata.filename !== artifact.filename || (metadata.mime && metadata.mime !== artifact.mime)) fail(409, 'FILE_UNAVAILABLE', 'File metadata does not match this delivery.');
     if (artifact.objectKey && artifact.scan?.status !== 'clean') fail(409, 'FILE_QUARANTINED', artifact.scan?.reason || 'File is quarantined pending scanning.');
     let bytes;
-    try { bytes = artifact.objectKey ? objectStore.read(artifact.objectKey) : Buffer.from(artifact.base64, 'base64'); }
+    try { bytes = artifact.objectKey ? await objectStore.read(artifact.objectKey) : Buffer.from(artifact.base64, 'base64'); }
     catch { fail(409, 'FILE_UNAVAILABLE', 'File is missing or damaged. Restore its verified object from backup.'); }
     if (bytes.length !== metadata.size || hash(bytes) !== metadata.sha256) fail(409, 'FILE_UNAVAILABLE', 'File integrity check failed.');
     return bytes;
@@ -108,7 +108,7 @@ function createExecution(context) {
     if ((offer.currency || 'USD') !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'The operator changed quoting currency. Request a fresh offer.');
     if (offer.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'The operator changed its minimum. Request an updated offer.');
     if (offer.runtimeKind && offer.runtimeKind !== agent.runtimeKind) fail(409, 'RUNTIME_CHANGED', 'The agent connection changed. Request a fresh offer.');
-    if (task.input) verifiedBytes(task.input, await repo.get('artifact', task.input.artifactId), task.id);
+    if (task.input) await verifiedBytes(task.input, await repo.get('artifact', task.input.artifactId), task.id);
     await context.approvals.requireApproval(repo, actor, task);
     const member = actor.memberships.find(item => item.id === task.tenantId);
     if (member.role !== 'owner' && !task.companyApprovalRequired) fail(403, 'APPROVAL_REQUIRED', 'Corporate execution is not implemented in local unpaid mode.');
@@ -171,7 +171,7 @@ function createExecution(context) {
       let input = null;
       if (task.input) {
         const artifact = await repo.get('artifact', task.input.artifactId);
-        verifiedBytes(task.input, artifact, task.id);
+        await verifiedBytes(task.input, artifact, task.id);
         input = { ...task.input, base64: artifact.base64 };
       }
       return { ...result, leaseToken: token, leaseUntil: task.assignment.leaseUntil, deadlineAt: task.assignment.deadlineAt || null, title: task.title, brief: task.assignment.agreement.brief, handoffs: task.assignment.agreement.handoffs || [], input, revisionNotes: task.assignment.revisionNotes || null };
@@ -257,7 +257,7 @@ function createExecution(context) {
       for (const file of submission.files) {
         const artifact = await repo.get('artifact', file.id);
         if (artifact?.submissionId !== submission.id) fail(409, 'FILE_UNAVAILABLE', 'Submission bytes are unavailable.');
-        verifiedBytes(file, artifact, task.id);
+        await verifiedBytes(file, artifact, task.id);
       }
     } else if (task.submissions.length >= 3) fail(409, 'REVISION_LIMIT', 'This local runtime supports two revisions.');
     return submission;
@@ -311,7 +311,7 @@ function createExecution(context) {
       if (!file) fail(404, 'NOT_FOUND', 'File not found.');
       const artifact = await repo.get('artifact', file.id);
       if (!artifact || artifact.taskId !== id || artifact.submissionId !== submissionId) fail(409, 'FILE_UNAVAILABLE', 'File is unavailable.');
-      const bytes = verifiedBytes(file, artifact, id);
+      const bytes = await verifiedBytes(file, artifact, id);
       return { filename: file.filename, mime: file.mime, sha256: file.sha256, bytes };
     });
   }

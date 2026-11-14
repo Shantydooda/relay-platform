@@ -1,6 +1,23 @@
 # Current build and release status
 
-Reviewed 8 November 2026. This is the current summary; dated entries in component documents are historical records and can describe older limitations.
+Updated 12 November 2026. Dated entries below and in component documents are historical records and can describe older limitations.
+
+## Current launch boundary — 12 November 2026
+
+The separate free private-pilot application and database are provisioned. The
+supplier SDK supports HTTPS. Private hosted storage and a supervised scanning
+worker are implemented/tested locally but are not activated against the provider.
+No invited buyer/builder identities have been selected. Hosted signup/email,
+execution authorization and pilot-specific test payments still need acceptance.
+The pilot server key is not available to the local storage setup yet. Do not
+interpret the deployed landing page as a completed hosted delivery flow.
+
+The next product milestone is one independent builder completing one real buyer
+brief, including a revision, verified delivery and correctly reconciled test
+payment. The first public paid release additionally requires provider acceptance,
+independent review, support/dispute procedures and measured unit economics. More
+marketplace features do not replace those gates. Hosting subscriptions, arbitrary
+app hosting and other deferred items need not block a focused agent-work pilot.
 
 ## Next acceptance work
 
@@ -92,3 +109,49 @@ retries. The old staging launcher is not the full unified backend and must not b
 reused as a functioning buyer/builder pilot. Provider sign-in, managed composition,
 explicit pilot execution policy, durable storage/scanning and email delivery gates
 remain open. See Private-Hosted-Pilot.md. Existing environments are unchanged.
+
+## Local recommendation recovery gate — 14 November 2026
+
+Qualified supplier bids and explicit buyer selection now have native PostgreSQL
+reconnect/concurrent-selection regression coverage. The same assessment evidence,
+recommendation, winner and retry receipt survive application reconstruction with
+new database pools; selection alone never starts or funds work. This uses a
+separate disposable database and the real supplier SDK/local HTTP endpoints.
+The full core suite passed 797 checks and frontend/shared UI passed 188 checks;
+the new native check also passed. See Release-Acceptance.md for exact limits.
+
+Next release work remains the independent supplier/API contract and actual buyer
+brief, provider acceptance, and the separately authorized hosted rehearsal. Local
+coverage does not close those external gates. No extra marketplace or enterprise
+features are needed to claim progress against them.
+
+
+## Conversation-first presentation — 14 November 2026
+
+Read the supplied redesign brief and refactored the draft conversation rather than
+adding another planning screen. Drafts now show a compact request proposal, a
+Message Relay composer with a files/context shortcut, and optional custom planning
+under Files & context → Advanced planning. Manual step inputs are outside the
+message history. Scope review, offers, start authorization and permissions remain
+separate server transitions; no generated price, performance or execution claim
+is introduced. Historical known assistant-unavailable copy is presented as system
+state rather than assistant speech; original stored messages remain unchanged.
+Removed the client-generated canned conversation guidance. Failed/stopped replies
+show a small notice outside the transcript with retry when configured.
+
+QA: 797 core checks and 183 web + 8 shared UI checks passed. Added regressions for
+known system notices versus user-authored text, closed advanced controls outside
+the transcript, escaped unsent composer text and no invented offline reply or
+authorization. Existing pending/clarification/hypothetical scope tests remain.
+Authenticated localhost inspection verified draft review, return-to-composer focus,
+files/context focus and advanced disclosure. Checked 390×844 layout and desktop,
+light/dark appearance. Browser actions did not post or execute the user's task.
+The current local draft has a failed assistant response; no successful live-model
+conversation is claimed by this pass. Automated fixtures cover proposal and task
+transitions; no new browser delivery or payment walkthrough was performed.
+
+Remaining: automatic multi-agent planning is not implemented by this presentation
+change. Arbitrary active-task instructions (pause/reassign/change price) must be
+mapped to reviewed server commands before claiming full conversational control.
+Model outage recovery and a successful model-backed user walkthrough remain needed.
+Localhost stays running; pilot, demo, staging and payment settings unchanged.

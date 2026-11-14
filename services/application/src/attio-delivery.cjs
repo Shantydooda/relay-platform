@@ -281,7 +281,7 @@ function createAttioDelivery({
       const artifact = await repo.get('artifact', file.id);
       if (artifact?.submissionId !== submission.id)
         fail(409, 'FILE_UNAVAILABLE', 'Delivery file is unavailable.');
-      const rows = companyRows(verifiedBytes(file, artifact, task.id));
+      const rows = companyRows(await verifiedBytes(file, artifact, task.id));
       const id = hash(
         `${task.id}:${submission.id}:${file.sha256}:${conn.version}`,
       );
@@ -353,7 +353,7 @@ function createAttioDelivery({
           'FILE_UNAVAILABLE',
           'The reviewed file changed. Prepare a fresh review.',
         );
-      verifiedBytes(file, artifact, task.id);
+      await verifiedBytes(file, artifact, task.id);
       if (job.status === 'sent') return view(job);
       if (job.retryAfter && job.retryAfter > now())
         fail(

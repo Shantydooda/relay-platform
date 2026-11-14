@@ -8,7 +8,7 @@ const PREFIX = '/v1/supplier';
 // secrets or browser sessions. All transitions use shared application commands.
 async function supplierApi({ req, url, store, jsonBody, send, origin }) {
   if (!url.pathname.startsWith(`${PREFIX}/`)) return false;
-  if (!store.features?.localExecution || !store.issueSupplierCredential) fail(404, 'NOT_FOUND', 'Supplier API is unavailable.');
+  if (!(store.features?.supplierConnections || store.features?.localExecution) || !store.issueSupplierCredential) fail(404, 'NOT_FOUND', 'Supplier API is unavailable.');
   if (req.headers.origin && req.headers.origin !== origin) fail(403, 'ORIGIN_REQUIRED', 'Origin is not permitted.');
   const bearer = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '');
   const principal = await store.runtimePrincipal(bearer?.[1], { kind: 'supplier-api' });

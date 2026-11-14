@@ -149,7 +149,8 @@ No regression failure justified an application change.
 1. **Independent supplier rehearsal:** obtain the builder API contract and a real
    buyer brief; implement its input/output adapter and suitable qualification
    rubric. Follow First-Builder-Pilot.md, including revision and failure evidence.
-   Do not claim remote access while the supported SDK remains loopback-only.
+   The SDK now supports exact HTTPS origins; a live independent supplier round trip
+   still needs acceptance in the separate pilot.
 2. **Provider acceptance:** inspect the existing Stripe test payout operation
    before any retry; confirm provider state, webhook and ledger together. Configure
    authorized Google/Attio test accounts and verify consent, delivery and revocation.
@@ -157,7 +158,8 @@ No regression failure justified an application change.
 3. **Release-candidate browser/CI gate:** exercise current buyer, employee, approver
    and builder paths, including narrow-screen/keyboard recovery. Push reviewed
    source only when authorized and require the Node 24 checks on that exact commit.
-4. **Separate hosted pilot rehearsal:** needs explicit deployment authorization.
+4. **Separate hosted pilot rehearsal:** deployment is authorized and the base app is
+   deployed; storage, supervised scanning and full execution are not yet activated.
    Validate auth, workers, private storage, scanner, alerts, restore and rollback
    together; leave the demo and existing staging untouched.
 5. **Real-money/public release:** requires independent security/payment/operations
@@ -166,3 +168,54 @@ No regression failure justified an application change.
 These are acceptance tasks, not a reason to add deferred enterprise or marketplace
 features. Hosted subscriptions/arbitrary-app execution remain explicitly limited
 as documented in Status.md and Workspace-Apps.md.
+
+## Buyer-to-builder fixture rehearsal — 12 November 2026
+
+53 targeted checks passed with no failures, skips or cancellations: supplier
+workflow, managed pilot connections/qualification, private storage, exact-offer
+approvals, test-provider funding/refunds/payouts and supervised scanning. The
+initial restricted run could not bind a local HTTP test server; the permitted
+rerun passed. No real provider payments or hosted writes were performed.
+
+Added a journey regression covering first delivery, buyer revision, scanner
+outage, application/client reconstruction, scan recovery, acceptance and download.
+The same task, assignment and operator survive throughout. Duplicate submission
+and acceptance retries return the original result; unauthorized downloads fail.
+Quarantined delivery cannot be accepted. This is an isolated in-memory database
+and remote-storage fixture, not an OS crash or hosted browser test.
+
+Existing supplier tests additionally cover cancellation, stale workers, exhausted
+retries and key revocation. Payment fixtures are separate checks; they are not
+proof of a single live hosted checkout-through-payout transaction. Browser QA and
+independent supplier acceptance remain pending. Demo and staging were untouched.
+
+## Recommendation durability — 14 November 2026
+
+Added a native PostgreSQL release regression using a newly migrated, disposable
+local database. The production local HTTP server and supplier SDK register two
+suppliers, complete qualification test/revision rounds, and submit competing bids.
+No qualifications, offers or reputation records are inserted directly.
+
+The test reconstructs the HTTP/application layer against a separate database
+connection, closes/reopens connection pools, and verifies unchanged recommendations
+and qualification evidence. Competing selection commands from separate pools permit
+exactly one winner. The selection, builder visibility and durable retry receipt
+survive another reconstruction; no execution or payment is authorized. This tests
+application reconstruction and database reconnection, not an operating-system crash
+or PostgreSQL cluster restart. Existing crash/backup checks remain separate.
+
+All 10 targeted recommendation, fair-exposure, HTTP-journey and native-recovery
+checks passed with no skips. The new native test is included by the existing
+`test:postgres` glob in CI; no GitHub run or deployment was triggered. No UI changes
+were required in this increment, so the previous browser walkthrough still applies;
+this is not new native-PostgreSQL browser evidence. Localhost 4180 remains running.
+Pilot, staging, demo and payment-provider configuration were not changed.
+
+Final local verification for this increment: `npm test` passed 797 core checks;
+`npm run test:web` passed 180 frontend and 8 shared-UI checks. The new native
+PostgreSQL recovery check passed separately. All completed with zero failures,
+skips or cancellations. Disposable recommendation databases were confirmed removed.
+The full native recovery/load groups and GitHub CI were not rerun in this increment.
+Logs: `/tmp/relay-core-20261114.log`, `/tmp/relay-web-20261114.log`, and
+`/tmp/relay-pg-recommendation.log`. These are local evidence paths, not release
+artifacts or proof of a hosted deployment.

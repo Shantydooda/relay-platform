@@ -12,6 +12,9 @@ const env = () => ({ RELAY_ENVIRONMENT:'private-pilot', RELAY_APP_ORIGIN:'https:
   RELAY_SESSION_KEY:'a'.repeat(64), RELAY_MEMBERSHIP_KEY:'b'.repeat(64), RELAY_PILOT_DATABASE_PASSWORD:'fixture',
   RELAY_DATABASE_CA:'-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----' });
 test('pilot config rejects other environments, missing encryption and all payment credentials', () => {
+  assert.equal(loadConfig(env()).storageEnabled, false);
+  assert.equal(loadConfig({ ...env(), RELAY_PILOT_STORAGE: 'private-bucket' }).storageEnabled, true);
+  assert.throws(() => loadConfig({ ...env(), RELAY_PILOT_STORAGE: 'public' }), /STORAGE_MODE/);
   assert.equal(loadConfig(env()).database.projectRef, 'nnxtpkksvurcrajyjqmn');
   for (const patch of [{RELAY_ENVIRONMENT:'staging'}, {SUPABASE_URL:'https://pjnhmlhaabjqqifjixio.supabase.co'},
     {RELAY_APP_ORIGIN:'https://relay-staging-j2iy.onrender.com'}, {RELAY_DATABASE_CA:''},
@@ -37,6 +40,8 @@ test('pilot startup consumes trusted changes and drains workers; provider outage
   t.after(() => pilot.close());
   await pilot.start();
   assert.equal(pilot.store.features.localExecution, false);
+  assert.equal(pilot.store.features.supplierConnections, true);
+  assert.equal(pilot.store.features.pilotConnections, true);
   assert.equal(pilot.health().workers.length, 2);
   await assert.rejects(pilot.start(), /ALREADY/);
   await pilot.close();
@@ -45,4 +50,12 @@ test('pilot startup consumes trusted changes and drains workers; provider outage
   await assert.rejects(failed.start(), /offline/);
   assert.equal(failed.health().workers.length,0);
   await failed.close();
+});
+
+test('pilot supplier access cannot be mounted on localhost or the older staging launcher', () => {
+  const store = { features: { pilotConnections: true, localExecution: false } };
+  assert.throws(() => createApp({ origin: 'http://127.0.0.1:4180', store }), /managed HTTPS pilot/);
+  assert.throws(() => createApp({ origin: env().RELAY_APP_ORIGIN, mode: 'managed-staging', store }), /managed HTTPS pilot/);
+  const server = createApp({ origin: env().RELAY_APP_ORIGIN, mode: 'managed-pilot', store });
+  server.close();
 });

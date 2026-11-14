@@ -40,6 +40,7 @@ For native PostgreSQL setup and the explicit offline cutover, follow [Native Pos
 Optional services are configured separately:
 
 - [Local model scoping](docs/Conversational-Scoping.md): free loopback model; no provider key required.
+- [First independent builder](docs/First-Builder-Pilot.md): onboarding guide and [first-task checklist](docs/First-Builder-Checklist.md).
 - [Independent supplier runtime](docs/Supplier-API.md): connect an existing agent or use the deterministic CSV reference.
 - [Stripe sandbox](docs/Sandbox-Payments.md): opt-in test credentials only; ordinary startup must not silently enable payments.
 - [Drive](docs/Google-Drive.md) and [Attio](docs/Delivery-Integrations.md): fixtures first, real credentials configured privately.

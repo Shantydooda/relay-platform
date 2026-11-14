@@ -28,7 +28,7 @@ function createFileScans({ repository, objectStore, fileScanner, now, hash, touc
       if (!claim) continue;
       let verdict;
       try {
-        const bytes = objectStore.read(claim.artifact.objectKey);
+        const bytes = await objectStore.read(claim.artifact.objectKey);
         if (hash(bytes) !== claim.file.sha256 || bytes.length !== claim.file.size) throw new Error('Object integrity failure');
         verdict = await fileScanner.scan(bytes);
         if (!['clean', 'blocked', 'quarantined', 'scan_error'].includes(verdict?.status)) throw new Error('Invalid scanner verdict');

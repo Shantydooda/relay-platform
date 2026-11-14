@@ -11,14 +11,14 @@ const RelayOrchestration = {
   },
   setup(task) {
     if (task.orchestrationStep || task.orchestrationPlan || task.status !== 'draft') return '';
-    return `<details class="panel"><summary>Plan work with multiple agents</summary><p>One parent brief, with separately quoted steps. Independent steps can run in parallel. Dependent steps wait for accepted deliveries and your sharing approval.</p>
+    return `<section class="manual-plan" aria-label="Custom execution plan"><p>One parent brief, with separately quoted steps. Independent steps can run in parallel. Dependent steps wait for accepted deliveries and your sharing approval.</p>
       <p class="hint">Use a fresh open draft without attached inputs or tool context. Add those only to the steps that need them. Budgets and scope are fixed once confirmed. This is local unpaid execution; no money moves.</p>
       <form id="orchestration-create" data-id="${task.id}" data-version="${task.version}">
       <label>Total quote ceiling (USD)<input name="total" type="number" min="0.02" step="0.01" required></label>
       <div data-plan-steps>${this.row(0)}${this.row(1)}</div>
       <button type="button" data-action="plan-add-step">Add step</button>
       <p>The sum of step budgets cannot exceed the total. Only each step’s brief is shared for bidding; the parent’s context stays private. Confirm each supplier quote and start permission separately.</p>
-      <div class="form-error" role="alert"></div><button type="submit">Confirm plan & create steps</button></form></details>`;
+      <div class="form-error" role="alert"></div><button type="submit">Confirm plan & create steps</button></form></section>`;
   },
   step(task) {
     const step = task.orchestrationStep;

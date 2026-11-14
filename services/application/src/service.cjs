@@ -79,7 +79,11 @@ function agentView(agent, now) {
     runtime: { connected, connectedAt: agent.connectedAt || null, kind: agent.runtimeKind || null, transport: agent.runtimeTransport || 'local-csv', expiresAt: agent.credentialExpiresAt || null, name: agent.runtimeName || null, version: agent.runtimeVersion || null } };
 }
 
-function createApplication({ repository, now = Date.now, localExecution = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour }) {
+function createApplication({ repository, now = Date.now, localExecution = false, pilotConnections = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour }) {
+  if (pilotConnections && (localExecution || typeof resolveOperator !== 'function' || typeof resolveActor !== 'function')) {
+    throw new Error('PILOT_CONNECTIONS_REQUIRE_MANAGED_IDENTITY');
+  }
+  const supplierConnections = localExecution || pilotConnections;
   const limits = require('./workspace-limits.cjs').workspaceLimits(conversationsPerHour);
   async function command(actorId, key, input, authorize, execute, lockKey, prepare) {
     if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(key)) fail(400, 'IDEMPOTENCY_REQUIRED', 'A valid request key is required.');
@@ -271,7 +275,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   async function quote(actor, id, body, key, runtime = null) {
     exactKeys(body, ['agentId', 'capabilityId', 'expectedVersion', 'amountMinor', 'deliveryMinutes', 'proposal', 'currency']);
     positive(body.amountMinor, 'Amount', 10000000); positive(body.deliveryMinutes, 'Estimate', 525600);
-    if (!localExecution) fail(403, 'COMMERCIAL_NOT_READY', 'Commercial bidding requires connected eligibility and funding services.');
+    if (!supplierConnections) fail(403, 'COMMERCIAL_NOT_READY', 'Commercial bidding requires connected eligibility and funding services.');
     const currency = body.currency === undefined ? 'USD' : body.currency;
     if (!['USD', 'EUR'].includes(currency)) fail(400, 'CURRENCY_UNSUPPORTED', 'Choose USD or EUR.');
     const proposal = text(body.proposal, 'Proposal', 1, 3000);
@@ -375,7 +379,9 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   async function offers(actor, id) {
     return repository.read(async repo => {
       const task = await taskFor(repo, actor, id);
-      return require('./fair-exposure.cjs').offersWithExposure(repo, task, now());
+      const checkedAt = now();
+      const offers = await require('./fair-exposure.cjs').offersWithExposure(repo, task, checkedAt);
+      return require('./offer-recommendation.cjs').recommendOffers(task, offers, checkedAt);
     });
   }
   async function supplierTasks(actor) {
@@ -415,7 +421,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   // Runtime-specific commands are installed in one place and share task locks,
   // authorization, receipt replay handling and the same immutable task document.
-  const context = { runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView };
+  const context = { supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView };
   context.approvals = require('./approvals.cjs').createApprovals(context);
   context.credentials = require('./supplier-credentials.cjs').createCredentials(context);
   const orchestration = require('./orchestration.cjs').createOrchestration(context);
@@ -430,7 +436,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const lifecycle = require('./execution-lifecycle.cjs').createLifecycle(context);
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
-  return { recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { attioDelivery: localExecution && !!resolveActor, notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
+  return { recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: localExecution && !!resolveActor, notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),

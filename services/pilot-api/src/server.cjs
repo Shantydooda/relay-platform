@@ -12,7 +12,11 @@ async function start() {
   try {
     const provider = createProvider(config);
     await provider.ready();
-    pilot = composePilot({ ...config, provider, repository: database.repository, pool: database.pool });
+    const objectStore = config.storageEnabled
+      ? require('../../storage/src/pilot-objects.cjs').pilotObjects({ projectRef: config.database.projectRef, secret: config.secretKey })
+      : undefined;
+    if (objectStore) await objectStore.verifyBucket();
+    pilot = composePilot({ ...config, objectStore, provider, repository: database.repository, pool: database.pool });
     await pilot.start();
     const server = createApp({ origin: config.origin, store: pilot.store, mode: 'managed-pilot' });
     await new Promise((resolve, reject) => {

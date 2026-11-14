@@ -89,7 +89,7 @@ function createOrchestration(context) {
         const file = submission.files.find(item => item.id === body.fileId);
         if (!file || !file.filename.endsWith('.csv') || file.size > 256 * 1024 || target.input)
           fail(409, 'HANDOVER_FILE', 'Choose one CSV up to 256 KB for a step without an input file.');
-        const bytes = context.verifiedBytes(file, await repo.get('artifact', file.id), source.id);
+        const bytes = await context.verifiedBytes(file, await repo.get('artifact', file.id), source.id);
         await context.storageAdmission(repo, target.tenantId, bytes.length);
         const artifactId = randomUUID();
         target.input = { artifactId, filename: file.filename, sha256: hash(bytes), size: bytes.length, notes: 'Approved upstream CSV for this step only.', operation: 'csv-normalize-v1' };

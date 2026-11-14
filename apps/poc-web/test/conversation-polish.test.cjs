@@ -275,3 +275,71 @@ test('repeat-hire prompt is explicit about fresh agreement and access, with no u
   ctx.state.detail.repeatHire = null;
   assert.equal(vm.runInContext('repeatHireCard()', ctx), '');
 });
+
+test('ready draft proposal is inline, while missing details cannot be approved', () => {
+  const ctx = context();
+  ctx.state.features = {scoping:true};
+  ctx.state.detail = {events:[]};
+  ctx.task = {status:'draft', scoping:{status:'completed', proposal:{intent:'request', title:'Research', brief:'Find companies', cadence:'once', questions:[], assumptions:[]}}};
+  let html = vm.runInContext('draftProposal(task)',ctx);
+  assert.match(html,/Confirm brief/);
+  assert.doesNotMatch(html,/review-chat-request|data-action="post"/);
+  ctx.task.scoping.proposal.questions = ['Which <market>?'];
+  html = vm.runInContext('draftProposal(task)',ctx);
+  assert.match(html,/Which &lt;market>/);
+  assert.doesNotMatch(html,/confirm-scope|data-action="post"/);
+  ctx.task.scoping.proposal.intent = 'hypothetical';
+  assert.equal(vm.runInContext('draftProposal(task)',ctx),'');
+});
+
+test('confirmed scope exposes posting in the same draft without opening another review', () => {
+  const ctx = context();
+  ctx.state.detail = {events:[{type:'scope.reviewed'}]};
+  ctx.task = {status:'draft', brief:'Reviewed work', scopeVersion:2};
+  const html = vm.runInContext('draftProposal(task)',ctx);
+  assert.match(html,/data-action="post"/);
+  assert.doesNotMatch(html,/review-chat-request|confirm-scope/);
+});
+
+
+test('assistant availability stays outside transcript and does not hide user content', () => {
+  const ctx = context();
+  const notice = 'Your message is saved. Conversational replies need the local model to be connected. You can keep notes here or review a request yourself.';
+  ctx.state.detail = { task: { id: 'draft', title: 'Research', status: 'draft' }, messages: [
+    {id:'system', role:'assistant', body:notice},
+    {id:'user', role:'user', body:notice},
+  ]};
+  ctx.state.features = {};
+  ctx.state.messageDrafts = {};
+  ctx.composer = () => '<form id="message"></form>';
+  const html = vm.runInContext('draftConversation()', ctx);
+  assert.doesNotMatch(html, /id="scope-reply-system"|Not requested yet/);
+  assert.match(html, /id="scope-reply-user"/);
+  assert.match(html, /role="status">Draft/);
+  assert.ok(html.indexOf('conversation-system-state') > html.indexOf('chat-request-action'));
+  assert.ok(html.indexOf('conversation-system-state') < html.indexOf('<form id="message">'));
+  assert.doesNotMatch(html, /data-action="post"|data-action="confirm-scope"/);
+});
+
+test('manual planning is outside the message history behind closed advanced disclosure', () => {
+  const ctx = context();
+  ctx.state.detail = {task:{id:'draft',status:'draft'},messages:[]};
+  ctx.state.features = {scoping:true};
+  ctx.state.messageDrafts = {};
+  ctx.composer = () => '<form id="message"></form>';
+  ctx.RelayOrchestration = {setup: () => '<form id="orchestration-create">Manual plan</form>'};
+  const html = vm.runInContext('draftConversation()',ctx);
+  assert.ok(html.indexOf('orchestration-create') > html.indexOf('<aside class="thread-context">'));
+  assert.match(html, /data-disclosure-key="advanced-planning"/);
+  assert.doesNotMatch(html, /<details[^>]* open|Files & execution options/);
+});
+
+test('composer keeps unsent text escaped with an explicit source control', () => {
+  const ctx = context();
+  ctx.state.messageDrafts = {task:'<script>keep my draft</script>'};
+  ctx.composer = (id, placeholder, label, value) => `<form><div class="replybox"><textarea>${ctx.escape(value)}</textarea></div></form>`;
+  const html = vm.runInContext("conversationComposer({id:'task'})",ctx);
+  assert.match(html, /data-action="conversation-context"/);
+  assert.match(html, /&lt;script>/);
+  assert.doesNotMatch(html, /<script>/);
+});

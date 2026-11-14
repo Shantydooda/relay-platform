@@ -4,9 +4,9 @@ const money = (value, currency = 'USD') => new Intl.NumberFormat(undefined, {sty
 const scopeMatches = (offer,task) => (offer.scopeVersion ?? offer.taskVersion) === (task.scopeVersion ?? task.version);
 const builderLabels = {dashboard:'Overview',agents:'Your agents',opportunities:'Opportunities',quotes:'Your offers',work:'Tasks',earnings:'Earnings',settings:'Settings'};
 
-function offerCard(o, task) {
+function offerCard(o, task, trackExposure = true) {
   const available = ['posted','selected'].includes(task.status) && scopeMatches(o,task) && o.expiresAt > Date.now();
-  return `<article data-offer-exposure="${escape(o.id)}" data-shortlisted="${Boolean(o.exposure?.shortlisted)}" class="panel offer-card ${o.selected?'chosen':''}">
+  return `<article ${trackExposure ? `data-offer-exposure="${escape(o.id)}" data-shortlisted="${Boolean(o.exposure?.shortlisted)}"` : ''} class="panel offer-card ${o.selected?'chosen':''}">
     <div class="section-heading"><div><span class="eyebrow">${o.agentType==='general'?'General-purpose':'Domain specialist'}</span><h3>${escape(o.agentName)}</h3><small>Operated by ${escape(o.operatorName)}</small></div><strong>${money(o.amountMinor, o.currency)}<small>supplier quote · total not final</small></strong></div>
     <p>${escape(o.capability)}</p><span class="tag">${o.qualification==='qualified'?(o.qualificationCurrent?`${RelaySupplier.assessmentTitle(o.qualificationEvidence)} passed`:'Previous assessment pass · retest required'):'Not currently assessed'}</span>
     ${o.exposure?.featured?`<p class="tag">Qualified newcomer opportunity</p><p class="hint">${escape(o.exposure.reason)}</p>`:''}
@@ -14,9 +14,36 @@ function offerCard(o, task) {
     <p class="offer-details">${escape(o.proposal)}</p>
     <div class="offer-facts"><div><small>First delivery estimate</small><strong>${o.deliveryMinutes} min after starting</strong></div><div><small>Valid until</small><strong>${date(o.expiresAt)}</strong></div></div>
     <details class="quiet-details"><summary>Capability evidence and price details</summary>${typeof RelaySupplier==='object'?RelaySupplier.evidence(o.qualificationEvidence):''}<p>Qualification is a snapshot at quote time and covers only the displayed rubric. No paid-work reliability history is available.</p><p>${escape(o.currency || 'USD')} supplier quote. Relay fees, tax and payment collection are not configured locally. This is not a final checkout total.</p></details>
-    ${o.selected?'<span class="tag posted">Selected · not started</span>':available?`<button data-action="review-offer" data-id="${o.id}">${task.status==='selected'?'Compare this offer':'Review offer'}</button>`:`<p class="muted">${!scopeMatches(o,task)?'The brief changed. A new offer is required.':o.expiresAt<=Date.now()?'Offer expired.':task.status==='cancelled'?'Request closed.':'Another offer was awarded.'}</p>`}
+    ${o.selected?'<span class="tag posted">Selected · not started</span>':available?(state.reviewOffer===o.id?'':`<button data-action="review-offer" data-id="${o.id}">${task.status==='selected'?'Compare this offer':'Review offer'}</button>`):`<p class="muted">${!scopeMatches(o,task)?'The brief changed. A new offer is required.':o.expiresAt<=Date.now()?'Offer expired.':task.status==='cancelled'?'Request closed.':'Another offer was awarded.'}</p>`}
     ${state.reviewOffer===o.id&&available?`<div class="offer-confirm"><h3>Choose ${escape(o.agentName)}?</h3><p>${money(o.amountMinor, o.currency)} supplier quote · ${o.deliveryMinutes} ${o.deliveryMinutes===1?'minute':'minutes'} after work starts. ${state.detail.approval?'Changing the selection releases the previous reservation and requires fresh company approval.':'This saves your selection and opens the start requirements.'} No payment is collected and no execution is authorized.</p><button class="primary" data-action="accept-offer" data-id="${o.id}">Confirm selection</button><button data-action="close-review">Keep comparing</button></div>`:''}
   </article>`;
+}
+function compactOffer(o, task) {
+  const current = scopeMatches(o, task) && o.expiresAt > Date.now();
+  return `<details class="offer-option" ${state.reviewOffer === o.id ? 'open' : ''}>
+    <summary data-offer-exposure="${escape(o.id)}" data-shortlisted="${Boolean(o.exposure?.shortlisted)}">
+      <strong>${escape(o.agentName)}</strong>
+      <span>${money(o.amountMinor, o.currency)} · ${o.deliveryMinutes} min after starting${current ? '' : ' · Needs a fresh quote'}</span>
+    </summary>${offerCard(o, task, false)}
+  </details>`;
+}
+function recommendedOffers(task, offers) {
+  // The browser never manufactures a ranking; stale suggestions are discarded.
+  const recommended = offers.find(offer => offer.recommendation?.recommended &&
+    offer.recommendation.scopeVersion === task.scopeVersion &&
+    scopeMatches(offer, task) && offer.expiresAt > Date.now());
+  if (!recommended) return `<p>No evidence-backed recommendation yet. You can inspect the available quotes while we wait for a qualified match.</p><div class="thread-offers">${offers.map(offer => compactOffer(offer, task)).join('')}</div>`;
+  const alternatives = offers.filter(offer => offer.id !== recommended.id);
+  return `<section class="recommended-execution panel" aria-label="Relay recommendation" data-offer-exposure="${escape(recommended.id)}" data-shortlisted="${Boolean(recommended.exposure?.shortlisted)}">
+    <span class="eyebrow">Relay recommends · review before choosing</span>
+    <h2>${escape(recommended.agentName)}</h2>
+    <p>Our suggested match from the current offers. Review the deliverables and limits before choosing.</p>
+    <ul>${recommended.recommendation.reasons.map(reason => `<li>${escape(reason)}</li>`).join('')}</ul>
+    <p><strong>${money(recommended.amountMinor, recommended.currency)}</strong> supplier quote · ${recommended.deliveryMinutes} min after starting</p>
+    ${state.reviewOffer !== recommended.id ? `<button class="primary" data-action="review-offer" data-id="${escape(recommended.id)}">Review recommended offer</button>` : ''}
+    <details ${state.reviewOffer === recommended.id ? 'open' : ''}><summary>Worker, deliverables & evidence</summary>${offerCard(recommended, task, false)}</details>
+    <details><summary>How Relay chose this offer</summary><p>${escape(recommended.recommendation.limitations)}</p></details>
+  </section>${alternatives.length ? `<details class="thread-alternatives" ${alternatives.some(offer => offer.id === state.reviewOffer) ? 'open' : ''}><summary>See ${alternatives.length} alternative offer${alternatives.length === 1 ? '' : 's'}</summary>${alternatives.map(offer => compactOffer(offer, task)).join('')}</details>` : ''}`;
 }
 function offerCards(){
  const task=state.detail.task;if(task.status==='draft'||task.status==='cancelled')return '';
@@ -27,8 +54,8 @@ function offerCards(){
  if(!state.offers.length)return `<section class="work-activity" aria-label="Offer progress"><header><span class="work-activity-icon" aria-hidden="true">✓</span><strong>Request sent</strong><span class="tag">Open for offers</span></header><div class="work-activity-body"><p>Your brief is ready for agents.</p><p class="hint">Offers will appear here. You’ll choose one before any work starts.</p></div></section>`;
  const others=state.offers.filter(o=>!o.selected);
  return `<article class="thread-message relay offer-section" aria-label="Agent offers"><span class="thread-speaker">Relay</span>
- ${selected?`<section class="panel selected-agreement"><strong>Selected: ${escape(selected.agentName)}</strong><p>${money(selected.amountMinor, selected.currency)} supplier quote · ${selected.deliveryMinutes} min to first delivery after work starts</p><p class="hint">${selected.runtimeBid?'This is a local test offer. No real money moves. Explicit task permission is required before the runtime starts.':'This agent is selected. Work starts only after confirmed funding, readiness and required inputs.'}</p>${task.workPlan&&task.workPlan.cadence!=='once'?RelayRecurring.setup(task):state.detail.approval&&state.detail.approval.status!=='approved'?'<p class="hint">Company approval is needed. Continue in the approval card below.</p>':state.reviewStart?'':'<button class="primary" data-action="review-start">Review start requirements</button>'}</section><details class="thread-alternatives" ${state.reviewOffer?'open':''}><summary>Compare other offers</summary><div class="thread-offers">${[selected,...others].map(o=>offerCard(o,task)).join('')}</div></details>`:`<p>${state.offers.length?`${state.offers.length} ${state.offers.length===1?'agent has':'agents have'} offered to help. Compare their supplier prices and delivery estimates below.`:'I’m waiting for offers for this brief.'}</p><div class="thread-offers">${others.map(o=>offerCard(o,task)).join('')}</div>`}
- ${state.offers.length?'<details class="quiet-details"><summary>Recommendation & evidence</summary><p>One of the first four positions may rotate among currently qualified newcomers. Placement is an opportunity to compare, not a quality recommendation or guaranteed hire. All other offers remain available. Compare the scope of test evidence alongside price and delivery estimates. Paid-work reliability has not been assessed. Agent type alone is not a qualification.</p></details>':'<p class="hint">Connected runtimes can bid automatically when their operator enables it. Manual local offers can also appear here.</p>'}
+ ${selected?`<section class="panel selected-agreement"><strong>Selected: ${escape(selected.agentName)}</strong><p>${money(selected.amountMinor, selected.currency)} supplier quote · ${selected.deliveryMinutes} min to first delivery after work starts</p><p class="hint">${selected.runtimeBid?'This is a local test offer. No real money moves. Explicit task permission is required before the runtime starts.':'This agent is selected. Work starts only after confirmed funding, readiness and required inputs.'}</p>${task.workPlan&&task.workPlan.cadence!=='once'?RelayRecurring.setup(task):state.detail.approval&&state.detail.approval.status!=='approved'?'<p class="hint">Company approval is needed. Continue in the approval card below.</p>':state.reviewStart?'':'<button class="primary" data-action="review-start">Review start requirements</button>'}</section><details class="thread-alternatives" ${state.reviewOffer?'open':''}><summary>Compare other offers</summary><div class="thread-offers">${[selected,...others].map(o=>offerCard(o,task)).join('')}</div></details>`:`<p>${state.offers.length?`${state.offers.length} ${state.offers.length===1?'agent has':'agents have'} offered to help. Review the offers here. Each price and delivery estimate comes from the supplier.`:'I’m waiting for offers for this brief.'}</p>${recommendedOffers(task,others)}`}
+ ${state.offers.length?'<details class="quiet-details"><summary>How newer agents get exposure</summary><p>One of the first four positions may rotate among currently qualified newcomers. Placement is an opportunity to compare, not a quality recommendation or guaranteed hire. All other offers remain available. Compare the scope of test evidence alongside price and delivery estimates. Paid-work reliability has not been assessed. Agent type alone is not a qualification.</p></details>':'<p class="hint">Connected runtimes can bid automatically when their operator enables it. Manual local offers can also appear here.</p>'}
  </article>`;
 }
 function availableAgents(task) {
@@ -100,7 +127,7 @@ function agentSetup(a) {
 }
 function connectionExplanation(method) {
   const copy={api:['HTTP API','Use your own HTTP client. Your runtime handles retries, durable context and event recovery.'],sdk:['SDK','Local JavaScript helpers wrap the same HTTP API with bounded retries. Your runtime still owns execution, durable command keys and recovery.'],mcp:['MCP','Connect from a compatible host through scoped Relay tools. The same permissions and workflow rules apply.']}[method]||['Connection','Choose a method.'];
-  return `<h3>${copy[0]}</h3><p>${copy[1]}</p><p class="hint">${state.features?.localExecution&&['api','sdk'].includes(method)?'Create a supplier key below for your own runtime. The optional built-in CSV reference requires HTTP API.':'MCP is not implemented yet. Saving this preference does not establish a connection.'}</p>`;
+  return `<h3>${copy[0]}</h3><p>${copy[1]}</p><p class="hint">${(state.features?.supplierConnections||state.features?.localExecution)&&['api','sdk'].includes(method)?'Create a supplier key below for your own runtime. Save its connection file privately.':'MCP is not implemented yet. Saving this preference does not establish a connection.'}</p>`;
 }
 function quoteForm(t) {
   const agents=availableAgents(t);
@@ -121,7 +148,7 @@ function builderDashboard(){
 }
 function builder() {
   if(typeof RelayAgentMarket === 'object' && RelayAgentMarket.storefrontId())return RelayAgentMarket.storefront(RelayAgentMarket.storefrontId());
-  if(state.authMode==='managed')return '<div class="panel"><h1>Builder workspace</h1><p>The connected marketplace is being developed locally.</p></div>';
+  if(state.authMode==='managed'&&!state.features?.unifiedBackend)return '<div class="panel"><h1>Builder workspace</h1><p>The connected marketplace is being developed locally.</p></div>';
   const active=state.agents.find(a=>a.id===state.setupAgentId);
   if(active)return `<section class="market-workspace">${agentSetup(active)}</section>`;
   if(state.addingAgent)return `<section class="market-workspace"><button class="quiet" data-action="stop-agent">Back to agents</button>${registryToolbar()}${setupIntroduction()}<div class="setup-steps"><span class="active"><small>01</small> Introduce</span><span><small>02</small> Connect</span><span><small>03</small> Demonstrate</span></div>${`<div class="setup-grid"><div>${agentForm()}</div><aside class="panel readiness" id="agent-preview">${agentPreview(state.agentDraft||{})}</aside></div>`}</section>`;

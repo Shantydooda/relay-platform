@@ -8,6 +8,12 @@ function applyAppearance(value) {
   return theme;
 }
 try { applyAppearance(localStorage.getItem('relay.appearance')); } catch { applyAppearance('dark'); }
+// Local design exploration: never changes the saved appearance or hosted UI.
+if (location.hostname === '127.0.0.1' && new URLSearchParams(location.search).get('design') === 'community') {
+  document.documentElement.dataset.design = 'community';
+  document.documentElement.dataset.appearance = 'light';
+}
+
 function createClientState() {
   return {
     account: null, auth: null, authMode: 'local', confirmation: null,
@@ -98,11 +104,22 @@ function companyWorkspaceBanner() {
   return `<section class="company-context-bar" aria-label="Current company workspace"><div><span class="company-context-label">COMPANY WORKSPACE</span><strong>${escape(membership.name)}</strong><span class="company-context-role">You’re a team member · ${escape(workspaceRoleLabel(membership.role))}</span></div><button class="quiet" data-action="buyer-nav" data-tab="business">Workspace & team</button></section>`;
 }
 
+function communityTopbar(builderSide) {
+  if (globalThis.document?.documentElement?.dataset.design !== 'community') return '';
+  const links = builderSide
+    ? [['dashboard', 'Overview'], ['agents', 'My agents'], ['work', 'Work']]
+    : [['market', 'Agents'], ['tasks', 'My tasks'], ...(state.features?.workspaceApps ? [['apps', 'Apps']] : [])];
+  return `<header class="community-topbar"><button class="community-brand" data-action="home">${relayCharacter('face')}<strong>Relay</strong></button>
+    ${builderSide ? '<span class="community-builder-label">Builder workspace</span>' : `<form id="community-search" role="search"><label class="sr-only" for="community-query">Search agents and capabilities</label><input id="community-query" name="query" type="search" maxlength="200" value="${escape(state.agentMarketQuery || '')}" placeholder="Search agents, capabilities…"><button type="submit" aria-label="Search agents">Search</button></form>`}
+    <nav aria-label="Product navigation">${links.map(([id, label]) => `<button data-action="${builderSide ? 'builder-tab' : 'buyer-nav'}" data-tab="${id}">${navigationIcon(id)}${label}</button>`).join('')}</nav></header>`;
+}
+
 function header() {
   const user = state.account?.user;
   if (!user || state.auth) return `<header class="auth-topbar"><button class="brand" data-action="home" aria-label="Relay home">relay</button><div><span>${state.auth === 'signup' ? 'Already have an account?' : 'New to Relay?'}</span><button class="quiet" data-action="${state.auth === 'signup' ? 'login' : 'signup'}">${state.auth === 'signup' ? 'Log in' : 'Create an account'}</button></div></header>`;
 
   const builderSide = user.workspace === 'builder';
+  const community = globalThis.document?.documentElement?.dataset.design === 'community';
   const company = activeCompanyMembership();
   const active = builderSide
     ? (state.setupAgentId || state.addingAgent ? 'agents' : state.builderTab)
@@ -114,8 +131,8 @@ function header() {
   const recent = builderSide ? [] : [...state.tasks].filter(task => !task.orchestrationStep?.supersededBy)
     .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)).slice(0, 5);
 
-  return `<a class="skip-workspace" href="#workspace-main">Skip to workspace</a><aside class="workspace-header" aria-label="Workspace sidebar">
-    <div class="workspace-identity"><button class="brand" data-action="home" aria-label="Relay home">relay</button>${company ? `<button class="company-identity" data-action="buyer-nav" data-tab="business" aria-label="Company workspace: ${escape(company.name)}. Your role: ${escape(workspaceRoleLabel(company.role))}"><span class="company-identity-icon">${navigationIcon('business')}</span><span><small>Company workspace</small><strong>${escape(company.name)}</strong><small>${escape(workspaceRoleLabel(company.role))}</small></span></button>` : builderSide ? `<span class="workspace-caption">Builder workspace</span>` : relayCharacter('face')}</div>
+  return `${communityTopbar(builderSide)}<a class="skip-workspace" href="#workspace-main">Skip to workspace</a><aside class="workspace-header" aria-label="Workspace sidebar">
+    <div class="workspace-identity"><button class="brand" data-action="home" aria-label="Relay home">relay</button>${company ? `<button class="company-identity" data-action="buyer-nav" data-tab="business" aria-label="Company workspace: ${escape(company.name)}. Your role: ${escape(workspaceRoleLabel(company.role))}"><span class="company-identity-icon">${navigationIcon('business')}</span><span><small>Company workspace</small><strong>${escape(company.name)}</strong><small>${escape(workspaceRoleLabel(company.role))}</small></span></button>` : builderSide ? `<span class="workspace-caption">Builder workspace</span>` : community ? `<div class="community-profile"><strong>${escape(user.name)}</strong><small>Personal workspace</small></div>` : relayCharacter('face')}</div>
     <details class="workspace-navigation" ${navigationOpen ? 'open' : ''}>
       <summary>Workspace menu</summary>
       <nav aria-label="${builderSide ? 'Builder' : 'Buyer'} navigation">
@@ -132,11 +149,11 @@ function header() {
 }
 function composer(id,placeholder,button,value='',hint='Your task stays in this conversation.') {if(id==='message')return RelayUI.composer({context:'task',value,label:'Message about this task',placeholder,hint,submitLabel:button}).replace('data-relay-composer="task"','id="message" data-relay-composer="task"').replace('for="chat-answer"','for="message-text"').replace('id="chat-answer"','id="message-text" name="brief" required').replace('maxlength="3000"','maxlength="10000"');return `<form class="composer ${id==='message'?'thread-composer':''}" id="${id}"><label class="eyebrow" for="${id}-text">${id==='message'?'Message about this task':'What do you need done?'}</label><textarea id="${id}-text" name="brief" placeholder="${placeholder}" maxlength="10000" required>${escape(value)}</textarea><div class="composer-foot"><small>${hint}</small><button class="primary" type="submit">${button}</button></div><div class="form-error" role="alert"></div></form>`;}
 function exampleButtons(){return `<div class="examples">${examples.map((_,i)=>`<button data-action="example" data-example="${i}">${['Find qualified leads','Create a launch video','Build a website'][i]}</button>`).join('')}</div>`;}
-function landing(){return RelayLanding.render({prompt:state.prompt,paused:state.motionPaused,managed:state.authMode==='managed',localExecution:!!state.features?.localExecution});}
+function landing(){return RelayLanding.render({prompt:state.prompt,paused:state.motionPaused,managed:state.authMode==='managed',pilot:!!state.features?.pilotConnections,localExecution:!!state.features?.localExecution});}
 function authView(){
  if(['email-sent','recover','confirm','reset'].includes(state.auth))return managedAuthView();
  const signup=state.auth==='signup',intent=state.intent;
- return `<main class="auth-layout"><section class="auth-story"><span class="eyebrow">WORK, DELIVERED.</span><h1>${intent==='builder'?'Your agent.<br>Its next opportunity.':signup?'Good ideas.<br>Great outcomes.':'Your work.<br>Right where you left it.'}</h1><p>One Relay account. Your buyer and builder workspaces, together.</p><ul><li>Pick up your saved work</li><li>Switch workspaces without signing in again</li><li>Manage your profile in one place</li></ul><button class="quiet" data-action="home">Back to Relay</button></section><section class="auth-card"><span class="eyebrow">${signup?'MAKE ROOM FOR MORE':'WELCOME BACK'}</span><h2>${signup?'Create your Relay account':'Log in to Relay'}</h2><p>${state.prompt?'Your request is saved here while you sign in.':signup?'Start buying work or bringing your agent to Relay.':'One login for your tasks, agents and earnings. We’ll return you to where you left off.'}</p><form id="auth">${signup?'<label for="name">Your name</label><input id="name" name="name" autocomplete="name" maxlength="80" required>':''}<label for="email">Email address</label><input id="email" type="email" name="email" autocomplete="email" maxlength="254" required><label for="password">Password</label><input id="password" type="password" name="password" autocomplete="${signup?'new-password':'current-password'}" ${signup?'minlength="15" maxlength="128"':''} required>${signup?'<p class="hint">15–128 characters. A few memorable words work well.</p>':''}${signup&&!intent?'<fieldset><legend>What brings you to Relay?</legend><div class="roles"><label><input type="radio" name="workspace" value="buyer" required>Get work done</label><label><input type="radio" name="workspace" value="builder" required>Connect agents</label></div></fieldset>':''}${!signup&&state.authMode==='managed'?'<button class="quiet" type="button" data-action="recover">Forgot password?</button>':''}<div class="form-error" role="alert"></div><button class="primary" type="submit">${signup?'Create account':'Log in'}</button></form><p class="switch-auth">${signup?'Already have an account?':'New to Relay?'} <button class="quiet" data-action="${signup?'login':'signup'}">${signup?'Log in':'Create an account'}</button></p><p class="auth-note">${state.authMode==='managed'?'Private staging. Invitation and verified email required.':'Local accounts use a real password. Email verification, password recovery and Google login are not connected locally.'}</p></section></main>`;
+ return `<main class="auth-layout"><section class="auth-story"><span class="eyebrow">WORK, DELIVERED.</span><h1>${intent==='builder'?'Your agent.<br>Its next opportunity.':signup?'Good ideas.<br>Great outcomes.':'Your work.<br>Right where you left it.'}</h1><p>One Relay account. Your buyer and builder workspaces, together.</p><ul><li>Pick up your saved work</li><li>Switch workspaces without signing in again</li><li>Manage your profile in one place</li></ul><button class="quiet" data-action="home">Back to Relay</button></section><section class="auth-card"><span class="eyebrow">${signup?'MAKE ROOM FOR MORE':'WELCOME BACK'}</span><h2>${signup?'Create your Relay account':'Log in to Relay'}</h2><p>${state.prompt?'Your request is saved here while you sign in.':signup?'Start buying work or bringing your agent to Relay.':'One login for your tasks, agents and earnings. We’ll return you to where you left off.'}</p><form id="auth">${signup?'<label for="name">Your name</label><input id="name" name="name" autocomplete="name" maxlength="80" required>':''}<label for="email">Email address</label><input id="email" type="email" name="email" autocomplete="email" maxlength="254" required><label for="password">Password</label><input id="password" type="password" name="password" autocomplete="${signup?'new-password':'current-password'}" ${signup?'minlength="15" maxlength="128"':''} required>${signup?'<p class="hint">15–128 characters. A few memorable words work well.</p>':''}${signup&&!intent?'<fieldset><legend>What brings you to Relay?</legend><div class="roles"><label><input type="radio" name="workspace" value="buyer" required>Get work done</label><label><input type="radio" name="workspace" value="builder" required>Connect agents</label></div></fieldset>':''}${!signup&&state.authMode==='managed'?'<button class="quiet" type="button" data-action="recover">Forgot password?</button>':''}<div class="form-error" role="alert"></div><button class="primary" type="submit">${signup?'Create account':'Log in'}</button></form><p class="switch-auth">${signup?'Already have an account?':'New to Relay?'} <button class="quiet" data-action="${signup?'login':'signup'}">${signup?'Log in':'Create an account'}</button></p><p class="auth-note">${state.authMode==='managed'?(state.features?.pilotConnections?'Private pilot. Invitation and verified email required.':'Private staging. Invitation and verified email required.'):'Local accounts use a real password. Email verification, password recovery and Google login are not connected locally.'}</p></section></main>`;
 }
 function newTask() {
   const welcome = state.sendingRequest
@@ -247,7 +264,7 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   state.teamHistory=state.team?.role==='owner'?await api('/api/teams/'+tenant.id+'/history?before='+encodeURIComponent(state.teamHistoryBefore||'')):null;
   state.companyBudget=state.team?await api('/api/teams/'+tenant.id+'/budget?after='+encodeURIComponent(state.budgetAfter||'')):null;
   state.tasks=tenant?(await api(`/api/tasks?tenantId=${encodeURIComponent(tenant.id)}`)).tasks:[];
-  if(state.account.user.workspace==='builder'&&state.authMode==='local'){
+  if(state.account.user.workspace==='builder'&&(state.features?.unifiedBackend||state.authMode==='local')){
     const [a,o,w,q]=await Promise.all([api('/api/agents'),api('/api/opportunities'),api('/api/work'),api('/api/quotes')]);
     state.agents=a.agents;state.opportunities=o.tasks;state.work=w.tasks;state.quotes=q.offers;state.detail=null;state.offers=[];
   }else{
@@ -260,7 +277,7 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
       state.attio = state.features?.attioDelivery && taskMember?.role === 'owner' ? await api('/api/attio/status?tenantId='+encodeURIComponent(state.tenantId)) : null;
       state.drive = state.features?.driveConnections && taskMember?.role === 'owner' ? await api('/api/drive/status?tenantId='+encodeURIComponent(state.tenantId)) : null;
     }
-    state.offers=id&&state.authMode==='local'?(await api(`/api/tasks/${id}/offers`)).offers:[];
+    state.offers=id&&(state.features?.unifiedBackend||state.authMode==='local')?(await api(`/api/tasks/${id}/offers`)).offers:[];
   }
 }
 function chatController() {
@@ -318,7 +335,22 @@ root.addEventListener('submit',event=>{
   event.preventDefault();const form=event.target,data=new FormData(form);
   run(async()=>{
     if(typeof RelaySupplier==='object'&&form.id!=='supplier-credential')RelaySupplier.clear();
-    if(form.id==='orchestration-create'){
+    if(form.id==='community-search') {
+      if (!state.account || state.account.user.workspace !== 'buyer') return;
+      state.agentMarketQuery = String(data.get('query') || '').trim();
+      state.agentMarketCategory = 'All agents';
+      state.agentMarketType = 'All types';
+      state.agentMarketSaved = false;
+      state.buyerTab = 'market';
+      state.detail = null;
+      state.editing = false;
+      state.reviewStart = false;
+      state.reviewOffer = null;
+      state.preferredAgent = null;
+      location.hash = 'market';
+      await refresh(null);
+      render();
+    } else if(form.id==='orchestration-create'){
       const steps=[...form.querySelectorAll('[data-plan-step]')].map((_,i)=>({
         title:data.get('title-'+i),brief:data.get('brief-'+i),criteria:data.get('criteria-'+i),budgetMinor:Math.round(Number(data.get('budget-'+i))*100),
         dependencies:String(data.get('dependencies-'+i)).trim()?String(data.get('dependencies-'+i)).split(',').map(n=>Number(n.trim())-1):[]
@@ -506,8 +538,30 @@ root.addEventListener('click',event=>{
   if(action==='market-retry'){RelayAgentMarket.search(root);return;}
   if(action==='market-category'){RelayAgentMarket.selectCategory(root,button.dataset.category);return;}
   if(action==='market-request-agent'||action==='market-request-builder'){RelayAgentMarket.choose(button.dataset.id,action.endsWith('builder')?'builder':'agent');return;}
-  if(action==='review-chat-request'){state.reviewChatRequest=true;render();return;}
-  if(action==='keep-chatting'){state.reviewChatRequest=false;render();return;}
+  if (action === 'conversation-context') {
+    const details = root.querySelector('.conversation-details');
+    if (details) {
+      details.open = true;
+      details.querySelector('summary')?.focus({ preventScroll: true });
+      details.scrollIntoView({ block: 'nearest' });
+    }
+    return;
+  }
+  if (action === 'review-chat-request') {
+    state.reviewChatRequest = true;
+    render();
+    const heading = root.querySelector('.scope-recap h2');
+    heading?.setAttribute('tabindex', '-1');
+    heading?.focus({ preventScroll: true });
+    heading?.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  if (action === 'keep-chatting') {
+    state.reviewChatRequest = false;
+    render();
+    root.querySelector('#message-text')?.focus({ preventScroll: true });
+    return;
+  }
   if(['buyer-nav','builder-tab','switch','home','logout'].includes(action))state.recoveryOpen=false;
   run(async()=>{
     if(typeof RelaySupplier==='object'&&!['download-supplier-config','hide-supplier-key','refresh'].includes(action))RelaySupplier.clear();
@@ -702,7 +756,8 @@ async function boot(){
   try {
     const config=await api('/api/config');state.authMode=config.authMode==='managed'?'managed':'local';state.features=config.features||{};
     if(state.authMode==='managed'){
-      document.querySelector('.poc-strip').textContent='Private staging · real accounts and saved tasks · no payments or agent execution';
+      document.title=state.features?.pilotConnections?'Relay · Private pilot':'Relay · Private staging';
+      document.querySelector('.poc-strip').textContent=state.features?.pilotConnections?'Private pilot · invite-only · test quotes · execution and payments not enabled':'Private staging · real accounts and saved tasks · no payments or agent execution';
       if(location.pathname==='/auth/confirm'){
         const params=new URLSearchParams(location.hash.slice(1));
         const tokenHash=params.get('token_hash'),type=params.get('type');
@@ -734,7 +789,7 @@ function workspaceSnapshot(value) {
 }
 async function pollWorkspace() {
   if(typeof RelayExecution==='object')RelayExecution.updateClock();
-  if(workspaceRefresh.pending||state.authMode!=='local'||!state.account||state.auth||state.busy||state.filePreview||document.hidden||state.editing||state.addingAgent||(state.setupAgentId&&state.setupStage!==3)||state.reviewOffer||(state.builderReplyDirty&&root.querySelector('[data-supplier-message],[data-change-propose]'))||Date.now()-lastInteraction>300000)return;
+  if(workspaceRefresh.pending||(state.authMode!=='local'&&!state.features?.unifiedBackend)||!state.account||state.auth||state.busy||state.filePreview||document.hidden||state.editing||state.addingAgent||(state.setupAgentId&&state.setupStage!==3)||state.reviewOffer||(state.builderReplyDirty&&root.querySelector('[data-supplier-message],[data-change-propose]'))||Date.now()-lastInteraction>300000)return;
   const interacting = () => (document.activeElement?.matches('input,textarea,select')&&state.detail?.task.scoping?.status!=='pending')||root.querySelector('.account-menu[open]')||document.activeElement?.closest('details[open]:not(.workspace-navigation)');
   if(interacting())return;
   if(!state.recoveryOpen&&!['scheduled','apps','tools'].includes(state.buyerTab)&&state.account.user.workspace==='buyer'&&(!state.detail||(state.detail.task.status==='draft'&&state.detail.task.scoping?.status!=='pending')))return;

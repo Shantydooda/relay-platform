@@ -27,10 +27,15 @@ test('three-stage setup separates connection preference, assessments and operato
 test('start review preserves approval, funding, inputs and authorization as separate blockers',()=>{
  const {state,ctx}=ui();state.detail.task.status='selected';const html=vm.runInContext('startReview(state.detail.task)',ctx);assert.match(html,/Company approval/);assert.match(html,/Funding/);assert.match(html,/Required inputs/);assert.match(html,/Work has not started/);assert.doesNotMatch(html,/data-action="start"|data-action="pay"/);
 });
-test('local guidance distinguishes price questions and hypothetical changes from confirmed scope',()=>{
- const {ctx}=ui();ctx.task={status:'posted'};ctx.messages=[{body:'Find 20 companies.'},{body:'What if we needed 50 instead?'}];assert.match(vm.runInContext('conversationGuidance(task,messages)',ctx),/not a confirmed change/);
- ctx.messages[1].body='How much will this cost?';assert.match(vm.runInContext('conversationGuidance(task,messages)',ctx),/planning estimate is not a confirmed quote/);
- ctx.messages[1].body='When does the agent start?';assert.match(vm.runInContext('conversationGuidance(task,messages)',ctx),/Time to start and time to deliver are different/);
+test('offline conversation never invents a reply or treats a hypothetical as authorization', () => {
+ const {state,ctx}=ui();
+ state.detail={task:{id:'draft',status:'draft',brief:'Find 20 companies.'},messages:[{id:'buyer',role:'user',body:'What if we needed 50 instead?'}]};
+ state.features={};state.messageDrafts={};ctx.composer=()=>'<form id="message"></form>';
+ const html=vm.runInContext('draftConversation()',ctx);
+ assert.match(html,/What if we needed 50 instead/);
+ assert.match(html,/Relay assistant unavailable/);
+ assert.doesNotMatch(html,/thread-message relay|data-action="post"|data-action="start"|data-action="pay"/);
+ assert.equal(state.detail.task.brief,'Find 20 companies.');
 });
 test('new-agent refresh restores only the authenticated account draft after identity is loaded',async()=>{
  const app={innerHTML:'',addEventListener(){},querySelector(){return null;}},notice={textContent:''},seen=[];
@@ -498,4 +503,37 @@ test('shortlist telemetry requires a visible quarter-card and deduplicates reren
  vm.runInContext('observeOfferExposure()',ctx);
  callback([{target:card,isIntersecting:true,intersectionRatio:1}]);
  assert.equal(calls.length,1,'rerender does not inflate telemetry');
+});
+
+test('compact offers retain one visible exposure target and flag outdated quotes',()=>{
+ const {state,ctx}=ui();
+ ctx.offer={id:'one',agentName:'Researcher',operatorName:'Builder',amountMinor:500,currency:'USD',deliveryMinutes:30,scopeVersion:1,expiresAt:Date.now()+60000,exposure:{shortlisted:true}};
+ let html=vm.runInContext('compactOffer(offer,state.detail.task)',ctx);
+ assert.equal((html.match(/data-offer-exposure=/g)||[]).length,1);
+ assert.match(html,/<summary data-offer-exposure="one"/);
+ assert.doesNotMatch(html,/Needs a fresh quote/);
+ state.detail.task.scopeVersion=2;
+ html=vm.runInContext('compactOffer(offer,state.detail.task)',ctx);
+ assert.match(html,/Needs a fresh quote/);
+ assert.doesNotMatch(html,/data-action="review-offer"/);
+});
+
+test('server recommendation is primary, alternatives stay available, stale reasons disappear',()=>{
+ const {state,ctx}=ui();
+ const make=id=>({id,agentName:id,amountMinor:100,currency:'USD',deliveryMinutes:10,scopeVersion:1,expiresAt:Date.now()+60000});
+ state.offers=[make('alternative'),{...make('recommended'),recommendation:{recommended:true,scopeVersion:1,reasons:['Capability <match>'],limitations:'Evidence is provisional.'}}];
+ let html=vm.runInContext('offerCards()',ctx);
+ assert.match(html,/Relay recommends/);assert.match(html,/Capability &lt;match&gt;/);
+ assert.match(html,/See 1 alternative offer/);assert.match(html,/Evidence is provisional/);
+ assert.doesNotMatch(html,/data-action="accept-offer"/);
+ state.reviewOffer='recommended';
+ html=vm.runInContext('offerCards()',ctx);
+ assert.match(html,/Confirm selection/);
+ assert.doesNotMatch(html,/Review recommended offer/);
+ assert.doesNotMatch(html,/data-action="review-offer" data-id="recommended"/);
+ state.reviewOffer=null;
+ state.offers[1].recommendation.scopeVersion=0;
+ html=vm.runInContext('offerCards()',ctx);
+ assert.doesNotMatch(html,/Relay recommends|Capability &lt;match/);
+ assert.match(html,/No evidence-backed recommendation yet/);
 });

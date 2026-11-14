@@ -1,8 +1,12 @@
 # Private hosted pilot preparation
 
-11 November 2026. Deployment requested; **not deployed**. Localhost, the published
-demo and existing staging remain separate. The prior free-only spending constraint
-still applies; no paid resources or additional recipients have been authorized.
+Updated 12 November 2026. **The separate pilot application is deployed; hosted
+buyer-to-builder execution is not activated.** Storage/scanner activation, invited
+accounts and the full hosted rehearsal remain pending. Localhost, demo and staging
+remain separate. Free-only spending and test-only payments still apply.
+
+Earlier entries below are dated implementation history; see the latest supervised
+scanner and acceptance entries for current limitations.
 
 ## Completed in this increment
 
@@ -149,3 +153,95 @@ Checks: 781 backend tests passed; browser module checks passed; 12 focused tests
 passed after final composition review. Tests use local fixtures. The initial
 restricted backend attempt could not bind localhost test ports; the authorized
 rerun passed. No staging deployment or live-money action was performed.
+
+### Free supervised pilot — 12 November 2026
+
+The earlier prepared-service status above is superseded: the dedicated free
+`relay-pilot-app` Render application is deployed at
+https://relay-pilot-app.onrender.com using the separate pilot database. The
+Supabase Before User Created invitation hook is enabled. Public signup remains
+disabled until the authorized pilot identities, email delivery and callback path
+are verified. Unauthenticated account/task requests return 401. This does not
+prove authenticated end-to-end delivery.
+
+The owner selected free, supervised processing. Do not provision paid workers,
+reuse localhost data, or use staging/demo infrastructure. The application may
+sleep; hosted execution must wait safely when the supervised scanner is offline.
+
+Prepared in source (not yet deployed):
+- Managed supplier connection/qualification/test quoting, independent of the
+  localhost execution switch. Runtime execution and payments remain disabled.
+- Async object reads through scanning, download, acceptance, handovers, app
+  installation and Attio delivery; synchronous localhost storage remains valid.
+- A pilot-only private Supabase object adapter with immutable content hashes,
+  bounded reads, timeouts, no redirects, and integrity verification on replay.
+- `services/pilot-api/scripts/prepare-storage.cjs` provisions only the dedicated
+  pilot bucket using private environment credentials. It refuses an existing
+  public or incorrectly sized bucket. No browser object-read policies are added.
+- Set `RELAY_PILOT_STORAGE=private-bucket` only after preparation. Startup verifies
+  the private bucket. This setting alone does not enable execution or payments.
+
+Still required before the first independent task:
+1. Provision/verify the private bucket against the actual provider, including
+   anonymous read denial and restart/retrieval checks.
+2. Connect a separately configured supervised pilot scanner, with durable claims,
+   retries and an offline state. Never mark unscanned files clean.
+3. Add narrowly scoped hosted execution authorization and qualify the pilot's own
+   test-payment webhook before enabling payments. Do not reuse localhost's flags.
+4. Configure exact pilot auth callbacks and an email route that can reach both
+   invited testers; confirm their identities before granting access.
+5. Deploy reviewed source and walk through signup, qualification, offer selection,
+   execution, revision, scanned delivery, acceptance and access revocation.
+
+Local fixtures validate async upload/scanning/download, corrupted objects,
+unauthorized downloads, oversized streams, concurrent duplicate uploads and
+connection revival. Fixture success is not evidence of hosted storage or ClamAV
+operation. Provider browser controls were unavailable during this follow-up;
+provider configuration and authenticated browser QA remain outstanding.
+
+Validation for this increment: 787 backend checks passed; 174 browser-module and
+8 shared UI checks passed. The final storage and pilot-config focused checks each
+passed 4 tests. Diff whitespace and launcher syntax checks passed. Localhost was
+not listening at the final health check; it was started using its existing local
+configuration and reported native PostgreSQL with real-money payments disabled.
+No source push or pilot deployment was performed in this follow-up.
+
+### Supervised scanner prepared — 12 November 2026
+
+Use the separate owner-only `.poc-data/pilot/storage-secret.txt` for the pilot
+Supabase server key. The supervised launcher loads only the pilot's private files,
+not payment or provider credentials inherited from a localhost shell. It rejects
+missing keys, symlinks and group/world-readable credentials. The scanner settings
+have a separate pilot configuration; the installed ClamAV binary/signature files
+may be shared, but application databases and artifact buckets are not.
+
+After credentials are supplied:
+
+```
+node services/pilot-api/scripts/prepare-storage.cjs --supervised
+node services/pilot-api/scripts/supervised-scanner.cjs
+```
+
+The worker verifies private bucket configuration and runs clean/EICAR scanner
+self-tests before starting. It runs the existing durable scan-claim reconciler,
+opens no HTTP listener, and cannot enable payments or task execution. Shutdown
+waits for its current scan before closing the pilot database. A private
+`scanner-health.json` includes a timestamp and worker state; an old timestamp is
+not evidence of a running worker. Offline processing leaves files quarantined.
+
+Real installed ClamAV evaluation passed when run with the required local process
+permissions: clean CSV, harmless EICAR, missing signatures, timeout, application
+scanning, blocked downloads and blocked acceptance. The initial restricted run
+failed closed. Fixture tests cover startup refusal, async remote storage scanning,
+resuming quarantined delivery, unchanged assignment/ownership and private-file
+checks. These are not yet a live invited buyer-to-builder walkthrough.
+
+Activation is still pending the pilot storage key, authorized tester emails,
+provider configuration/deployment access, and the separately guarded hosted
+execution/payment work described above. No hosted bucket or scanner is claimed
+active solely because these scripts and fixtures pass.
+
+Validation: 790 backend tests passed, plus the final 3 focused supervised-worker
+checks after credential-file read hardening. `git diff --check` passed. No source
+push, provider activation, invitation grant or deployment was performed in this
+increment; the pilot storage credential file is still empty.

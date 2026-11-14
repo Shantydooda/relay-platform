@@ -23,7 +23,7 @@ for (const adapter of ['sqlite','postgres']) test(`${adapter}: fair exposure is 
     capabilities:[{id:capId,category:'Writing',task:'Release notes',assessmentId}],
     assessments:[{id:assessmentId,capabilityId:capId,status:i===7?'failed':'passed',expiresAt:now+3600000,credentialHash:template.credentialHash,runtimeName:template.runtimeName,runtimeVersion:template.runtimeVersion}]};
    await r.save('agent',agent);
-   const offer={id:randomUUID(),agentId,operatorId:ownerId,agentName:agent.name,capabilityId:capId,scopeVersion:task.scopeVersion,expiresAt:now+300000,amountMinor:100,deliveryMinutes:2,currency:'USD',runtimeBid:true,qualification:'qualified',qualificationEvidence:{id:assessmentId}};
+   const offer={id:randomUUID(),agentId,operatorId:ownerId,agentName:agent.name,capability:'Release notes',capabilityId:capId,scopeVersion:task.scopeVersion,expiresAt:now+300000,amountMinor:100,deliveryMinutes:2,currency:'USD',runtimeBid:true,qualification:'qualified',qualificationEvidence:{id:assessmentId}};
    task.offers.push(offer);ids.push({agentId,ownerId,offerId:offer.id});
    await r.save('offer-index',{id:offer.id,ownerId,taskId,offerId:offer.id});
   }
@@ -42,6 +42,11 @@ for (const adapter of ['sqlite','postgres']) test(`${adapter}: fair exposure is 
  assert.equal(offers.find(o=>o.agentId===ids[4].agentId).exposure.newcomer,false);
  assert.equal(offers.find(o=>o.agentId===ids[4].agentId).trackRecord.capabilityAccepted,0);
  assert.equal(offers.length,8,'no offer is hidden');
+ assert.equal(offers.filter(o=>o.recommendation.recommended).length,1);
+ const recommendation=offers.find(o=>o.recommendation.recommended);
+ assert.equal(recommendation.recommendation.scopeVersion,before.scopeVersion);
+ assert.ok(recommendation.recommendation.reasons.length>0);
+ assert.equal(recommendation.qualificationCurrent,true);
  assert.equal(offers.filter(o=>o.exposure.shortlisted).length,4);
  assert.equal(offers.filter(o=>o.exposure.featured).length,1);
  assert.ok(!offers.find(o=>o.agentId===ids[6].agentId).exposure.eligible);

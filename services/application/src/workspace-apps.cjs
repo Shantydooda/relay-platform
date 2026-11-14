@@ -369,7 +369,7 @@ function createWorkspaceApps(context) {
           let bytes;
           try {
             bytes = artifact.objectKey
-              ? context.objectStore.read(artifact.objectKey)
+              ? await context.objectStore.read(artifact.objectKey)
               : Buffer.from(artifact.base64, 'base64');
           } catch {
             fail(409, 'FILE_UNAVAILABLE', 'App package bytes are unavailable.');

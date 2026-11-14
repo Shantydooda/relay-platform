@@ -87,6 +87,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
   const store=providedStore||require('./store.cjs').createStore(db,now),secure=expected.protocol==='https:';
   // Browsers share cookies across ports: keep independent local launchers isolated.
   if (providedStore?.features?.localExecution && (managed || expected.protocol !== 'http:' || expected.hostname !== '127.0.0.1')) throw new Error('Local execution requires an explicit loopback server');
+  if (store.features?.pilotConnections && (mode !== 'managed-pilot' || !secure)) throw new Error('Pilot connections require the managed HTTPS pilot');
   const cookieName=secure?'__Host-relay_poc_session':`relay_local_session_${expected.port||'80'}`;
   function sessionCookie(value,clear=false) {
     return `${cookieName}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${clear?0:managed?3600:43200}${secure?'; Secure':''}`;
