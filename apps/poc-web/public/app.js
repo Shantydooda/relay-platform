@@ -127,7 +127,8 @@ function header() {
   const nav = builderSide
     ? [['dashboard', 'Dashboard'], ['agents', 'Agents'], ['opportunities', 'Opportunities'], ['work', 'Tasks'], ['earnings', 'Earnings'], ['settings', 'Settings']]
     : [['request', 'Request work'], ['tasks', 'My tasks'], ['market', 'Agent market'], ...(state.features?.workspaceApps ? [['apps', 'Apps']] : []), ...(state.features?.recurring ? [['scheduled', 'Scheduled work']] : []), ['business', 'Business workspace'], ['billing', 'History & spend'], ['tools', 'Connected tools']];
-  const navigationOpen = root.querySelector('.workspace-navigation')?.open ?? !globalThis.matchMedia?.('(max-width: 760px)').matches;
+  const isMobileNavigation = globalThis.matchMedia?.('(max-width: 760px)').matches;
+  const navigationOpen = !isMobileNavigation || (root.querySelector('.workspace-navigation')?.open ?? false);
   const recent = builderSide ? [] : [...state.tasks].filter(task => !task.orchestrationStep?.supersededBy)
     .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)).slice(0, 5);
 
@@ -937,4 +938,11 @@ if (typeof window === 'object') window.addEventListener('hashchange', event => {
   if (returning && state.account.user.workspace === 'builder') { state.setupAgentId=null;state.addingAgent=false;state.builderTab='agents'; }
   state.detail = null;
   run(async () => { await refresh(null); render(); root.querySelector('#workspace-main')?.focus(); });
+});
+
+// Native details must be open on desktop; styling its children cannot unhide them.
+const mobileNavigationQuery = globalThis.matchMedia?.('(max-width: 760px)');
+mobileNavigationQuery?.addEventListener('change', event => {
+  const navigation = root.querySelector('.workspace-navigation');
+  if (navigation) navigation.open = !event.matches;
 });

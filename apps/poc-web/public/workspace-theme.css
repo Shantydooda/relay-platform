@@ -817,9 +817,6 @@ body.workspace-open :is(button, input, textarea, select, summary):focus-visible 
     display: none;
   }
 
-  body.workspace-open .workspace-navigation:not([open]) > :not(summary) {
-    display: block;
-  }
 }
 
 @media (max-width: 760px) {
