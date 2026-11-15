@@ -17,9 +17,11 @@ for (const postgres of [false, true]) test(`${postgres ? 'postgres' : 'sqlite'} 
       id:`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`,ownerId:n===309?'buyer':'supplier',status:'listed',version:1,
       name:`Agent ${n}`,operatorName:'Builder',purpose:n>=250?'Property reports with cited sources':'General work',
       kind:n%2?'specialist':'general',domain:'Research',listingStatus:n===308?'paused':n===307?'draft':'published',
-      capabilities:[{id:'cap',category:n>=250?'Real estate':'Research',task:'Market report'}]
+      capabilities:[{id:'cap',category:n>=250?'Real estate':'Research',task:'Market report and lead generation',metadata:{tools:['Attio']}}]
     });
   });
+  assert.equal((await app.marketplace.discover(actor,{q:'prospecting',limit:1})).total,307);
+  assert.equal((await app.marketplace.discover(actor,{q:'Attio',limit:1})).total,307);
   const page = await app.marketplace.discover(actor,{q:'PROPERTY',category:'Real estate',type:'specialist',limit:7});
   assert.equal(page.total,28); // 251..305 odd; 307 draft and 309 self excluded
   assert.equal(page.agents.length,7);

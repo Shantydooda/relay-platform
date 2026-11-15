@@ -317,8 +317,8 @@ test('reply progress distinguishes waiting and working and offers stop without p
  const {state,ctx}=ui();state.features={scoping:true};
  state.detail.task.scoping={status:'pending',phase:'waiting',requestedAt:Date.now()-5000};
  let html=vm.runInContext('scopingReview(state.detail.task)',ctx);
- assert.match(html,/Waiting for capacity/);assert.match(html,/data-reply-start/);assert.match(html,/data-action="cancel-reply"/);assert.doesNotMatch(html,/data-action="post"/);
- state.detail.task.scoping.phase='working';html=vm.runInContext('scopingReview(state.detail.task)',ctx);assert.match(html,/Working on your reply/);
+ assert.match(html,/Preparing your reply/);assert.match(html,/data-reply-start/);assert.match(html,/data-action="cancel-reply"/);assert.doesNotMatch(html,/data-action="post"/);
+ state.detail.task.scoping.phase='working';html=vm.runInContext('scopingReview(state.detail.task)',ctx);assert.match(html,/Understanding your request/);
  state.detail.task.scoping={status:'cancelled',error:'Saved'};html=vm.runInContext('scopingReview(state.detail.task)',ctx);assert.match(html,/Retry reply/);assert.doesNotMatch(html,/cancel-reply/);
 });
 
@@ -523,8 +523,10 @@ test('server recommendation is primary, alternatives stay available, stale reaso
  const make=id=>({id,agentName:id,amountMinor:100,currency:'USD',deliveryMinutes:10,scopeVersion:1,expiresAt:Date.now()+60000});
  state.offers=[make('alternative'),{...make('recommended'),recommendation:{recommended:true,scopeVersion:1,reasons:['Capability <match>'],limitations:'Evidence is provisional.'}}];
  let html=vm.runInContext('offerCards()',ctx);
- assert.match(html,/Relay recommends/);assert.match(html,/Capability &lt;match&gt;/);
- assert.match(html,/See 1 alternative offer/);assert.match(html,/Evidence is provisional/);
+ assert.match(html,/Recommended execution/);assert.match(html,/Capability &lt;match&gt;/);
+ assert.match(html,/See 1 alternative offer/);
+ assert.doesNotMatch(html,/Evidence is provisional/);
+ assert.match(vm.runInContext('recommendationInspector(state.detail.task)',ctx),/Evidence is provisional/);
  assert.doesNotMatch(html,/data-action="accept-offer"/);
  state.reviewOffer='recommended';
  html=vm.runInContext('offerCards()',ctx);
@@ -534,6 +536,16 @@ test('server recommendation is primary, alternatives stay available, stale reaso
  state.reviewOffer=null;
  state.offers[1].recommendation.scopeVersion=0;
  html=vm.runInContext('offerCards()',ctx);
- assert.doesNotMatch(html,/Relay recommends|Capability &lt;match/);
+ assert.doesNotMatch(html,/Recommended execution|Capability &lt;match/);
  assert.match(html,/No evidence-backed recommendation yet/);
+});
+
+test('hosted unified buyer shows quote matching without enabling it on legacy staging', () => {
+ const {state,ctx}=ui();
+ state.authMode='managed';state.features={unifiedBackend:true};state.messageDrafts={};
+ state.detail.messages=[];state.detail.events=[];state.detail.task.id='hosted-task';
+ ctx.composer=()=>'<form id="message"></form>';
+ assert.match(vm.runInContext('taskView()',ctx),/Matching your request with available specialists/);
+ state.features={};
+ assert.doesNotMatch(vm.runInContext('taskView()',ctx),/Matching your request with available specialists/);
 });

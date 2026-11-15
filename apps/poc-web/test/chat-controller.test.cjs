@@ -133,3 +133,32 @@ test('file read failure leaves the form available and makes no upload request',a
  await assert.rejects(f.controller().upload({name:'source.csv'},'Notes',async()=>{throw new Error('Unreadable');}),/Unreadable/);
  assert.equal(f.calls.length,0);assert.equal(renders,0);assert.equal(f.state.uploadingInput,null);
 });
+
+test('find the best match confirms generated scope then requests quotes at the refreshed version', async () => {
+ const f=fixture();
+ f.state.detail.task={id:'old',version:1,status:'draft',scoping:{id:'proposal'}};
+ f.dependencies.command=async(...args)=>{f.calls.push(args);return {};};
+ await f.controller().scope('confirm-and-match');
+ assert.deepEqual(f.calls,[
+  ['/api/tasks/old/confirm-scope','POST',{expectedVersion:1,proposalId:'proposal'}],
+  ['/api/tasks/old/post','POST',{expectedVersion:2}]
+ ]);
+ assert.ok(f.calls.every(([path])=>!path.includes('select')&&!path.includes('authorize')));
+});
+test('navigation during scope confirmation never posts a different conversation', async () => {
+ const f=fixture();f.state.detail.task.scoping={id:'proposal'};
+ const op=f.controller().scope('confirm-and-match');
+ f.state.detail={task:{id:'other',version:9}}; f.location.hash='#chat=other';
+ f.pending.resolve({});await op;
+ assert.equal(f.calls.length,1);
+});
+test('failed confirmation cannot request quotes', async () => {
+ const f=fixture();const op=f.controller().scope('confirm-and-match');
+ f.pending.reject(new Error('Version conflict'));
+ await assert.rejects(op,/Version conflict/);assert.equal(f.calls.length,1);
+});
+test('recurring scope does not silently start quote matching or enable a schedule', async () => {
+ const f=fixture();f.dependencies.command=async(...args)=>{f.calls.push(args);return {};};
+ f.dependencies.refresh=async(id,candidate)=>{candidate.detail={task:{id,version:2,status:'draft',workPlan:{cadence:'weekly'}}};};
+ await f.controller().scope('confirm-and-match'); assert.equal(f.calls.length,1);
+});

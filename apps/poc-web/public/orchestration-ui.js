@@ -26,6 +26,19 @@ const RelayOrchestration = {
     const missing = step.dependencies.filter(id => !step.handoffs.some(h => h.sourceTaskId === id));
     return `<section class="panel"><button data-action="task" data-id="${step.parentId}">Back to parent plan</button><h2>${step.supersededBy ? 'Replaced step — open the parent plan' : missing.length ? 'Waiting for approved handovers' : 'Plan step'}</h2><p>Quote ceiling: ${money(step.budgetMinor)}. ${missing.length ? 'Review upstream delivery and approve sharing from the parent plan before requesting offers.' : 'Review offers and authorize this step independently.'}</p><p class="hint">The reviewed scope is fixed. Tool permissions are granted per task; sibling agents do not share access.</p></section>`;
   },
+  project(task) {
+    const plan = state.detail.orchestration;
+    if (!plan) return '<p role="status">Loading project milestones…</p>';
+    const done = plan.steps.filter(step => step.status === 'accepted').length;
+    return `<section class="project-milestones" aria-label="Project milestones">
+      <span class="eyebrow">Your project</span><h2>${escape(task.title)}</h2>
+      <p>${done} of ${plan.steps.length} milestones accepted · ${money(plan.budgetMinor)} agreed budget limit</p>
+      <ol>${plan.steps.map(step => `<li><strong>${escape(step.title)}</strong><span>${escape(taskLabel(step))}</span><p>${escape(step.criteria)}</p></li>`).join('')}</ol>
+      <p>Relay coordinates the milestones. Each selected operator is responsible for their agreed delivery.</p>
+      <p class="hint">Use each milestone’s conversation to contact its selected operator.</p>
+      <details><summary>Review milestone deliveries & approvals</summary>${this.page()}</details>
+    </section>`;
+  },
   page() {
     const parent = state.detail.task, plan = state.detail.orchestration;
     if (!plan) return '<p>Refresh to load the plan.</p>';

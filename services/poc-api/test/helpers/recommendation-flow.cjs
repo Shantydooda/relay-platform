@@ -50,9 +50,11 @@ async function recommendationFlow(port = 4196, { repository } = {}) {
       const operator = await account(`recommendation-builder-${index}`, 'builder');
       const created = await store.marketplace.addAgent(operator.actor, {
         name: `QA ${name}`, kind: 'specialist', integration: 'api', purpose: 'Normalize supplied CSV files', domain: 'CSV data processing',
-        capabilities: [{ category: 'Data', task: 'Normalize CSV data' }]
+        capabilities: [{ category: 'Data', task: 'Normalize CSV data', metadata: {industries:['Operations'], regions:['UK'], outputs:['CSV'], tools:[]} }]
       }, randomUUID());
       const agentId = created.agentId;
+      const saved = (await store.marketplace.agents(operator.actor)).find(item => item.id === agentId);
+      assert.deepEqual(saved.capabilities[0].metadata.outputs, ['CSV']);
       const agent = async () => (await store.marketplace.agents(operator.actor)).find(item => item.id === agentId);
       await store.marketplace.configure(operator.actor, agentId, {
         expectedVersion: (await agent()).version, integration: 'api', setupStage: 3,

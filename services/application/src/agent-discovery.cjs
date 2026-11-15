@@ -38,8 +38,9 @@ function createDiscovery({ repository, now, listingView }) {
           if (savedIds.has(agent.id)) publishedIds.add(agent.id);
           for (const cap of agent.capabilities) categories.add(cap.category);
           const text = [agent.name, agent.operatorName, agent.purpose, agent.domain,
-            ...agent.capabilities.flatMap(cap => [cap.category, cap.task])].join(' ').toLowerCase();
-          if (!text.includes(options.query) || (options.type !== 'All types' && agent.kind !== options.type)) continue;
+            ...agent.capabilities.flatMap(cap => [cap.category, cap.task, ...Object.values(cap.metadata || {}).flat()])].join(' ').toLowerCase();
+          const related = options.query && agent.capabilities.some(cap => require('./capability-matching.cjs').matchCapability(options.query, cap.task).score >= 0.25);
+          if ((!text.includes(options.query) && !related) || (options.type !== 'All types' && agent.kind !== options.type)) continue;
           if (!['All agents', 'Available'].includes(options.category) && !agent.capabilities.some(cap => cap.category === options.category)) continue;
           const view = { ...listingView(agent, time), saved: savedIds.has(agent.id), savedVersion: saved.version };
           if (options.category === 'Available' && view.availability !== 'available') continue;

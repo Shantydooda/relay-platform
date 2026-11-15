@@ -65,8 +65,8 @@ function listingView(agent, time) {
   return { id: agent.id, name: agent.name, kind: agent.kind, purpose: agent.purpose,
     domain: agent.domain, operatorName: agent.operatorName, listingStatus: listingState(agent),
     availability: capabilities.some(item => item.qualification === 'qualified') ? 'available' : 'qualification_pending',
-    capabilities: capabilities.map(({ id, category, task, qualification, assessment }) =>
-      ({ id, category, task, qualification, evidence: assessment?.evidence || null })) };
+    capabilities: capabilities.map(({ id, category, task, qualification, assessment, metadata }) =>
+      ({ id, category, task, qualification, metadata, evidence: assessment?.evidence || null })) };
 }
 function agentView(agent, now) {
   const connected = !!agent.credentialHash && (!agent.credentialExpiresAt || agent.credentialExpiresAt > now) && agent.connectedAt > now - 120000;
@@ -223,8 +223,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     if (body.kind === 'specialist' && !domain) fail(400, 'INVALID_INPUT', 'Describe the specialist domain.');
     if (!Array.isArray(body.capabilities) || body.capabilities.length < 1 || body.capabilities.length > 50) fail(400, 'INVALID_INPUT', 'Add 1–50 capabilities.');
     const capabilities = body.capabilities.map(item => {
-      exactKeys(item, ['category', 'task']);
-      return { id: randomUUID(), category: text(item.category, 'Category', 1, 100), task: text(item.task, 'Capability', 1, 1000), qualification: 'unverified' };
+      exactKeys(item, ['category', 'task', 'metadata']);
+      return { id: randomUUID(), metadata: require('./capability-matching.cjs').metadata(item.metadata), category: text(item.category, 'Category', 1, 100), task: text(item.task, 'Capability', 1, 1000), qualification: 'unverified' };
     });
     return command(actor.user.id, key, ['agent', body], async () => {
       if (!actor.memberships.length || actor.recoveryRequired) notFound();

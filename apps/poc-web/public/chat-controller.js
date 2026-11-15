@@ -95,6 +95,7 @@
         'analyze-brief': ['assist', {}],
         'read-chat-context': ['assist', {useContext:true}],
         'confirm-scope': ['confirm-scope', {proposalId:task.scoping?.id}],
+        'confirm-and-match': ['confirm-scope', {proposalId:task.scoping?.id}],
         'cancel-reply': ['cancel-reply', {jobId:task.scoping?.id}]
       };
       if (!Object.hasOwn(commands, action)) throw new Error('Unknown scope action.');
@@ -103,6 +104,13 @@
       try {
         await command(`/api/tasks/${task.id}/${path}`, 'POST', {expectedVersion:task.version, ...body});
         if (op.current()) await op.read(task.id);
+        // This explicit CTA approves sharing the generated brief for quotes,
+        // never selecting an offer, funding, or authorizing execution.
+        if (action === 'confirm-and-match' && op.current() && state.detail.task.status === 'draft' &&
+            (!state.detail.task.workPlan || state.detail.task.workPlan.cadence === 'once')) {
+          await command(`/api/tasks/${task.id}/post`, 'POST', {expectedVersion:state.detail.task.version});
+          if (op.current()) await op.read(task.id);
+        }
       } catch (error) {
         if (op.current()) throw error;
       } finally { op.finish(); }

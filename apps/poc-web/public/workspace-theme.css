@@ -311,7 +311,8 @@ body.workspace-open .business-workspace p {
 }
 
 body.workspace-open .request-work {
-  max-width: 640px;
+  max-width: 800px;
+  width: 100%;
   min-height: calc(100dvh - 105px);
 }
 
@@ -324,7 +325,7 @@ body.workspace-open .request-welcome {
   position: relative;
   flex: 0 0 auto;
   justify-content: flex-start;
-  padding: 0 0 34px;
+  padding: 10vh 0 34px;
 }
 
 body.workspace-open .request-welcome .chat-character.large {
@@ -409,87 +410,123 @@ body.workspace-open .thread-composer .replybox button {
   border-radius: 13px;
 }
 
-/* Open conversation canvas. This owns layout for both draft and posted work. */
-body.workspace-open .workspace-content:has(.buyer-conversation) {
-  margin-top: 0;
-  margin-right: 0;
-  margin-bottom: 0;
+/* Buyer workspace layout: the chat is the canvas; details are an optional rail. */
+body.workspace-open:has(.buyer-workspace) .workspace-header { width: 204px; }
+body.workspace-open .workspace-content.buyer-workspace {
+  margin: 0 0 0 204px;
   min-height: 100dvh;
   border: 0;
   border-radius: 0;
   box-shadow: none;
   overflow: visible;
 }
-body.workspace-open .workspace-content > .canvas:has(.buyer-conversation) {
+body.workspace-open .buyer-workspace > .canvas:has(:is(.buyer-conversation, .request-work)) {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 24px clamp(16px, 3vw, 48px) 0;
+  padding: 20px 28px 0;
 }
 body.workspace-open .buyer-conversation {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: none;
-  min-height: calc(100dvh - 24px);
+  min-height: calc(100dvh - 20px);
   height: auto;
   border: 0;
   border-radius: 0;
   background: transparent;
+  box-shadow: none;
 }
 body.workspace-open .buyer-conversation .thread-layout {
-  width: min(100%, 840px);
-  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  width: 100%;
+  margin: 0;
   flex: 1;
+  gap: 32px;
+}
+body.workspace-open .buyer-conversation .thread-layout:has(.conversation-details[open]) {
+  grid-template-columns: minmax(0, 1fr) 300px;
 }
 body.workspace-open .buyer-conversation .thread-main {
-  flex: 1;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
   height: auto;
 }
 body.workspace-open .buyer-conversation .thread-history {
   flex: 1;
   overflow: visible;
   max-height: none;
-  padding: 40px 0 32px;
+  padding: 48px 12px 40px;
   scrollbar-gutter: auto;
 }
 body.workspace-open .buyer-conversation .thread-composer {
   position: sticky;
-  bottom: 12px;
+  bottom: 16px;
   margin-top: auto;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   z-index: 5;
   width: 100%;
+  padding: 18px 20px;
+  border-radius: 24px;
 }
+body.workspace-open .buyer-conversation .thread-composer textarea { min-height: 72px; }
 body.workspace-open .buyer-conversation .thread-context {
-  max-height: none;
-  overflow: visible;
+  display: block;
+  position: sticky;
+  top: 20px;
+  align-self: start;
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  border-left: 1px solid var(--relay-border);
+  padding-left: 22px;
+  background: var(--relay-canvas);
 }
-body.workspace-open .buyer-conversation .thread-context:not(:has(.conversation-details[open])) {
-  display: none;
-}
-body.workspace-open .buyer-conversation .conversation-heading {
-  gap: 16px;
-  margin-bottom: 0;
-}
-body.workspace-open .buyer-conversation .conversation-details-trigger {
-  min-height: 36px;
-  padding: 6px 10px;
-  font-size: 12px;
-  flex-shrink: 0;
+body.workspace-open .buyer-conversation .thread-context:not(:has(.conversation-details[open])) { display: none; }
+body.workspace-open .buyer-conversation .conversation-heading { gap: 16px; margin-bottom: 0; }
+body.workspace-open .buyer-conversation .conversation-details-trigger { min-height: 36px; padding: 6px 10px; font-size: 12px; flex-shrink: 0; }
+.inspector-close { float: right; }
+.agent-inspector { clear: both; padding: 20px 0; }
+.agent-inspector h2 { font-size: 21px; }
+.agent-inspector h3 { font-size: 12px; margin: 24px 0 8px; color: var(--relay-muted); }
+.agent-inspector p { font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.agent-inspector .agent-card-meta span { white-space: normal; }
+.matching-state { display: flex; align-items: flex-start; gap: 12px; padding: 24px 0; color: var(--relay-muted); font-size: 14px; }
+.matching-state p { font-size: 13px; line-height: 1.6; }
+.recommendation-facts { display: flex; flex-wrap: wrap; gap: 40px; margin: 22px 0; }
+.recommendation-facts > div { display: grid; gap: 8px; }
+.recommendation-facts small, .recommendation-trust { color: var(--relay-muted); font-size: 12px; }
+.project-milestones { margin: 24px 0; }
+.project-milestones ol { padding-left: 22px; }
+.project-milestones li { padding: 12px 0; }
+.project-milestones li > span { float: right; color: var(--relay-muted); font-size: 12px; }
+.project-milestones li p { color: var(--relay-muted); font-size: 14px; }
+@media (max-width: 1100px) {
+  body.workspace-open .buyer-conversation .thread-layout:has(.conversation-details[open]) { grid-template-columns: minmax(0, 1fr); }
+  body.workspace-open .buyer-conversation .thread-context {
+    position: fixed;
+    inset: 16px 16px 16px auto;
+    width: min(360px, calc(100vw - 32px));
+    height: auto;
+    max-height: calc(100dvh - 32px);
+    padding: 20px;
+    z-index: 25;
+    border: 1px solid var(--relay-border);
+    border-radius: 16px;
+    box-shadow: 0 16px 80px #0005;
+  }
 }
 @media (max-width: 760px) {
-  body.workspace-open .buyer-conversation {
-    min-height: calc(100dvh - 100px);
-  }
-  body.workspace-open .buyer-conversation .conversation-heading {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  body.workspace-open .buyer-conversation .conversation-heading > div {
-    flex-basis: 100%;
-  }
-  body.workspace-open .buyer-conversation .thread-history {
-    padding-top: 24px;
-  }
+  body.workspace-open:has(.buyer-workspace) .workspace-header { width: 100%; }
+  body.workspace-open .workspace-content.buyer-workspace { margin: 0; }
+  body.workspace-open .buyer-workspace > .canvas:has(:is(.buyer-conversation, .request-work)) { padding: 16px 14px 0; }
+  body.workspace-open .buyer-conversation { min-height: calc(100dvh - 90px); }
+  body.workspace-open .buyer-conversation .conversation-heading { flex-wrap: wrap; gap: 8px; }
+  body.workspace-open .buyer-conversation .conversation-heading > div { flex-basis: 100%; }
+  body.workspace-open .buyer-conversation .thread-history { padding: 24px 0; }
 }
 
 body.workspace-open .conversation-heading {
@@ -760,12 +797,12 @@ body.workspace-open :is(button, input, textarea, select, summary):focus-visible 
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  body.workspace-open .canvas > * {
+  body.workspace-open .canvas > :not(.buyer-conversation) {
     animation: relay-surface-in 420ms cubic-bezier(.2,.8,.2,1) both;
   }
 
-  body.workspace-open .canvas > *:nth-child(2) { animation-delay: 55ms; }
-  body.workspace-open .canvas > *:nth-child(3) { animation-delay: 90ms; }
+  body.workspace-open .canvas > :not(.buyer-conversation):nth-child(2) { animation-delay: 55ms; }
+  body.workspace-open .canvas > :not(.buyer-conversation):nth-child(3) { animation-delay: 90ms; }
   body.workspace-open .request-welcome .chat-character {
     animation: relay-character-float 5.2s ease-in-out infinite;
   }
@@ -2116,3 +2153,20 @@ body.workspace-open .buyer-conversation .scope-recap p { line-height: 1.65; }
 .offer-option[open] > summary::after { content: '−'; }
 .offer-option > .offer-card { margin: 0; border: 0; box-shadow: none; }
 .offer-option > summary:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+
+/* Conversation discovery: one recommendation, optional evidence, quiet alternatives. */
+body.workspace-open .recommended-execution {
+  padding: 22px 0;
+  border-block: 1px solid var(--relay-border);
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+.recommended-execution h2 { margin: 8px 0; font-size: 22px; letter-spacing: -.025em; }
+.recommended-execution .execution-structure { color: var(--relay-muted); font-size: 13px; margin: 8px 0; }
+.recommendation-reasons { padding-left: 18px; line-height: 1.7; margin-block: 20px; }
+.recommendation-inspector { margin-top: 20px; }
+.recommendation-inspector > summary { cursor: pointer; padding: 10px 0; font-size: 13px; }
+.thread-alternatives { margin-top: 18px; }
+.thread-alternatives > summary { cursor: pointer; padding: 12px 0; }
+.thread-alternatives .offer-option { border: 0; border-bottom: 1px solid var(--relay-border); border-radius: 0; }

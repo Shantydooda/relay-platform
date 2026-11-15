@@ -18,6 +18,7 @@ test('qualified supplier HTTP bids connect recommendations, buyer selection and 
   const recommended = offers.find(offer => offer.recommendation.recommended);
   assert.equal(recommended.id, bids[0].offerId);
   assert.equal(recommended.qualificationCurrent, true);
+  assert.deepEqual(recommended.capabilityMetadata.outputs, ['CSV']);
   assert.equal(recommended.qualificationEvidence.submissions.length, 2);
   assert.equal(recommended.trackRecord.capabilityAccepted, 0);
   assert.ok(recommended.recommendation.reasons.length);
@@ -72,4 +73,25 @@ test('qualified supplier HTTP bids connect recommendations, buyer selection and 
   })));
   assert.deepEqual(choices.map(result => result.status).sort(), [200, 409]);
   assert.equal((await f.request(`/api/tasks/${raceTask}/offers`, f.buyer)).body.offers.filter(offer => offer.selected).length, 1);
+});
+
+test('buyer conversation preferences refresh recommendations without changing scope or granting work', async t => {
+  const f = await recommendationFlow(4197);
+  t.after(() => f.close());
+  const id = await f.postTask();
+  await f.bid(id);
+  const path = `/api/tasks/${id}`;
+  let task = (await f.request(path, f.buyer)).body.task;
+  assert.equal((await f.request(`${path}/messages`, f.buyer, {expectedVersion:task.version,body:'Keep it under $4'})).status,200);
+  let offers = (await f.request(`${path}/offers`, f.buyer)).body.offers;
+  assert.equal(offers.filter(o=>o.recommendation.recommended).length,0);
+  assert.equal(offers.length,2);
+  task = (await f.request(path, f.buyer)).body.task;
+  assert.equal((await f.request(`${path}/messages`, f.buyer, {expectedVersion:task.version,body:'Clear matching preferences'})).status,200);
+  offers = (await f.request(`${path}/offers`, f.buyer)).body.offers;
+  assert.equal(offers.filter(o=>o.recommendation.recommended).length,1);
+  const detail = (await f.request(path,f.buyer)).body;
+  assert.equal(detail.task.scopeVersion,task.scopeVersion);
+  assert.equal(detail.task.status,'posted');
+  assert.equal(detail.execution,null);
 });

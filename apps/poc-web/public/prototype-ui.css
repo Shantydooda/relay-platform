@@ -538,7 +538,7 @@ button.primary:hover {
   white-space: pre-wrap;
 }
 .thread-context {
-  order: -1;
+  order: 0;
   flex: 0 0 auto;
   max-height: 35dvh;
   overflow-y: auto;

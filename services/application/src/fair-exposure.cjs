@@ -47,7 +47,7 @@ async function offersWithExposure(repo, task, now) {
       agent.ownerId === offer.operatorId && qualificationCurrent && offer.runtimeBid &&
       agent.credentialHash && agent.credentialExpiresAt > now && agent.connectedAt > now - 120000 &&
       offer.scopeVersion === task.scopeVersion && offer.expiresAt > now;
-    results.push({ ...offer, qualificationCurrent,
+    results.push({ ...offer, qualificationCurrent, capabilityMetadata: cap?.metadata || {},
       selected: task.assignment?.offerId === offer.id || (task.selectedOfferId === offer.id && offer.expiresAt > now),
       trackRecord: { capabilityAccepted, operatorAccepted, basis: 'accepted-deliveries-in-this-environment' },
       exposure: { policy: POLICY, eligible: Boolean(eligible), newcomer: Boolean(eligible && operatorAccepted < 3),

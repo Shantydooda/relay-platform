@@ -282,7 +282,7 @@ test('ready draft proposal is inline, while missing details cannot be approved',
   ctx.state.detail = {events:[]};
   ctx.task = {status:'draft', scoping:{status:'completed', proposal:{intent:'request', title:'Research', brief:'Find companies', cadence:'once', questions:[], assumptions:[]}}};
   let html = vm.runInContext('draftProposal(task)',ctx);
-  assert.match(html,/Confirm brief/);
+  assert.match(html,/Find the best match/);
   assert.doesNotMatch(html,/review-chat-request|data-action="post"/);
   ctx.task.scoping.proposal.questions = ['Which <market>?'];
   html = vm.runInContext('draftProposal(task)',ctx);
@@ -321,7 +321,7 @@ test('assistant availability stays outside transcript and does not hide user con
   assert.doesNotMatch(html, /data-action="post"|data-action="confirm-scope"/);
 });
 
-test('manual planning is outside the message history behind closed advanced disclosure', () => {
+test('conversation never mounts manual workflow forms, including in the inspector', () => {
   const ctx = context();
   ctx.state.detail = {task:{id:'draft',status:'draft'},messages:[]};
   ctx.state.features = {scoping:true};
@@ -329,8 +329,8 @@ test('manual planning is outside the message history behind closed advanced disc
   ctx.composer = () => '<form id="message"></form>';
   ctx.RelayOrchestration = {setup: () => '<form id="orchestration-create">Manual plan</form>'};
   const html = vm.runInContext('draftConversation()',ctx);
-  assert.ok(html.indexOf('orchestration-create') > html.indexOf('<aside class="thread-context">'));
-  assert.match(html, /data-disclosure-key="advanced-planning"/);
+  assert.doesNotMatch(html, /orchestration-create|advanced-planning|Supplier brief|quote ceiling/);
+  assert.match(html, /data-action="close-inspector"/);
   assert.doesNotMatch(html, /<details[^>]* open|Files & execution options/);
 });
 
