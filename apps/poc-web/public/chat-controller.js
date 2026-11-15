@@ -4,6 +4,19 @@
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   'use strict';
 
+  // A conversation title is the first sentence, cut at a word boundary.
+  // Slicing raw characters produced titles such as "... Budget around $".
+  function requestTitle(text, limit = 120) {
+    const clean = String(text || '').replace(/\s+/g, ' ').trim();
+    const first = clean.split(/(?<=[.!?])\s/)[0].replace(/[.!?]+$/, '');
+    // Very short "sentences" are usually abbreviations ("e.g."); keep the whole text instead.
+    const sentence = first.length >= 20 ? first : clean;
+    if (sentence.length <= limit) return sentence;
+    const cut = sentence.slice(0, limit - 1);
+    const boundary = cut.lastIndexOf(' ');
+    return `${(boundary > limit / 2 ? cut.slice(0, boundary) : cut).replace(/[\s,;:–-]+$/, '')}…`;
+  }
+
   function create({state, command, refresh, render, location, revision, refreshedFields}) {
     function operation(field, value, redraw = true) {
       const token = {};
@@ -48,7 +61,7 @@
       try {
         const result = await command('/api/tasks', 'POST', {
           tenantId: state.tenantId || state.account.memberships[0].id,
-          title: brief.slice(0,120), brief,
+          title: requestTitle(brief), brief,
           ...(preferred?.repeatFromTaskId ? {repeatFromTaskId:preferred.repeatFromTaskId, expectedSourceVersion:preferred.expectedSourceVersion} : {}),
           ...(preferred ? {preferredAgentId:preferred.id, preferenceMode:preferred.preferenceMode || 'agent', discoverySource:preferred.discoverySource || 'unspecified'} : {})
         });
@@ -155,5 +168,5 @@
     }
     return Object.freeze({request, message, scope, edit, upload});
   }
-  return Object.freeze({create});
+  return Object.freeze({create, requestTitle});
 });

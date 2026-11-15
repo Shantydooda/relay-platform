@@ -287,7 +287,7 @@ ${typeof RelayPortfolio === 'object' ? RelayPortfolio.requests(state.detail.port
  ${posted ? `<details><summary>${posted ? 'Agreed scope' : 'Your brief'} · v${task.scopeVersion ?? task.version}</summary><p>${escape(task.brief)}</p>${!task.orchestrationPlan && !task.orchestrationStep && ['draft', 'posted', 'selected'].includes(task.status) ? '<button class="quiet" data-action="edit">Change scope & refresh offers</button>' : ''}</details>` : ''}
  <details><summary>Samples & references</summary><p>CSV task input can be attached in this conversation. Other input formats are not supported yet. Delivery files are scanned separately. Input bytes are shared only after execution is authorized.</p></details>
  <details><summary>Activity & agreement history</summary><ol class="steps">${events.map((e) => `<li>${escape(labels[e.type] || e.type)}<small>${date(e.createdAt)}</small></li>`).join('')}</ol>${state.detail.scopes?.length ? `<details><summary>Previous scope versions</summary>${state.detail.scopes.map((v) => `<p><strong>Scope ${v.version}</strong><br>${escape(v.brief)}</p>`).join('')}</details>` : ''}</details>
- <details><summary>Local testing details</summary><p class="thread-footnote">${state.features?.scoping ? 'Local model suggestions · confirm scope before posting.' : 'Manual brief review · local model not configured.'} ${state.payments?.configured ? 'Sandbox payments only. Start permission is separate from funding.' : 'Stripe sandbox is not connected. Local execution can run unpaid.'}</p></details>
+ <details><summary>${state.authMode === 'managed' ? 'Pilot environment' : 'Local testing details'}</summary><p class="thread-footnote">${environmentNote()}</p></details>
  ${['draft', 'posted', 'selected'].includes(task.status) ? '<button class="quiet danger" data-action="cancel">Close request</button>' : ''}<button class="quiet" data-action="refresh">Refresh conversation</button>
  </div></details></aside></div></section>`;
 }
@@ -421,6 +421,14 @@ function isAssistantSystemNotice(message) {
     'Your message is saved. Conversational replies need the local model to be connected. You can keep notes here or review a request yourself.',
     'Live scoping is unavailable. You can save notes here and review the brief yourself.',
   ].includes(message.body);
+}
+
+function environmentNote() {
+  if (state.authMode === 'managed') {
+    const disabled = [!state.payments?.configured && 'payments', !state.features?.localExecution && 'supplier execution'].filter(Boolean);
+    return `${state.features?.scoping ? 'Relay suggestions · confirm scope before posting.' : 'Manual brief review · assistant replies are not enabled here yet.'}${disabled.length ? ` ${disabled.join(' and ').replace(/^./, c => c.toUpperCase())} ${disabled.length > 1 ? 'are' : 'is'} disabled in this environment. No money moves.` : ''}`;
+  }
+  return `${state.features?.scoping ? 'Local model suggestions · confirm scope before posting.' : 'Manual brief review · local model not configured.'} ${state.payments?.configured ? 'Sandbox payments only. Start permission is separate from funding.' : 'Stripe sandbox is not connected. Local execution can run unpaid.'}`;
 }
 
 function assistantAvailability(task) {

@@ -2,6 +2,17 @@
 
 const POLICY = 'evidence-concepts-v3';
 const {matchCapability} = require('./capability-matching.cjs');
+const PLEASE = '(?:,? please)?';
+const ALTERNATIVES = new RegExp(`^(?:please )?(?:(?:can|could) you )?(?:show|see|give me|can i see) (?:me )?(?:three |3 |some |other |more )?(?:alternatives|agents|options)${PLEASE}[.!?]?$`, 'i');
+const PRIORITY = new RegExp(`^(?:please )?(?:(?:use|show me|prefer|i(?:'|’)?d prefer|go with) )?(?:the )?(cheapest|cheaper|fastest|quickest|balanced)(?: (?:one|agent|option))?${PLEASE}[.!]?$`, 'i');
+// Thousands separators are accepted ("$1,000"); at most two decimal places.
+const AMOUNT = '(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]{1,2})?';
+const BUDGET = new RegExp(`^(?:please )?(?:keep it under|(?:my )?budget is|no more than|max(?:imum)?(?: of)?) ([$€£])(${AMOUNT})${PLEASE}[.!]?$`, 'i');
+const PRIORITY_REASON = {
+  balanced: 'Price and supplier delivery estimate were balanced',
+  price: 'Lower price was prioritized, as you asked,',
+  speed: 'Faster delivery was prioritized, as you asked,',
+};
 
 // A recommendation is advice about current quotes, never authorization to hire.
 // Only existing qualification/readiness gates can admit an offer to this policy.
@@ -11,15 +22,17 @@ function discoveryPreferences(task) {
   for (const message of task.messages || []) {
     if (!task.ownerId || message.authorId !== task.ownerId || (message.role && message.role !== 'user')) continue;
     const body = String(message.body || '').trim();
-    if (/^(?:please )?(?:show|see|give me|can i see) (?:me )?(?:three |3 |some |other )?(?:alternatives|agents|options)[.!?]?$/i.test(body)) preferences.alternatives = true;
-    if (/^(?:please )?(?:use|show me|prefer) (?:the )?(cheapest|cheaper|fastest|balanced)(?: (?:agent|option))?[.!]?$/i.test(body)) {
-      preferences.priority = /cheap/i.test(body) ? 'price' : /fast/i.test(body) ? 'speed' : 'balanced';
+    // Whole-message commands only: a hypothetical or quoted phrase inside a longer message never matches.
+    if (ALTERNATIVES.test(body)) preferences.alternatives = true;
+    const priority = body.match(PRIORITY);
+    if (priority) {
+      preferences.priority = /cheap/i.test(priority[1]) ? 'price' : /fast|quick/i.test(priority[1]) ? 'speed' : 'balanced';
     }
     const success = body.match(/^use the cheapest agent that still has at least (100|[0-9]{1,2})% success rate[.!]?$/i);
     if (success) preferences.requiredSuccessRate = Number(success[1]);
-    const budget = body.match(/^(?:please )?keep it under ([$€£])([0-9]+(?:\.[0-9]{1,2})?)[.!]?$/i);
+    const budget = body.match(BUDGET);
     if (budget) {
-      const minor = Math.round(Number(budget[2]) * 100);
+      const minor = Math.round(Number(budget[2].replace(/,/g, '')) * 100);
       if (Number.isSafeInteger(minor) && minor > 0) preferences.budget = {currency: {'$':'USD','€':'EUR','£':'GBP'}[budget[1]], amountMinor:minor};
     }
     if (/^(?:please )?(?:reset|clear) (?:my )?(?:matching |discovery )?preferences[.!]?$/i.test(body)) { Object.assign(preferences, {priority:'balanced', alternatives:false, budget:null}); delete preferences.requiredSuccessRate; }
@@ -62,7 +75,7 @@ function recommendOffers(task, offers, now) {
       ...(best.match.detailMatches.length ? [`Supplier-declared details also match: ${best.match.detailMatches.join(', ')}. These are not independently verified.`] : []),
       'This quoted capability has a current assessment and a recently connected runtime.',
       best.history ? `${best.history} accepted deliveries for this capability in this environment.` : 'New capability history: assessment evidence is available, but accepted deliveries are not established.',
-      sameCurrency ? `Price and supplier delivery estimate were balanced across ${candidates.length} eligible ${offer.currency} quote${candidates.length === 1 ? '' : 's'}.` : 'Delivery estimates were compared; prices in different currencies were not compared.'
+      sameCurrency ? `${PRIORITY_REASON[preferences.priority]} across ${candidates.length} eligible ${offer.currency} quote${candidates.length === 1 ? '' : 's'}.` : 'Delivery estimates were compared; prices in different currencies were not compared.'
     ] : [],
     limitations: 'Provisional match based on declared capability, current assessment, local acceptance history and supplier estimates. Not a verified success rate or a guarantee of scope coverage, compliance, availability or delivery. Review the agreement before selecting.'
   }}));

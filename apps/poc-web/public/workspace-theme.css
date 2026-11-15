@@ -883,6 +883,12 @@ body.workspace-open :is(button, input, textarea, select, summary):focus-visible 
     display: none;
   }
 
+  /* The collapsed menu sits beside the wordmark at a fixed offset; the decorative
+     mascot shares that space and was rendered underneath the menu button. */
+  body.workspace-open .workspace-identity > .chat-character.face {
+    display: none;
+  }
+
   body.workspace-open .workspace-navigation > summary {
     padding: 10px 4px 4px;
     color: #bdbdb7;

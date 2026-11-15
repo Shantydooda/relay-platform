@@ -59,7 +59,7 @@ const ApiError=RelayRequest.ApiError;
 async function api(path,{method='GET',body,key}={}) {
   let waiting=false;
   try {
-    return await RelayRequest.request(path,{method,managed:state.authMode==='managed',onSlow(){waiting=true;notice.textContent='Staging is taking a little longer. Free hosting may be waking up. Please keep this tab open.';},credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{}),...(state.account?.csrf?{'X-CSRF-Token':state.account.csrf}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});
+    return await RelayRequest.request(path,{method,managed:state.authMode==='managed',onSlow(){waiting=true;notice.textContent=`${state.features?.pilotConnections?'Relay':'Staging'} is taking a little longer. Free hosting may be waking up. Please keep this tab open.`;},credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{}),...(state.account?.csrf?{'X-CSRF-Token':state.account.csrf}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});
   } finally {if(waiting)notice.textContent='';}
 }
 async function command(path,method,body) {
@@ -145,7 +145,7 @@ function header() {
     <div class="account-actions">
       <button class="appearance-switch" data-action="toggle-appearance" aria-label="Dark mode" title="Toggle light / dark appearance" aria-pressed="${globalThis.document?.documentElement?.dataset.appearance !== 'light'}"><svg class="appearance-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.1A8.5 8.5 0 0 1 10.9 3.5a8.5 8.5 0 1 0 9.6 9.6Z"/></svg><svg class="appearance-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button>
       <button class="workspace-switch" data-action="switch">Switch to ${builderSide ? 'buyer' : 'builder'} workspace</button>
-      <details class="account-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span>${escape(user.name)}</span></summary><div class="account-popover"><small>${escape(user.email)}</small><small>Local development · saved on this machine</small>${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}<button data-action="logout">Sign out</button></div></details>
+      <details class="account-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span>${escape(user.name)}</span></summary><div class="account-popover"><small>${escape(user.email)}</small><small>${state.authMode==='managed'?(state.features?.pilotConnections?'Private pilot account':'Private staging account'):'Local development · saved on this machine'}</small>${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}<button data-action="logout">Sign out</button></div></details>
     </div>
   </aside>`;
 }
@@ -789,6 +789,7 @@ root.addEventListener('keydown',event=>{
 async function boot(){
   try {
     const config=await api('/api/config');state.authMode=config.authMode==='managed'?'managed':'local';state.features=config.features||{};
+    if(state.authMode==='local')document.title='Relay · Local workspace';
     if(state.authMode==='managed'){
       document.title=state.features?.pilotConnections?'Relay · Private pilot':'Relay · Private staging';
       document.querySelector('.poc-strip').textContent=state.features?.pilotConnections?'Private pilot · invite-only · test quotes · execution and payments not enabled':'Private staging · real accounts and saved tasks · no payments or agent execution';

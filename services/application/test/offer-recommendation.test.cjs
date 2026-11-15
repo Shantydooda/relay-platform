@@ -71,3 +71,22 @@ test('concept match connects a differently worded brief to qualified quotes with
  assert.match(result[0].recommendation.reasons.join(' '),/prospecting/);
  assert.match(result[0].recommendation.reasons.join(' '),/not independently verified/);
 });
+test('natural whole-message preference wording is understood; partial or hypothetical wording is not', () => {
+ const {discoveryPreferences} = require('../src/offer-recommendation.cjs');
+ const prefs = body => discoveryPreferences({ownerId:'buyer',messages:[{authorId:'buyer',role:'user',body}]});
+ assert.deepEqual(prefs('Keep it under $1,000.').budget,{currency:'USD',amountMinor:100000});
+ assert.deepEqual(prefs('My budget is £250').budget,{currency:'GBP',amountMinor:25000});
+ assert.equal(prefs('Keep it under $1,00').budget,null);
+ assert.equal(prefs('What if my budget is $5?').budget,null);
+ assert.equal(prefs('Show me some alternatives please').alternatives,true);
+ assert.equal(prefs('Can you show me other options?').alternatives,true);
+ assert.equal(prefs("I'd prefer the fastest one").priority,'speed');
+ assert.equal(prefs('Cheapest, please').priority,'price');
+ assert.equal(prefs('Make it the cheapest possible while keeping quality').priority,'balanced');
+});
+test('recommendation reason reflects the buyer priority instead of always claiming balance', () => {
+ const brief={...task,ownerId:'buyer',messages:[{authorId:'buyer',role:'user',body:'Use the fastest option'}]};
+ const reasons=recommendOffers(brief,[offer('a'),offer('b',{deliveryMinutes:10})],1000).find(o=>o.recommendation.recommended).recommendation.reasons.join(' ');
+ assert.match(reasons,/Faster delivery was prioritized/);
+ assert.doesNotMatch(reasons,/were balanced/);
+});

@@ -549,3 +549,23 @@ test('hosted unified buyer shows quote matching without enabling it on legacy st
  state.features={};
  assert.doesNotMatch(vm.runInContext('taskView()',ctx),/Matching your request with available specialists/);
 });
+test('delivery estimates read as days and hours, never raw four-digit minutes',()=>{
+ const {state,ctx}=ui();
+ assert.equal(vm.runInContext('deliveryDuration(45)',ctx),'45 min');
+ assert.equal(vm.runInContext('deliveryDuration(90)',ctx),'1 h 30 min');
+ assert.equal(vm.runInContext('deliveryDuration(1440)',ctx),'1 day');
+ assert.equal(vm.runInContext('deliveryDuration(4380)',ctx),'3 days 1 h');
+ state.offers=[{id:'slow',agentName:'Researcher',agentType:'specialist',operatorName:'A',amountMinor:7500,deliveryMinutes:2880,proposal:'CSV',capability:'Research',scopeVersion:1,expiresAt:Date.now()+100000,recommendation:{recommended:true,scopeVersion:1,reasons:['Fit'],limitations:'Provisional.'}}];
+ const html=vm.runInContext('offerCards()',ctx);
+ assert.match(html,/2 days after starting/);
+ assert.doesNotMatch(html,/2880 min/);
+});
+test('hosted pilot footnote states disabled payments and execution instead of local-machine wording',()=>{
+ const {state,ctx}=ui();
+ state.authMode='managed';state.features={pilotConnections:true,localExecution:false};state.payments={configured:false};
+ const note=vm.runInContext('environmentNote()',ctx);
+ assert.match(note,/Payments and supplier execution are disabled/);
+ assert.doesNotMatch(note,/local model|Local execution|Stripe sandbox/);
+ state.authMode='local';
+ assert.match(vm.runInContext('environmentNote()',ctx),/local model not configured/);
+});

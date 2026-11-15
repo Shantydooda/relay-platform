@@ -162,3 +162,13 @@ test('recurring scope does not silently start quote matching or enable a schedul
  f.dependencies.refresh=async(id,candidate)=>{candidate.detail={task:{id,version:2,status:'draft',workPlan:{cadence:'weekly'}}};};
  await f.controller().scope('confirm-and-match'); assert.equal(f.calls.length,1);
 });
+
+test('request titles use the first sentence and never cut mid-word', () => {
+  const {requestTitle} = require('../public/chat-controller.js');
+  assert.equal(requestTitle('Find 30 UK fintech companies with 50-200 employees and give me a CSV with website, HQ city and CEO name. Budget around $150.'),
+    'Find 30 UK fintech companies with 50-200 employees and give me a CSV with website, HQ city and CEO name');
+  const long = requestTitle('research '.repeat(30));
+  assert.ok(long.length <= 120);
+  assert.match(long, /research…$/);
+  assert.equal(requestTitle('Help, e.g. find leads for my agency in Berlin'), 'Help, e.g. find leads for my agency in Berlin');
+});
