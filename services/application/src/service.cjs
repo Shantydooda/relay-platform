@@ -11,6 +11,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const copy = value => structuredClone(value);
 const notFound = () => fail(404, 'NOT_FOUND', 'Task or agent not found.');
 
+const { QUOTE_LIMITS } = require('./quote-limits.cjs');
 function positive(value, label, max = Number.MAX_SAFE_INTEGER) {
   if (!Number.isSafeInteger(value) || value < 1 || value > max) fail(400, 'INVALID_INPUT', `${label} is outside the supported range.`);
   return value;
@@ -274,7 +275,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   async function quote(actor, id, body, key, runtime = null) {
     exactKeys(body, ['agentId', 'capabilityId', 'expectedVersion', 'amountMinor', 'deliveryMinutes', 'proposal', 'currency']);
-    positive(body.amountMinor, 'Amount', 10000000); positive(body.deliveryMinutes, 'Estimate', 525600);
+    positive(body.amountMinor, 'Amount', QUOTE_LIMITS.maxAmountMinor); positive(body.deliveryMinutes, 'Estimate', QUOTE_LIMITS.maxDeliveryMinutes);
     if (!supplierConnections) fail(403, 'COMMERCIAL_NOT_READY', 'Commercial bidding requires connected eligibility and funding services.');
     const currency = body.currency === undefined ? 'USD' : body.currency;
     if (!['USD', 'EUR'].includes(currency)) fail(400, 'CURRENCY_UNSUPPORTED', 'Choose USD or EUR.');

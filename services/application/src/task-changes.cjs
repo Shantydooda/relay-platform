@@ -7,6 +7,7 @@ const {
 } = require('../../../packages/contracts/src/input.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
 const { assertUnfunded } = require('./payments.cjs');
+const { withinQuoteLimits } = require('./quote-limits.cjs');
 
 function createTaskChanges(context) {
   const { command, taskFor, resolveActor, now, expected, touch, event } =
@@ -114,15 +115,10 @@ function createTaskChanges(context) {
         expected(task, body.expectedVersion);
         changeable(task);
         if (
-          !Number.isSafeInteger(body.amountMinor) ||
-          body.amountMinor < 1 ||
-          body.amountMinor > 10000000 ||
+          !withinQuoteLimits(body) ||
           !Number.isSafeInteger(body.retainedMinor) ||
           body.retainedMinor < 0 ||
-          body.retainedMinor > Math.min(body.amountMinor, offer.amountMinor) ||
-          !Number.isSafeInteger(body.deliveryMinutes) ||
-          body.deliveryMinutes < 1 ||
-          body.deliveryMinutes > 10080
+          body.retainedMinor > Math.min(body.amountMinor, offer.amountMinor)
         )
           fail(
             400,
