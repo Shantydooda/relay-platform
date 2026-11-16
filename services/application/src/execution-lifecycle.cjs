@@ -4,6 +4,7 @@ const { waitingForPermission } = require('../../../packages/domain/src/execution
 
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
+const { executionWindowMs } = require('./quote-limits.cjs');
 
 function createLifecycle({ repository, command, taskFor, expected, now, touch, event, localExecution, approvals }) {
   function checkCancel(task) {
@@ -86,7 +87,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       job.attemptLimit = job.attempt + 3;
       job.leaseHash = null; job.leaseUntil = 0;
       job.queueDeadlineAt = now() + 120000;
-      job.deadlineAt = now() + 120000 + Math.min(86400000, Math.max(300000, job.agreement.deliveryMinutes * 120000));
+      job.deadlineAt = now() + 120000 + executionWindowMs(job.agreement.deliveryMinutes);
       job.progress = 'Recovery authorized. Waiting for the assigned runtime.';
       touch(task, now()); event(task, actor.user.id, 'execution.recovery_requested', now());
       await saveTask(repo, task);

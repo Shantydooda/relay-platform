@@ -5,6 +5,7 @@ const { waitingForPermission } = require('../../../packages/domain/src/execution
 const { assertUnfunded } = require('./payments.cjs');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
 const { saveTask } = require('./supplier-feed.cjs');
+const { executionWindowMs } = require('./quote-limits.cjs');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const LEASE_MS = 30000;
 const MAX_FILE_BYTES = 256 * 1024;
@@ -118,7 +119,7 @@ function createExecution(context) {
     const { offer, agent } = await checkStart(repo, actor, task, mode);
     task.assignment = { id: randomUUID(), agentId: agent.id, operatorId: offer.operatorId, offerId: offer.id,
       status: 'queued', authorizedAt: now(), mode, attempt: 0, progress: 'Waiting for the runtime',
-      runtimeKind: agent.runtimeKind, runtimeVersion: agent.runtimeVersion || null, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + Math.min(86400000, Math.max(300000, offer.deliveryMinutes * 120000)),
+      runtimeKind: agent.runtimeKind, runtimeVersion: agent.runtimeVersion || null, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + executionWindowMs(offer.deliveryMinutes),
       agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null } };
     touch(task, now()); event(task, actor.user.id, 'assignment.authorized_local', now());
     await saveTask(repo, task);
@@ -294,7 +295,7 @@ function createExecution(context) {
         task.assignment.progress = `Revision queued: ${notes}`; task.assignment.completedAt = null;
         task.assignment.revisionNotes = notes;
         task.assignment.queueDeadlineAt = now() + 120000;
-        task.assignment.deadlineAt = now() + 120000 + Math.min(86400000, Math.max(300000, task.assignment.agreement.deliveryMinutes * 120000));
+        task.assignment.deadlineAt = now() + 120000 + executionWindowMs(task.assignment.agreement.deliveryMinutes);
       }
       touch(task, now()); event(task, actor.user.id, action === 'accept-delivery' ? 'delivery.accepted' : 'revision.requested', now()); await saveTask(repo, task);
       return { taskId: id, version: task.version, status: task.assignment.status, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? task.settlement.status : 'not_applicable_local_unpaid' };

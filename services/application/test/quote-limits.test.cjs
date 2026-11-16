@@ -17,3 +17,13 @@ test('out-of-range or malformed terms are rejected', () => {
     { amountMinor: '100', deliveryMinutes: 60 },
   ]) assert.equal(withinQuoteLimits(terms), false, JSON.stringify(terms));
 });
+
+test('the execution window follows the agreed delivery time at every scale', () => {
+  const { executionWindowMs } = require('../src/quote-limits.cjs');
+  const MINUTE = 60000;
+  assert.equal(executionWindowMs(1), 5 * MINUTE); // never shorter than five minutes
+  assert.equal(executionWindowMs(45), 90 * MINUTE);
+  assert.equal(executionWindowMs(3 * 24 * 60), 6 * 24 * 60 * MINUTE); // a three-day job is not cut off at 24 hours
+  assert.equal(executionWindowMs(10 ** 9), 2 * QUOTE_LIMITS.maxDeliveryMinutes * MINUTE); // bounded by the quote range
+  assert.equal(executionWindowMs(undefined), 5 * MINUTE);
+});
