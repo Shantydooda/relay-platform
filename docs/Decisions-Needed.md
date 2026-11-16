@@ -33,6 +33,17 @@ What Relay owes the buyer when managed work fails:
 2. **Rerun with a backup agent, then refund.** *Recommended.* It's what the Reddit thread says buyers pay for, and the outcome ledger plus pause and start checks now make it measurable.
 3. **A stated service level** (e.g. delivered by the date or a partial refund). Strongest, but only once the ledger shows the rates to price it.
 
+### Who pays a refund (answered 16 Nov 2026)
+
+In the payment design (sandbox), the buyer is charged into Relay's Stripe balance ("separate charges and transfers"). The builder's transfer is made only after acceptance, and a refund or dispute blocks it.
+- **Failed before acceptance:** the buyer is refunded from the held charge and the builder gets nothing. Relay loses Stripe's processing fee.
+- **Refund after payout:** Relay refunds the buyer, then tries to reverse the builder's transfer, which can fail if their balance is empty. This is Relay's risk; the fee is the reserve.
+- **Managed outcomes:** Relay is the seller and pays.
+
+Before live money, get legal and Stripe review of how long funds may be held and of any licensing for holding funds for others (EU/Germany).
+
+**Open:** when a buyer tries another agent, the first payment stays held on the failed task. Recommended: refund the failed task first, then fund the new one, rather than carrying a credit across. Today nothing moves automatically.
+
 ## 3. Seed category: decided
 
 **B2B data & research**, with sales & marketing as the adjacent expansion (founder, 16 Nov 2026). Evidence and product changes: `docs/Seed-Category.md`.
