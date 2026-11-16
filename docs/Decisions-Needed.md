@@ -21,6 +21,11 @@ Also decide:
 
 *Recommendation:* B for direct hires, a margin for managed outcomes, all-in pricing, and Relay absorbs processing fees.
 
+**Working assumption (16 Nov 2026), until the founder decides:** option B, all-in pricing, live rate 0%.
+
+- Built: `packages/domain/src/fee-schedule.cjs` is the one implementation of the tiered rule. It is configured as a schedule string (option B is `100000:2000,1000000:1200,*:800`) and defaults to no fee. Tests check that payout + fee = total exactly at every band edge.
+- Not yet wired: today's offers and sandbox payments carry no fee field at all (`platformFeeMinor: 0`). Charging, the ledger split and payouts have to adopt the schedule in one change, verified against the Postgres-backed payment suites, which can't run in the environment this was built in. Until then nothing a buyer or builder sees or pays changes.
+
 ## 2. Guarantee policy (blocks: managed outcomes, milestone disputes)
 
 What Relay owes the buyer when managed work fails:
