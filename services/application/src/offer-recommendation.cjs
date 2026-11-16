@@ -26,6 +26,27 @@ const PRIORITY = new RegExp(`^(?:please )?(?:(?:use|show me|prefer|i(?:'|’)?d 
 // Thousands separators are accepted ("$1,000"); at most two decimal places.
 const AMOUNT = '(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]{1,2})?';
 const BUDGET = new RegExp(`^(?:please )?(?:keep it under|(?:my )?budget is|no more than|max(?:imum)?(?: of)?) ([$€£])(${AMOUNT})${PLEASE}[.!]?$`, 'i');
+// A budget stated inside a brief ("Budget: $150", "my budget is $150", "budget up to €2,000").
+// Only an explicit ceiling counts: "around $150" is a target, "$5M ARR" or "$2 per lead" are not budgets.
+// The budget must be the buyer's: at the start of a sentence or after my/our/a/the/total/max,
+// so "their marketing budget is $50" describes the target companies, not this task.
+const BRIEF_BUDGET = new RegExp(`(?:^\\s*|\\b(?:my|our|a|the|total|max|maximum)\\s+)budget\\b\\s*(?:is|of|:|=)?\\s*(?:under|below|max(?:imum)?(?: of)?|up to|no more than|at most)?\\s*([$€£])(${AMOUNT})(?![0-9.,]*\\s*(?:k|m|bn|b|million|billion|thousand|per|each|a|an)\\b|[0-9a-z/])`, 'i');
+// Sentences that are questions or conditions are never applied as instructions.
+const HYPOTHETICAL = /\?|\b(?:if|suppose|supposing|imagine|would|could|might)\b/i;
+const CURRENCY = {'$':'USD','€':'EUR','£':'GBP'};
+function budgetFrom(match) {
+  const minor = Math.round(Number(match[2].replace(/,/g, '')) * 100);
+  return Number.isSafeInteger(minor) && minor > 0 ? {currency: CURRENCY[match[1]], amountMinor: minor} : null;
+}
+function briefBudget(body) {
+  let found = null;
+  for (const sentence of body.split(/(?<=[.!?])\s+|\n+/)) {
+    if (HYPOTHETICAL.test(sentence)) continue;
+    const match = sentence.trim().match(BRIEF_BUDGET);
+    if (match) found = budgetFrom(match) || found;
+  }
+  return found;
+}
 const PRIORITY_REASON = {
   balanced: 'Price and supplier delivery estimate were balanced',
   price: 'Lower price was prioritized, as you asked,',
@@ -49,10 +70,8 @@ function discoveryPreferences(task) {
     const success = body.match(/^use the cheapest agent that still has at least (100|[0-9]{1,2})% success rate[.!]?$/i);
     if (success) preferences.requiredSuccessRate = Number(success[1]);
     const budget = body.match(BUDGET);
-    if (budget) {
-      const minor = Math.round(Number(budget[2].replace(/,/g, '')) * 100);
-      if (Number.isSafeInteger(minor) && minor > 0) preferences.budget = {currency: {'$':'USD','€':'EUR','£':'GBP'}[budget[1]], amountMinor:minor};
-    }
+    const stated = budget ? budgetFrom(budget) : briefBudget(body);
+    if (stated) preferences.budget = stated;
     if (/^(?:please )?(?:reset|clear) (?:my )?(?:matching |discovery )?preferences[.!]?$/i.test(body)) { Object.assign(preferences, {priority:'balanced', alternatives:false, budget:null}); delete preferences.requiredSuccessRate; }
   }
   return preferences;
@@ -90,12 +109,13 @@ function recommendOffers(task, offers, now) {
     recommended: offer.id === best?.offer.id,
     scopeVersion: task.scopeVersion,
     reasons: offer.id === best?.offer.id ? [
+      // Ordered by decision weight: the inline card shows the first three (fit, evidence, price/time).
       `Declared capability matches words or related concepts in your brief: ${best.matched.slice(0, 5).join(', ')}.`,
-      ...(best.match.detailMatches.length ? [`Supplier-declared details also match: ${best.match.detailMatches.join(', ')}. These are not independently verified.`] : []),
-      'This quoted capability has a current assessment and a recently connected runtime.',
       best.offer.trackRecord?.outcomes?.runs ? `Verified outcomes for this capability: ${ledgerLabel(best.offer.trackRecord.outcomes)}.` :
         best.history ? `${best.history} accepted deliveries for this capability in this environment.` : 'New capability history: assessment evidence is available, but verified runs are not established.',
-      sameCurrency ? `${PRIORITY_REASON[preferences.priority]} across ${candidates.length} eligible ${offer.currency} quote${candidates.length === 1 ? '' : 's'}.` : 'Delivery estimates were compared; prices in different currencies were not compared.'
+      sameCurrency ? `${PRIORITY_REASON[preferences.priority]} across ${candidates.length} eligible ${offer.currency} quote${candidates.length === 1 ? '' : 's'}.` : 'Delivery estimates were compared; prices in different currencies were not compared.',
+      'This quoted capability has a current assessment and a recently connected runtime.',
+      ...(best.match.detailMatches.length ? [`Supplier-declared details also match: ${best.match.detailMatches.join(', ')}. These are not independently verified.`] : [])
     ] : [],
     limitations: 'Provisional match based on declared capability, current assessment, verified outcomes in this environment and supplier estimates. Outcome counts are not a guarantee or a guarantee of scope coverage, compliance, availability or delivery. Review the agreement before selecting.'
   }}));

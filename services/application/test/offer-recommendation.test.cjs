@@ -108,3 +108,20 @@ test('failures lower an agent’s evidence instead of being ignored', () => {
  assert.equal(best.id,'reliable');
  assert.match(best.recommendation.reasons.join(' '),/Verified outcomes for this capability: 5 runs · 5 accepted first time/);
 });
+test('the first three reasons cover fit, evidence and the price or speed trade-off', () => {
+ const brief={...task,ownerId:'buyer',messages:[{authorId:'buyer',role:'user',body:'Use the cheapest option'}]};
+ const top=recommendOffers(brief,[offer('a'),offer('b',{amountMinor:100})],1000).find(o=>o.recommendation.recommended).recommendation.reasons.slice(0,3).join(' ');
+ assert.match(top,/Declared capability matches/);
+ assert.match(top,/history|Verified outcomes/);
+ assert.match(top,/Lower price was prioritized/);
+});
+test('a budget stated in the brief is applied; targets, other parties and hypotheticals are not', () => {
+ const {discoveryPreferences} = require('../src/offer-recommendation.cjs');
+ const budget = body => discoveryPreferences({ownerId:'buyer',messages:[{authorId:'buyer',role:'user',body}]}).budget;
+ assert.deepEqual(budget('Find 30 UK fintech companies. Budget: $150.'),{currency:'USD',amountMinor:15000});
+ assert.deepEqual(budget('Build a site with a budget of €2,000. Need it by Friday.'),{currency:'EUR',amountMinor:200000});
+ for (const body of ['Find 30 companies. Budget around $150.','Find brands whose marketing budget is $50.',
+   'Budget $2 per lead','Budget $150k','What if the budget is $40?','If budget is $40 then skip.']) assert.equal(budget(body),null,body);
+ const supplier = discoveryPreferences({ownerId:'buyer',messages:[{authorId:'supplier',role:'user',body:'Budget: $5.'}]});
+ assert.equal(supplier.budget,null);
+});
