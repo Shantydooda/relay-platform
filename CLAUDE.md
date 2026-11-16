@@ -101,7 +101,7 @@ npm run start:local
 
 ## 7. State of the work
 
-Pushed to `codex/v1-production-foundation` (head `5222ef5`). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
+Pushed to `codex/v1-production-foundation` (head `b0501df`, the commit that adds this file; the acceptance patch also applies on top of it). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
 - the auth fix for Supabase's default email links (`01dc6da`);
 - the seed category and its matching vocabulary (`2793988`);
 - the fee rule, at 0% and not wired (`e99c5ce`);
