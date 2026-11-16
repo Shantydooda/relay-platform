@@ -17,14 +17,21 @@ const STOP = new Set([
   'about also any around best budget can could get give good great help high into just like more new',
   'quality some top using use very would your you',
 ].join(' ').split(' '));
+// Seed category (docs/Seed-Category.md): B2B data & research first, then the
+// adjacent sales work buyers describe in the same breath.
 const GROUPS = {
-  prospecting: ['prospecting', 'lead generation', 'leads', 'sales prospects'],
-  research: ['research', 'investigate', 'investigation', 'market intelligence'],
+  prospecting: ['prospecting', 'lead generation', 'leads', 'lead list', 'lead lists', 'sales prospects', 'contacts', 'contact list',
+    'decision makers', 'outbound', 'cold outreach', 'sdr'],
+  research: ['research', 'investigate', 'investigation', 'market intelligence', 'market research', 'competitor research',
+    'competitive analysis', 'competitor analysis', 'competitors', 'due diligence', 'desk research'],
+  enrichment: ['enrich', 'enrichment', 'data enrichment', 'firmographics', 'firmographic', 'email verification', 'verify emails'],
+  crm: ['crm', 'hubspot', 'salesforce', 'attio', 'pipedrive'],
+  support: ['customer support', 'customer service', 'help desk', 'helpdesk', 'support tickets', 'ticket triage'],
   website: ['website', 'websites', 'web development', 'landing page'],
   video: ['video', 'videos', 'film', 'films'],
   presentation: ['presentation', 'presentations', 'pitch deck', 'slide deck'],
   property: ['real estate', 'property', 'properties'],
-  company: ['company', 'companies', 'businesses'],
+  company: ['company', 'companies', 'businesses', 'startup', 'startups', 'firms', 'organisations', 'organizations'],
   deduplication: ['deduplicate', 'deduplication', 'dedup', 'duplicate', 'duplicates', 'remove duplicates', 'remove exact duplicates'],
   spreadsheet: ['csv', 'spreadsheet', 'spreadsheets', 'excel', 'xlsx'],
   uk: ['uk', 'united kingdom', 'britain'],

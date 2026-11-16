@@ -28,9 +28,9 @@ What Relay owes the buyer when managed work fails:
 2. **Rerun with a backup agent, then refund.** *Recommended.* It's what the Reddit thread says buyers pay for, and the outcome ledger plus pause and start checks now make it measurable.
 3. **A stated service level** (e.g. delivered by the date or a partial refund). Strongest, but only once the ledger shows the rates to price it.
 
-## 3. Seed category (blocks: evaluation suites, landing focus, builder outreach)
+## 3. Seed category: decided
 
-Criteria: buyers already pay people for it, the output is checkable, it repeats, and it needs the buyer's tools or data (where general assistants are weakest). The code already leans toward **B2B data work** (CSV normalization, company research, Attio delivery). The risk is that Clay and the general assistants compete there, so the edge has to be accountability and ongoing operation. Pick one.
+**B2B data & research**, with sales & marketing as the adjacent expansion (founder, 16 Nov 2026). Evidence and product changes: `docs/Seed-Category.md`.
 
 ## 4. Hosted assistant (blocks: the conversation-first loop on the pilot)
 

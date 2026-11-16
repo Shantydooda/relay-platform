@@ -29,3 +29,16 @@ test('plural forms and common file wording align without broad stemming', () => 
   assert.ok(matchCapability('Weekly reports on competitors', 'Competitor report').matches.includes('report'));
   assert.equal(matchCapability('Analysis of business processes', 'Video production').score, 0);
 });
+test('seed-category wording matches how buyers describe B2B data and research work', () => {
+  assert.ok(matchCapability('Get me 50 contacts at fintech startups', 'Sales prospecting').matches.includes('prospecting'));
+  assert.ok(matchCapability('Get me 50 contacts at fintech startups', 'Company research for startups').matches.includes('company'));
+  assert.ok(matchCapability('Competitor analysis for our SaaS', 'Market research').matches.includes('research'));
+  assert.ok(matchCapability('Enrich my HubSpot contacts with firmographics', 'Data enrichment').matches.includes('enrichment'));
+  assert.ok(matchCapability('Clean up our Salesforce records', 'CRM cleanup').matches.includes('crm'));
+  assert.ok(matchCapability('Triage our support tickets', 'Customer support automation').matches.includes('support'));
+});
+test('seed-category additions do not create matches across unrelated work', () => {
+  assert.equal(matchCapability('Edit our launch video', 'Market research').score, 0);
+  assert.equal(matchCapability('Build a landing page for our startup', 'Sales prospecting').matches.includes('prospecting'), false);
+  assert.equal(matchCapability('Write a blog post about research methods', 'CRM cleanup').score, 0);
+});
