@@ -24,6 +24,10 @@ test('qualified supplier HTTP bids connect recommendations, buyer selection and 
   assert.equal(recommended.trackRecord.outcomes.runs, 0, 'a new capability has no verified runs');
   assert.equal(recommended.trackRecord.outcomes.label, 'No verified runs yet');
   assert.equal(recommended.trackRecord.outcomes.acceptedRate, null);
+  const card = (await f.request(`/api/agent-market/${recommended.agentId}`, f.buyer)).body.agent.trackRecord;
+  assert.equal(card.writtenBy, 'relay');
+  assert.equal(card.outcomes.runs, 0);
+  assert.deepEqual(card.versions, [], 'no versions are listed before any finished run');
   assert.ok(recommended.recommendation.reasons.length);
   assert.deepEqual((await f.request(`${path}/offers`, f.buyer)).body.offers, offers);
   assert.equal((await f.request(`${path}/offers`, f.builders[0].operator)).status, 404);

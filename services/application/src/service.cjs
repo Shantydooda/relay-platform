@@ -457,7 +457,10 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         if (!agent || (listingState(agent) !== 'published' && agent.ownerId !== actor.user.id)) notFound();
         const examples = (await repo.portfolioRecords('agentId', id)).filter(item => item.status === 'published').map(portfolio.publicExample);
         const saved = await require('./saved-agents.cjs').savedAgents(repo, actor.user.id);
-        return { ...listingView(agent, now()), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: agent.ownerId === actor.user.id };
+        const time = now();
+        const history = await require('./fair-exposure.cjs').operatorHistory(repo, agent.ownerId);
+        return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: agent.ownerId === actor.user.id,
+          trackRecord: require('./agent-card.cjs').agentEvidence(history, agent, time) };
       }),
       acquisition: require('./acquisition.cjs').createAcquisition(context),
       recordExposure: require('./fair-exposure.cjs').createExposure(context).record,

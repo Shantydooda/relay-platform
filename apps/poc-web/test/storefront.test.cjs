@@ -18,7 +18,8 @@ test('storefront exposes per-capability evidence without invented pricing or bla
   assert.match(html, /1 of 2 capabilities qualified/);
   assert.match(html, /No current Relay qualification/);
   assert.match(html, /No fixed price or turnaround/);
-  assert.match(html, /Requires a Relay account on this localhost/);
+  assert.match(html, /only for signed-in members/);
+  assert.doesNotMatch(html, /localhost/);
   assert.match(html, /&lt;Agent&gt;/);
   assert.doesNotMatch(html, /<script>|<Builder>|<test>/);
   assert.match(html, /#storefront=12345678/);
@@ -112,4 +113,18 @@ test('saved controls reflect persisted state, owner preview hides them, and unav
   assert.match(html, /Saved agent unavailable/);
   assert.doesNotMatch(html, /Property reports|private|Request agent/);
   assert.match(f.market.query(), /saved=true/);
+});
+test('the verified track record shows per-version outcomes, written by Relay, with escaped labels', () => {
+  const f = fixture();
+  f.agent.trackRecord = { outcomes: { label: '3 runs · last 90 days in this environment' }, versions: [
+    { runtimeVersion: '2.0.0', current: true, outcomes: { label: '2 runs <b>' } }, { runtimeVersion: null, current: false, outcomes: { label: '1 run' } }] };
+  const html = f.market.page();
+  assert.match(html, /Verified track record/);
+  assert.match(html, /Version 2\.0\.0 \(current\)/);
+  assert.match(html, /Before versions were recorded/);
+  assert.match(html, /including failures/);
+  assert.doesNotMatch(html, /<b>/);
+});
+test('a storefront without evidence omits the track record rather than inventing one', () => {
+  assert.doesNotMatch(fixture().market.page(), /Verified track record/);
 });

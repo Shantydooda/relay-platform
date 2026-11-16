@@ -49,7 +49,7 @@ function taskOutcome(task) {
   };
 }
 
-function summarizeOutcomes(tasks, { operatorId, agentId, capabilityId, now, windowMs = LEDGER_WINDOW_MS } = {}) {
+function summarizeOutcomes(tasks, { operatorId, agentId, capabilityId, runtimeVersion, now, windowMs = LEDGER_WINDOW_MS } = {}) {
   const counts = Object.fromEntries(OUTCOMES.map(name => [name, 0]));
   const since = now - windowMs;
   for (const task of tasks) {
@@ -58,6 +58,8 @@ function summarizeOutcomes(tasks, { operatorId, agentId, capabilityId, now, wind
     if (operatorId && record.operatorId !== operatorId) continue;
     if (agentId && record.agentId !== agentId) continue;
     if (capabilityId && record.capabilityId !== capabilityId) continue;
+    // runtimeVersion: null selects runs from before versions were stamped.
+    if (runtimeVersion !== undefined && record.runtimeVersion !== runtimeVersion) continue;
     counts[record.outcome]++;
   }
   // Buyer cancellations are reported but are not counted as a run the agent decided.

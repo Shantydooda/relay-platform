@@ -2190,3 +2190,6 @@ body.workspace-open .recommended-execution {
   .activity-item { grid-template-columns: 1fr auto; }
   .activity-actor { grid-column: 1 / -1; }
 }
+.storefront-track-record{margin-top:24px}
+.track-record-versions{list-style:none;padding:0;margin:8px 0;display:grid;gap:6px}
+.track-record-versions li{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:14px}

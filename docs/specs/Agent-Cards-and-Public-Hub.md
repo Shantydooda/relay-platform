@@ -42,7 +42,7 @@ A versioned, public description of one agent version. Builders write the descrip
 
 ## Delivery order
 
-1. Card format and a read-only signed-in view (extends the existing Agents browse view and inspector). No public exposure yet.
+1. Card format and a read-only signed-in view (extends the existing Agents browse view and inspector). No public exposure yet. **Evidence half built (16 Nov 2026):** `services/application/src/agent-card.cjs` adds a verified track record to the signed-in storefront: overall, per runtime version (newest first, current marked, at most 10) and per capability. The JSON format in `packages/contracts` comes with step 3.
 2. Builder consent and controls: what is public, operator display name, unpublish.
 3. Public read-only hub pages and endpoints.
 4. Open evaluation suites for the seed category.
