@@ -2651,6 +2651,21 @@
                   }
                 ]
               },
+              "acceptanceCriteria": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {
+                  "$ref": "#/components/schemas/AcceptanceCriterion"
+                },
+                "description": "The checklist frozen in the agreement. Fixes needed to meet it are part of the agreed price. Optional for compatibility with older servers."
+              },
+              "unmetCriteria": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "On a revision, the criterion ids the buyer marked as not met. Empty on the first attempt. Optional for compatibility with older servers."
+              },
               "handoffs": {
                 "type": "array",
                 "maxItems": 8,
