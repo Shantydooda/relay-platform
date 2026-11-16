@@ -569,3 +569,12 @@ test('hosted pilot footnote states disabled payments and execution instead of lo
  state.authMode='local';
  assert.match(vm.runInContext('environmentNote()',ctx),/local model not configured/);
 });
+test('offer cards show verified outcome counts from the server, falling back to accepted counts',()=>{
+ const {state,ctx}=ui();
+ const base={agentName:'Researcher',agentType:'specialist',operatorName:'A',amountMinor:7500,deliveryMinutes:60,proposal:'CSV',capability:'Research',scopeVersion:1,expiresAt:Date.now()+100000};
+ state.offers=[{...base,id:'ledger',trackRecord:{capabilityAccepted:4,operatorAccepted:4,outcomes:{runs:5,label:'5 runs · 4 accepted first time · 1 failed · last 90 days in this environment'}}},
+   {...base,id:'legacy',trackRecord:{capabilityAccepted:2,operatorAccepted:3}}];
+ const html=vm.runInContext('offerCards()',ctx);
+ assert.match(html,/5 runs · 4 accepted first time · 1 failed/);
+ assert.match(html,/2 accepted deliveries for this capability/);
+});

@@ -59,7 +59,7 @@ test('a required success rate abstains when verified denominators are unavailabl
  const brief={...task,ownerId:'buyer',messages:[{authorId:'buyer',body:'Use the cheapest agent that still has at least 95% success rate.'}]};
  const result=recommendOffers(brief,[offer('a',{trackRecord:{capabilityAccepted:100}})],1000);
  assert.equal(result[0].recommendation.recommended,false);
- assert.match(result[0].recommendation.blockedReason,/not available/);
+ assert.match(result[0].recommendation.blockedReason,/verified runs/);
 });
 
 test('concept match connects a differently worded brief to qualified quotes with declared detail evidence',()=>{
@@ -89,4 +89,22 @@ test('recommendation reason reflects the buyer priority instead of always claimi
  const reasons=recommendOffers(brief,[offer('a'),offer('b',{deliveryMinutes:10})],1000).find(o=>o.recommendation.recommended).recommendation.reasons.join(' ');
  assert.match(reasons,/Faster delivery was prioritized/);
  assert.doesNotMatch(reasons,/were balanced/);
+});
+const outcomes = (values) => ({basis:'verified-outcomes-in-this-environment',windowDays:90,runs:0,accepted:0,accepted_first_time:0,accepted_after_revision:0,failed:0,refunded:0,cancelled:0,acceptedRate:null,...values});
+test('a success requirement is met only by enough verified runs at or above the rate', () => {
+ const brief={...task,ownerId:'buyer',messages:[{authorId:'buyer',body:'Use the cheapest agent that still has at least 90% success rate.'}]};
+ const proven=offer('proven',{trackRecord:{outcomes:outcomes({runs:20,accepted:19,accepted_first_time:19,failed:1,acceptedRate:0.95})}});
+ const thin=offer('thin',{amountMinor:100,trackRecord:{outcomes:outcomes({runs:5,accepted:5,accepted_first_time:5})}});
+ const weak=offer('weak',{amountMinor:100,trackRecord:{outcomes:outcomes({runs:20,accepted:16,accepted_first_time:16,failed:4,acceptedRate:0.8})}});
+ const result=recommendOffers(brief,[proven,thin,weak],1000);
+ assert.deepEqual(result.filter(o=>o.recommendation.recommended).map(o=>o.id),['proven']);
+ assert.equal(result[0].recommendation.blockedReason,null);
+});
+test('failures lower an agent’s evidence instead of being ignored', () => {
+ const reliable=offer('reliable',{trackRecord:{outcomes:outcomes({runs:5,accepted:5,accepted_first_time:5})}});
+ const flaky=offer('flaky',{trackRecord:{outcomes:outcomes({runs:5,accepted:2,accepted_first_time:2,failed:3})}});
+ const result=recommendOffers(task,[flaky,reliable],1000);
+ const best=result.find(o=>o.recommendation.recommended);
+ assert.equal(best.id,'reliable');
+ assert.match(best.recommendation.reasons.join(' '),/Verified outcomes for this capability: 5 runs · 5 accepted first time/);
 });

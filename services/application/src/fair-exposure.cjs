@@ -3,6 +3,11 @@
 const { createHash } = require('node:crypto');
 const { exactKeys, fail } = require('../../../packages/contracts/src/input.cjs');
 const { capabilityView } = require('./qualification.cjs');
+const { summarizeOutcomes, ledgerLabel } = require('./outcome-ledger.cjs');
+function verifiedOutcomes(history, scope) {
+  const summary = summarizeOutcomes(history, scope);
+  return { ...summary, label: ledgerLabel(summary) };
+}
 const POLICY = 'qualified-newcomer-v1';
 
 // Counts are outcomes in this environment, never inferred paid-customer claims.
@@ -49,7 +54,8 @@ async function offersWithExposure(repo, task, now) {
       offer.scopeVersion === task.scopeVersion && offer.expiresAt > now;
     results.push({ ...offer, qualificationCurrent, capabilityMetadata: cap?.metadata || {},
       selected: task.assignment?.offerId === offer.id || (task.selectedOfferId === offer.id && offer.expiresAt > now),
-      trackRecord: { capabilityAccepted, operatorAccepted, basis: 'accepted-deliveries-in-this-environment' },
+      trackRecord: { capabilityAccepted, operatorAccepted, basis: 'accepted-deliveries-in-this-environment',
+        outcomes: verifiedOutcomes(history, { operatorId: offer.operatorId, agentId: offer.agentId, capabilityId: offer.capabilityId, now }) },
       exposure: { policy: POLICY, eligible: Boolean(eligible), newcomer: Boolean(eligible && operatorAccepted < 3),
         featured: false, shortlisted: false, reason: null },
       // Internal ordering inputs are removed before returning to callers.

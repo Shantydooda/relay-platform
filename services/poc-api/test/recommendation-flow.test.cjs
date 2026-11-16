@@ -21,6 +21,9 @@ test('qualified supplier HTTP bids connect recommendations, buyer selection and 
   assert.deepEqual(recommended.capabilityMetadata.outputs, ['CSV']);
   assert.equal(recommended.qualificationEvidence.submissions.length, 2);
   assert.equal(recommended.trackRecord.capabilityAccepted, 0);
+  assert.equal(recommended.trackRecord.outcomes.runs, 0, 'a new capability has no verified runs');
+  assert.equal(recommended.trackRecord.outcomes.label, 'No verified runs yet');
+  assert.equal(recommended.trackRecord.outcomes.acceptedRate, null);
   assert.ok(recommended.recommendation.reasons.length);
   assert.deepEqual((await f.request(`${path}/offers`, f.buyer)).body.offers, offers);
   assert.equal((await f.request(`${path}/offers`, f.builders[0].operator)).status, 404);

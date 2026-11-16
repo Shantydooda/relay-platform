@@ -2,6 +2,24 @@
 
 const POLICY = 'evidence-concepts-v3';
 const {matchCapability} = require('./capability-matching.cjs');
+const {ledgerLabel, MIN_RATE_SAMPLE} = require('./outcome-ledger.cjs');
+
+// A success requirement can only be met by verified outcomes with enough runs behind them.
+function meetsSuccessRequirement(offer, required) {
+  if (required === undefined) return true;
+  const rate = offer.trackRecord?.outcomes?.acceptedRate;
+  return Number.isFinite(rate) && rate * 100 >= required;
+}
+
+// Evidence points reward both volume and outcome quality: failures and refunds lower the score.
+function evidencePoints(offer) {
+  const outcomes = offer.trackRecord?.outcomes;
+  if (!outcomes) return 20 * Math.min(Math.max(0, Number(offer.trackRecord?.capabilityAccepted) || 0), 5) / 5;
+  if (!outcomes.runs) return 0;
+  const confidence = Math.min(outcomes.runs, 5) / 5;
+  const quality = (outcomes.accepted + 1) / (outcomes.runs + 2);
+  return 20 * confidence * quality;
+}
 const PLEASE = '(?:,? please)?';
 const ALTERNATIVES = new RegExp(`^(?:please )?(?:(?:can|could) you )?(?:show|see|give me|can i see) (?:me )?(?:three |3 |some |other |more )?(?:alternatives|agents|options)${PLEASE}[.!?]?$`, 'i');
 const PRIORITY = new RegExp(`^(?:please )?(?:(?:use|show me|prefer|i(?:'|’)?d prefer|go with) )?(?:the )?(cheapest|cheaper|fastest|quickest|balanced)(?: (?:one|agent|option))?${PLEASE}[.!]?$`, 'i');
@@ -42,7 +60,7 @@ function discoveryPreferences(task) {
 
 function recommendOffers(task, offers, now) {
   const preferences = discoveryPreferences(task);
-  const candidates = offers.filter(offer => preferences.requiredSuccessRate === undefined && offer.exposure?.eligible &&
+  const candidates = offers.filter(offer => meetsSuccessRequirement(offer, preferences.requiredSuccessRate) && offer.exposure?.eligible &&
     offer.qualificationCurrent && offer.scopeVersion === task.scopeVersion &&
     offer.expiresAt > now && (!preferences.budget || (offer.currency === preferences.budget.currency && offer.amountMinor <= preferences.budget.amountMinor)) && Number.isSafeInteger(offer.amountMinor) && offer.amountMinor > 0 &&
     Number.isFinite(offer.deliveryMinutes) && offer.deliveryMinutes > 0)
@@ -57,7 +75,7 @@ function recommendOffers(task, offers, now) {
     const {offer, matched} = candidate;
     const history = Math.max(0, Number(offer.trackRecord?.capabilityAccepted) || 0);
     const fit = candidate.match.score;
-    const score = 50 * fit + 20 * Math.min(history, 5) / 5 +
+    const score = 50 * fit + evidencePoints(offer) +
       (sameCurrency ? (preferences.priority === 'price' ? 40 : 15) * minPrice / offer.amountMinor : 0) +
       (preferences.priority === 'speed' ? 40 : 15) * minTime / offer.deliveryMinutes;
     return {...candidate, score, history};
@@ -67,17 +85,19 @@ function recommendOffers(task, offers, now) {
     policy: POLICY,
     preferences,
     eligibleCount: candidates.length,
-    blockedReason: preferences.requiredSuccessRate !== undefined ? 'Verified capability success rates are not available yet, so I cannot recommend an agent against that requirement.' : null,
+    blockedReason: preferences.requiredSuccessRate !== undefined && !candidates.length ?
+      `No quoted agent has at least ${MIN_RATE_SAMPLE} verified runs with ${preferences.requiredSuccessRate}% or more accepted, so I cannot recommend one against that requirement yet.` : null,
     recommended: offer.id === best?.offer.id,
     scopeVersion: task.scopeVersion,
     reasons: offer.id === best?.offer.id ? [
       `Declared capability matches words or related concepts in your brief: ${best.matched.slice(0, 5).join(', ')}.`,
       ...(best.match.detailMatches.length ? [`Supplier-declared details also match: ${best.match.detailMatches.join(', ')}. These are not independently verified.`] : []),
       'This quoted capability has a current assessment and a recently connected runtime.',
-      best.history ? `${best.history} accepted deliveries for this capability in this environment.` : 'New capability history: assessment evidence is available, but accepted deliveries are not established.',
+      best.offer.trackRecord?.outcomes?.runs ? `Verified outcomes for this capability: ${ledgerLabel(best.offer.trackRecord.outcomes)}.` :
+        best.history ? `${best.history} accepted deliveries for this capability in this environment.` : 'New capability history: assessment evidence is available, but verified runs are not established.',
       sameCurrency ? `${PRIORITY_REASON[preferences.priority]} across ${candidates.length} eligible ${offer.currency} quote${candidates.length === 1 ? '' : 's'}.` : 'Delivery estimates were compared; prices in different currencies were not compared.'
     ] : [],
-    limitations: 'Provisional match based on declared capability, current assessment, local acceptance history and supplier estimates. Not a verified success rate or a guarantee of scope coverage, compliance, availability or delivery. Review the agreement before selecting.'
+    limitations: 'Provisional match based on declared capability, current assessment, verified outcomes in this environment and supplier estimates. Outcome counts are not a guarantee or a guarantee of scope coverage, compliance, availability or delivery. Review the agreement before selecting.'
   }}));
 }
 module.exports = {recommendOffers, discoveryPreferences};

@@ -118,7 +118,7 @@ function createExecution(context) {
     const { offer, agent } = await checkStart(repo, actor, task, mode);
     task.assignment = { id: randomUUID(), agentId: agent.id, operatorId: offer.operatorId, offerId: offer.id,
       status: 'queued', authorizedAt: now(), mode, attempt: 0, progress: 'Waiting for the runtime',
-      runtimeKind: agent.runtimeKind, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + Math.min(86400000, Math.max(300000, offer.deliveryMinutes * 120000)),
+      runtimeKind: agent.runtimeKind, runtimeVersion: agent.runtimeVersion || null, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + Math.min(86400000, Math.max(300000, offer.deliveryMinutes * 120000)),
       agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null } };
     touch(task, now()); event(task, actor.user.id, 'assignment.authorized_local', now());
     await saveTask(repo, task);

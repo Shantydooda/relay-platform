@@ -8,6 +8,12 @@ function deliveryDuration(minutes) {
   const parts = [days && `${days} ${days === 1 ? 'day' : 'days'}`, hours && `${hours} h`, mins && `${mins} min`].filter(Boolean);
   return parts.length ? parts.slice(0, 2).join(' ') : '0 min';
 }
+// The server owns the outcome wording (outcome-ledger.cjs). Older payloads fall back to accepted counts.
+function trackRecordText(trackRecord) {
+  if (!trackRecord) return 'No delivery history yet';
+  if (trackRecord.outcomes?.label) return trackRecord.outcomes.label;
+  return `${Number(trackRecord.capabilityAccepted) || 0} accepted deliveries for this capability`;
+}
 const scopeMatches = (offer,task) => (offer.scopeVersion ?? offer.taskVersion) === (task.scopeVersion ?? task.version);
 const builderLabels = {dashboard:'Overview',agents:'Your agents',opportunities:'Opportunities',quotes:'Your offers',work:'Tasks',earnings:'Earnings',settings:'Settings'};
 
@@ -17,7 +23,7 @@ function offerCard(o, task, trackExposure = true) {
     <div class="section-heading"><div><span class="eyebrow">${o.agentType==='general'?'General-purpose':'Domain specialist'}</span><h3>${escape(o.agentName)}</h3><small>Operated by ${escape(o.operatorName)}</small></div><strong>${money(o.amountMinor, o.currency)}<small>supplier quote · total not final</small></strong></div>
     <p>${escape(o.capability)}</p><span class="tag">${o.qualification==='qualified'?(o.qualificationCurrent?`${RelaySupplier.assessmentTitle(o.qualificationEvidence)} passed`:'Previous assessment pass · retest required'):'Not currently assessed'}</span>
     ${o.exposure?.featured?`<p class="tag">Qualified newcomer opportunity</p><p class="hint">${escape(o.exposure.reason)}</p>`:''}
-    ${o.trackRecord?`<p class="hint">${o.trackRecord.capabilityAccepted} accepted deliveries for this capability · ${o.trackRecord.operatorAccepted} across this builder. Local and sandbox history, not paid-customer proof.</p>`:''}
+    ${o.trackRecord?`<p class="hint">${escape(trackRecordText(o.trackRecord))}. Local and sandbox history, not paid-customer proof.</p>`:''}
     <p class="offer-details">${escape(o.proposal)}</p>
     <div class="offer-facts"><div><small>First delivery estimate</small><strong>${deliveryDuration(o.deliveryMinutes)} after starting</strong></div><div><small>Valid until</small><strong>${date(o.expiresAt)}</strong></div></div>
     <details class="quiet-details"><summary>Capability evidence and price details</summary>${typeof RelaySupplier==='object'?RelaySupplier.evidence(o.qualificationEvidence):''}<p>Qualification is a snapshot at quote time and covers only the displayed rubric. No paid-work reliability history is available.</p><p>${escape(o.currency || 'USD')} supplier quote. Relay fees, tax and payment collection are not configured locally. This is not a final checkout total.</p></details>
@@ -53,7 +59,7 @@ function recommendationInspector(task) {
     ${typeof RelayAgentMarket === 'object' ? RelayAgentMarket.metadata(offer.capabilityMetadata || {}) : ''}
     <h3>Price & timing</h3><p>${money(offer.amountMinor, offer.currency)} supplier quote · ${deliveryDuration(offer.deliveryMinutes)} after starting</p>
     <h3>Performance & trust</h3><p>${offer.qualificationCurrent ? 'Current capability assessment passed' : 'No current capability assessment'}</p>
-    <p>${offer.trackRecord ? `${Number(offer.trackRecord.capabilityAccepted) || 0} accepted deliveries for this capability` : 'No delivery history available'}. Local and sandbox evidence; paid-work performance is not yet established.</p>
+    <p>${escape(trackRecordText(offer.trackRecord))}. Local and sandbox evidence; paid-work performance is not yet established.</p>
     <details><summary>Review assessment evidence</summary>${typeof RelaySupplier === 'object' ? RelaySupplier.evidence(offer.qualificationEvidence) : ''}</details>
     <h3>Included delivery</h3><p class="offer-details">${escape(offer.proposal)}</p>${offer.selected ? '<button class="quiet" data-action="contact-operator">Message operator</button>' : ''}
     ${offer.recommendation ? `<h3>Why this match</h3><p>${escape(offer.recommendation.limitations)}</p>` : ''}
@@ -72,7 +78,7 @@ function recommendedOffers(task, offers) {
     <p class="execution-structure">${recommended.agentType === 'general' ? 'One versatile agent' : 'One specialist'} · operated by ${escape(recommended.operatorName || 'the supplier')}</p>
     <ul class="recommendation-reasons">${recommended.recommendation.reasons.slice(0, 3).map(reason => `<li>${escape(reason.replace('Declared capability matches words or related concepts in your brief:', 'Capability matches your request:').replace('Supplier-declared details also match:', 'Declared coverage matches:').replace('This quoted capability has a current assessment and a recently connected runtime.', 'Current capability assessment; recently connected.'))}</li>`).join('')}</ul>
     <div class="recommendation-facts"><div><small>Quoted price</small><strong>${money(recommended.amountMinor, recommended.currency)}</strong></div><div><small>First delivery</small><strong>${deliveryDuration(recommended.deliveryMinutes)} after starting</strong></div></div>
-    <p class="recommendation-trust">${recommended.qualificationCurrent ? '✓ Capability assessed' : 'Assessment not current'} · ${recommended.trackRecord ? `${Number(recommended.trackRecord.capabilityAccepted) || 0} accepted capability deliveries (local / sandbox)` : 'No delivery history yet'}</p>
+    <p class="recommendation-trust">${recommended.qualificationCurrent ? '✓ Capability assessed' : 'Assessment not current'} · ${escape(trackRecordText(recommended.trackRecord))}</p>
     <div class="inline-actions">${!reviewing ? `<button class="primary" data-action="review-offer" data-id="${escape(recommended.id)}">Continue with this agent</button>` : ''}<button class="quiet" data-action="inspect-recommendation">View details</button></div>
     ${reviewing ? `<div class="offer-confirm"><h3>Confirm this execution option</h3><p class="offer-details">${escape(recommended.proposal)}</p><p>${money(recommended.amountMinor, recommended.currency)} supplier quote. Fees and tax are not included. You’ll review permissions before work starts.</p><button class="primary" data-action="accept-offer" data-id="${escape(recommended.id)}">Confirm selection</button><button class="quiet" data-action="close-review">Keep discussing</button></div>` : ''}
   </section>${alternatives.length ? `<details class="thread-alternatives" ${(recommended.recommendation.preferences?.alternatives || alternatives.some(offer => offer.id === state.reviewOffer)) ? 'open' : ''}><summary>See ${alternatives.length} alternative offer${alternatives.length === 1 ? '' : 's'}</summary>${alternatives.slice(0, 3).map(offer => compactOffer(offer, task)).join('')}${alternatives.length > 3 ? `<details><summary>More offers (${alternatives.length - 3})</summary>${alternatives.slice(3).map(offer => compactOffer(offer, task)).join('')}</details>` : ''}</details>` : ''}`;
