@@ -172,3 +172,17 @@ test('request titles use the first sentence and never cut mid-word', () => {
   assert.match(long, /research…$/);
   assert.equal(requestTitle('Help, e.g. find leads for my agency in Berlin'), 'Help, e.g. find leads for my agency in Berlin');
 });
+test('a "try another agent" request sends the failed task once and clears it after success',async()=>{
+ const f=fixture();f.dependencies.command=async(...args)=>{f.calls.push(args);return {taskId:'new'};};
+ f.state.retryFrom={taskId:'failed-task',expectedSourceVersion:7};
+ await f.controller().request();
+ const body=f.calls[0][2];
+ assert.equal(body.retryFromTaskId,'failed-task');assert.equal(body.expectedSourceVersion,7);
+ assert.equal(body.preferredAgentId,undefined);assert.equal(f.state.retryFrom,null);
+});
+test('a direct agent request never carries a stale retry',async()=>{
+ const f=fixture();f.dependencies.command=async(...args)=>{f.calls.push(args);return {taskId:'new'};};
+ f.state.retryFrom={taskId:'failed-task',expectedSourceVersion:7};f.state.preferredAgent={id:'a1',preferenceMode:'agent'};
+ await f.controller().request();
+ assert.equal(f.calls[0][2].retryFromTaskId,undefined);assert.equal(f.calls[0][2].preferredAgentId,'a1');
+});

@@ -62,6 +62,7 @@ function createSupplierFeed({ repository, credentials, opportunityView }) {
       const rows = await repo.page('task', 'status', 'posted', page);
       return { tasks: rows.filter(task =>
         (!task.preferredAgentId || task.preferredAgentId === principal.agentId) &&
+        task.retryOf?.excludedAgentId !== principal.agentId &&
         (!task.preferredOperatorId || task.preferredOperatorId === principal.actor.user.id)
       ).map(task => opportunityView(task, principal.actor)).filter(Boolean),
         nextCursor: rows.at(-1)?.id || after, hasMore: rows.length === limit };

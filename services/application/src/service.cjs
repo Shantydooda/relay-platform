@@ -57,6 +57,11 @@ function taskView(task, now) {
     selectedOfferId: offer && offer.expiresAt > now ? offer.id : null,
     input: input ? { filename: input.filename, size: input.size, sha256: input.sha256, notes: input.notes } : null };
 }
+function retryAvailable(task, tenantId = task.tenantId) {
+  return task.tenantId === tenantId && task.assignment?.status === 'failed' && !task.retriedBy && task.status !== 'cancelled' &&
+    !task.orchestrationStep && !task.scheduleId && !task.recurringScheduleId;
+}
+function excludedFrom(task, agentId) { return !!task.retryOf?.excludedAgentId && task.retryOf.excludedAgentId === agentId; }
 function listingState(agent) { return agent.listingStatus || 'published'; }
 function requestableAgent(agent, actor, time) {
   return !!agent && listingState(agent) === 'published' && agent.ownerId !== actor.user.id &&
@@ -124,10 +129,17 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const agentFor = async (repo, actor, id) => owner(actor, await repo.get('agent', id, true));
 
   async function createTask(actor, body, key) {
-    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'expectedSourceVersion']);
+    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion']);
     membership(actor, body.tenantId, true);
     const repeating = body.repeatFromTaskId !== undefined;
-    if (repeating) {
+    const retrying = body.retryFromTaskId !== undefined;
+    if (retrying) {
+      // "Try another agent" after a failed run: a fresh request that the failed agent cannot quote on.
+      if (repeating || body.preferredAgentId !== undefined || body.preferenceMode !== undefined || body.discoverySource !== undefined)
+        fail(400, 'INVALID_INPUT', 'Trying another agent cannot be combined with a direct request.');
+      text(body.retryFromTaskId, 'Failed task', 36, 36);
+      positive(body.expectedSourceVersion, 'Failed task version');
+    } else if (repeating) {
       text(body.repeatFromTaskId, 'Previous task', 36, 36);
       positive(body.expectedSourceVersion, 'Previous task version');
     } else if (body.expectedSourceVersion !== undefined || body.discoverySource === 'repeat-hire') {
@@ -136,6 +148,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     const authorize = async repo => {
       membership(actor, body.tenantId, true);
       if (repeating) await taskFor(repo, actor, body.repeatFromTaskId);
+      if (retrying) await taskFor(repo, actor, body.retryFromTaskId, true);
     };
     const title = text(body.title, 'Title', 1, 120), brief = text(body.brief, 'Brief', 1, 10000);
     return command(actor.user.id, key, ['create', body], authorize, async repo => {
@@ -152,6 +165,16 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         }
         repeatHireOf = { taskId: source.id, version: source.version };
       }
+      let retryOf = null;
+      if (retrying) {
+        const source = await taskFor(repo, actor, body.retryFromTaskId, true);
+        expected(source, body.expectedSourceVersion);
+        if (!retryAvailable(source, body.tenantId)) fail(409, 'RETRY_UNAVAILABLE', 'Another agent can be tried only once, from a failed task in its original workspace.');
+        // The source keeps its failed assignment, so the outcome ledger still counts the failure.
+        // No money moves here: any payment on the source is handled on the source.
+        retryOf = { taskId: source.id, version: source.version, excludedAgentId: source.assignment.agentId };
+        source.retriedBy = id; touch(source, time); event(source, actor.user.id, 'task.retried', time, id); await saveTask(repo, source);
+      }
       await limits.consumeConversation(repo, body.tenantId, time);
       let preferredAgentId = null, preferredOperatorId = null, acquisition = null;
       if (body.preferredAgentId) {
@@ -165,7 +188,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       } else if (body.preferenceMode !== undefined || body.discoverySource !== undefined) {
         fail(400, 'INVALID_INPUT', 'A routing preference requires an available agent.');
       }
-      const task = { id, tenantId: body.tenantId, ownerId: actor.user.id, title, brief, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf,
+      const task = { id, tenantId: body.tenantId, ownerId: actor.user.id, title, brief, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf,
         companyApprovalRequired: !!membership(actor, body.tenantId).company, status: 'draft', version: 1, scopeVersion: 1, createdAt: time, updatedAt: time,
         messages: [{ id: randomUUID(), body: brief, authorId: actor.user.id, authorName: actor.user.name, createdAt: time }],
         scopes: [{ version: 1, title, brief, createdAt: time }], events: [], offers: [], selectedOfferId: null, assignment: null, submissions: [] };
@@ -294,6 +317,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       assertUnfunded(task);
       if (task.preferredAgentId && task.preferredAgentId !== body.agentId) fail(409, 'SCHEDULE_AGENT', 'This recurring run is reserved for its chosen agent.');
       if (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) fail(404, 'NOT_FOUND', 'This direct request is reserved for another builder.');
+      if (excludedFrom(task, body.agentId)) fail(409, 'AGENT_EXCLUDED', 'The buyer asked for a different agent after this agent’s run failed.');
       if (task.assignment) fail(409, 'TASK_ASSIGNED', 'This task is already assigned.');
       if (task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) fail(409, 'TASK_SELECTED', 'The buyer has selected an offer.');
       expected(task, body.expectedVersion);
@@ -346,7 +370,9 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         repeatHire = requestableAgent(agent, actor, now())
           ? { available: true, agentId: agent.id, name: agent.name } : { available: false };
       }
-      return { actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
+      const retry = ['owner', 'employee'].includes(membership(actor, task.tenantId).role) && task.assignment?.status === 'failed'
+        ? (retryAvailable(task) ? { available: true } : { available: false, retriedBy: task.retriedBy || null }) : null;
+      return { retry, actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
         approval: require('./approvals.cjs').approvalView(task, now()), execution: publicExecution(task), payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), submissions: task.submissions.map(publicSubmission) };
     });
   }
@@ -371,6 +397,11 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         if (task.preferredAgentId) {
           const agent = await repo.get('agent', task.preferredAgentId);
           if (!agent || agent.ownerId !== actor.user.id) continue;
+        }
+        if (task.retryOf?.excludedAgentId) {
+          const excluded = await repo.get('agent', task.retryOf.excludedAgentId);
+          // Hide only when this builder has no other agent that could still quote.
+          if (excluded?.ownerId === actor.user.id && (await repo.list('agent', 'owner_id', actor.user.id)).every(agent => agent.id === excluded.id)) continue;
         }
         const item = opportunityView(task, actor);
         if (item) visible.push(item);

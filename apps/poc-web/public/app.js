@@ -162,7 +162,7 @@ function newTask() {
   const welcome = state.sendingRequest
     ? `<div class="request-pending"><article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p class="offer-details">${escape(state.sendingRequest)}</p></article>${activityCard('Sending your message', 'Starting your private conversation.', true)}</div>`
     : `<div class="request-welcome">${relayCharacter('large')}<h1>${state.preferredAgent ? `What should ${escape(state.preferredAgent.preferenceMode === 'builder' ? state.preferredAgent.operatorName || 'this builder' : state.preferredAgent.name)} do?` : 'What would you like done?'}</h1><p>${state.preferredAgent ? `This request will go directly to ${escape(state.preferredAgent.preferenceMode === 'builder' ? `${state.preferredAgent.operatorName || 'This builder'}’s qualified agents` : state.preferredAgent.name)} for a quote. You still approve the price and scope.` : 'Start a conversation. We’ll work out the details together.'}</p></div>`;
-  return `<section class="request-work">${welcome}${state.preferredAgent?.repeatFromTaskId ? `<p class="hint">New request · add any files and tool access again. <a href="#task=${escape(state.preferredAgent.repeatFromTaskId)}">Back to completed task</a></p>` : ''}<div class="request-dock">${!state.sendingRequest ? exampleButtons() : ''}${composer('request', 'Tell Relay what you need…', state.sendingRequest ? 'Sending…' : 'Send', state.sendingRequest ? '' : state.prompt, sendHint()) .replace('<textarea', state.sendingRequest ? '<textarea disabled' : '<textarea').replace('type="submit"', state.sendingRequest ? 'type="submit" disabled' : 'type="submit"')}</div></section>`;
+  return `<section class="request-work">${welcome}${state.retryFrom ? `<p class="hint">Trying another agent · the agent whose run failed won’t quote on this. <a href="#chat=${escape(state.retryFrom.taskId)}">Back to the failed task</a></p>` : ''}${state.preferredAgent?.repeatFromTaskId ? `<p class="hint">New request · add any files and tool access again. <a href="#task=${escape(state.preferredAgent.repeatFromTaskId)}">Back to completed task</a></p>` : ''}<div class="request-dock">${!state.sendingRequest ? exampleButtons() : ''}${composer('request', 'Tell Relay what you need…', state.sendingRequest ? 'Sending…' : 'Send', state.sendingRequest ? '' : state.prompt, sendHint()) .replace('<textarea', state.sendingRequest ? '<textarea disabled' : '<textarea').replace('type="submit"', state.sendingRequest ? 'type="submit" disabled' : 'type="submit"')}</div></section>`;
 }
 
 function taskList() { return taskDashboard(); }
@@ -357,6 +357,7 @@ root.addEventListener('submit',event=>{
       state.reviewStart = false;
       state.reviewOffer = null;
       state.preferredAgent = null;
+      state.retryFrom = null;
       location.hash = 'market';
       await refresh(null);
       render();
@@ -600,8 +601,20 @@ root.addEventListener('click',event=>{
       const repeat=state.detail.repeatHire, source=state.detail.task;
       if(!repeat?.available){render();return;}
       state.tenantId=source.tenantId;
-      state.preferredAgent={id:repeat.agentId,name:repeat.name,preferenceMode:'agent',discoverySource:'repeat-hire',repeatFromTaskId:source.id,expectedSourceVersion:source.version};
+      state.retryFrom=null;state.preferredAgent={id:repeat.agentId,name:repeat.name,preferenceMode:'agent',discoverySource:'repeat-hire',repeatFromTaskId:source.id,expectedSourceVersion:source.version};
       state.prompt='';state.detail=null;state.buyerTab='request';location.hash='';render();
+      document.querySelector('#request-text')?.focus();
+    }
+    else if(action==='retry-another-agent'){
+      const sourceId=state.detail?.task.id;
+      if(!sourceId)return;
+      await refresh(sourceId);
+      const source=state.detail.task;
+      if(!state.detail.retry?.available){render();return;}
+      state.tenantId=source.tenantId;
+      state.preferredAgent=null;
+      state.retryFrom={taskId:source.id,expectedSourceVersion:source.version};
+      state.prompt=source.brief;state.detail=null;state.buyerTab='request';location.hash='';render();
       document.querySelector('#request-text')?.focus();
     }
     else if(action==='market-save'){
@@ -708,7 +721,7 @@ root.addEventListener('click',event=>{
       state.editing=false;
       state.reviewStart=false;
       state.reviewOffer=null;
-      if(state.buyerTab!=='request')state.preferredAgent=null;
+      if(state.buyerTab!=='request'){state.preferredAgent=null;state.retryFrom=null;}
       location.hash=['tasks','market','scheduled','apps','tools','billing'].includes(state.buyerTab)?state.buyerTab:'';
       await refresh(null);
       render();

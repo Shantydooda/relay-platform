@@ -7,6 +7,7 @@ const { fail } = require('../../../packages/contracts/src/input.cjs');
 
 const LABELS = Object.freeze({
   'task.created': 'Brief saved',
+  'task.retried': 'Another agent requested',
   'task.posted': 'Request sent to agents',
   'task.cancelled': 'Request closed',
   'scope.updated': 'Scope updated',

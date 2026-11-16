@@ -241,12 +241,20 @@ function repeatHireCard() {
   return `<section class="panel"><h2>Work with ${escape(repeat.name)} again</h2><p>Start a new conversation in this workspace. Review a fresh quote and choose the files and tool permissions for the new task. Previous approvals and payments do not carry over.</p><button data-action="repeat-hire" class="primary">Work with this agent again</button></section>`;
 }
 
+function retryCard() {
+  const retry = state.detail?.retry;
+  if (!retry) return '';
+  if (!retry.available) return retry.retriedBy ? `<section class="panel"><h2>Another agent is on this</h2><p>You already asked another agent to try this work.</p><a href="#chat=${escape(retry.retriedBy)}">Open the new request</a></section>` : '';
+  return `<section class="panel"><h2>Try another agent</h2><p>Start a new request with the same brief. The agent whose run failed won’t be able to quote on it. This run stays on record, and Relay doesn’t move any money: a payment on this task is handled here, not carried over.</p><button data-action="retry-another-agent" class="primary">Try another agent</button></section>`;
+}
+
 function taskView() {
   const { task, messages, events } = state.detail,
     posted = task.status !== 'draft';
   if (task.orchestrationStep?.supersededBy) return `<section class="market-workspace"><h1>${escape(task.title)}</h1><p>This attempt was replaced. Its history is preserved; work continues in the parent plan.</p>${RelayOrchestration.step(task)}<details><summary>Previous brief</summary><p>${escape(task.brief)}</p></details><details><summary>Previous updates</summary>${events.map(item=>`<p>${escape(item.type)}</p>`).join('')}</details></section>`;
   const labels = {
     'task.created': 'Brief saved',
+    'task.retried': 'Another agent requested · this run stays on record',
     'scope.updated': 'Scope updated · previous offers invalidated',
     'scope.reviewed': 'Scope reviewed · terms unchanged',
     'offer.received': 'Offer received',
@@ -281,7 +289,7 @@ function taskView() {
  ${!(task.workPlan && task.workPlan.cadence !== 'once') && typeof RelayApprovals === 'object' ? (state.detail.execution && state.detail.approval?.status === 'approved' ? `<details><summary>Company approval · recorded</summary>${RelayApprovals.task(task, state.detail.approval)}</details>` : RelayApprovals.task(task, state.detail.approval)) : ''}
  ${!(task.workPlan && task.workPlan.cadence !== 'once') && typeof RelayPayments === 'object' ? RelayPayments.task(task, state.detail.payment, false, state.detail.execution) : ''}
  ${(!task.workPlan || task.workPlan.cadence === 'once') && !state.editing && state.reviewStart ? startReview(task) : ''}
- ${typeof RelayExecution === 'object' ? RelayExecution.delivery(task) : ''}${typeof RelayApps === 'object' ? RelayApps.permissionDecisions(task) : ''}${repeatHireCard()}
+ ${typeof RelayExecution === 'object' ? RelayExecution.delivery(task) : ''}${typeof RelayApps === 'object' ? RelayApps.permissionDecisions(task) : ''}${repeatHireCard()}${retryCard()}
 ${typeof RelayPortfolio === 'object' ? RelayPortfolio.requests(state.detail.portfolioRequests) : ''}${changeProposalCards(task, state.detail.changeProposals)}${followUps}${state.sendingMessage ? `<article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p class="offer-details">${escape(state.sendingMessage)}</p></article>${activityCard('Sending your message', 'Waiting for Relay to save it.', true)}` : ''}
 
  ${task.status === 'cancelled' ? '<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><p>This request is closed. Your brief and conversation remain available.</p></article>' : ''}

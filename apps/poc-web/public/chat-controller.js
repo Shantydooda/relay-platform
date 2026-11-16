@@ -62,6 +62,7 @@
         const result = await command('/api/tasks', 'POST', {
           tenantId: state.tenantId || state.account.memberships[0].id,
           title: requestTitle(brief), brief,
+          ...(state.retryFrom && !preferred ? {retryFromTaskId:state.retryFrom.taskId, expectedSourceVersion:state.retryFrom.expectedSourceVersion} : {}),
           ...(preferred?.repeatFromTaskId ? {repeatFromTaskId:preferred.repeatFromTaskId, expectedSourceVersion:preferred.expectedSourceVersion} : {}),
           ...(preferred ? {preferredAgentId:preferred.id, preferenceMode:preferred.preferenceMode || 'agent', discoverySource:preferred.discoverySource || 'unspecified'} : {})
         });
@@ -71,6 +72,7 @@
         if (state.prompt !== original || state.preferredAgent !== preferred) return;
         state.prompt = '';
         state.preferredAgent = null;
+        state.retryFrom = null;
         location.hash = `chat=${result.taskId}`;
         state.sendingRequest = null;
         render();

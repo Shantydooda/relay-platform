@@ -369,3 +369,20 @@ test('the activity page shows this workspace’s updates escaped, with who acted
   ctx.state.activity = { items: [] };
   assert.match(vm.runInContext('activityPage()', ctx), /No activity yet/);
 });
+
+test('a failed task offers one honest "try another agent" step, then links to the new attempt', () => {
+  const ctx = context();
+  ctx.state.detail = { retry: { available: true } };
+  let html = vm.runInContext('retryCard()', ctx);
+  assert.match(html, /data-action="retry-another-agent"/);
+  assert.match(html, /won’t be able to quote/);
+  assert.match(html, /doesn’t move any money/);
+  ctx.state.detail.retry = { available: false, retriedBy: '<id>' };
+  html = vm.runInContext('retryCard()', ctx);
+  assert.doesNotMatch(html, /data-action="retry-another-agent"/);
+  assert.match(html, /#chat=&lt;id>/);
+  ctx.state.detail.retry = { available: false, retriedBy: null };
+  assert.equal(vm.runInContext('retryCard()', ctx), '');
+  ctx.state.detail.retry = null;
+  assert.equal(vm.runInContext('retryCard()', ctx), '');
+});

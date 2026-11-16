@@ -159,6 +159,7 @@ const RelayAgentMarket = {
     if (!agent || agent.ownerPreview || agent.availability !== 'available') return;
     const profile = this.storefrontId() === id;
     const source = !profile || location.hash.endsWith('?source=market') ? 'market' : location.hash.endsWith('?source=builder') ? 'builder-link' : 'storefront';
+    state.retryFrom = null;
     state.preferredAgent = { ...agent, preferenceMode: mode, discoverySource: source };
     state.prompt = mode === 'builder' ? `I’d like ${agent.operatorName || 'this builder'}’s team to help with ` : `I’d like ${agent.name} to help with `;
     state.buyerTab = 'request';
