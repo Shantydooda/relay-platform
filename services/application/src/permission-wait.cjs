@@ -1,5 +1,7 @@
 'use strict';
 
+const { holdThroughPermission } = require('./buyer-pause.cjs');
+
 // Waiting for a human is not supplier execution time. Keep the assignment queued
 // so it remains discoverable, but fence its old worker until all requests resolve.
 function pauseForPermission(task, now) {
@@ -17,6 +19,7 @@ function pauseForPermission(task, now) {
 function resumeAfterPermission(task, now) {
   const job = task.assignment;
   if (!job.permissionWait || task.permissionRequests.some(request => request.assignmentId === job.id && ['pending', 'declined'].includes(request.status))) return;
+  if (holdThroughPermission(job)) return;
   job.queueDeadlineAt = now + 120000;
   job.deadlineAt = now + 120000 + job.permissionWait.remainingMs;
   job.permissionWait = null;

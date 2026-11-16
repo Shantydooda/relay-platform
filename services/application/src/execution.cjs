@@ -1,11 +1,12 @@
 'use strict';
 
-const { waitingForPermission } = require('../../../packages/domain/src/execution-state.cjs');
+const { waitingForPermission, pausedByBuyer } = require('../../../packages/domain/src/execution-state.cjs');
 
 const { assertUnfunded } = require('./payments.cjs');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
 const { saveTask } = require('./supplier-feed.cjs');
 const { executionWindowMs } = require('./quote-limits.cjs');
+const { assertReadyToStart } = require('./start-preflight.cjs');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const LEASE_MS = 30000;
 const MAX_FILE_BYTES = 256 * 1024;
@@ -110,6 +111,7 @@ function createExecution(context) {
     if (offer.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'The operator changed its minimum. Request an updated offer.');
     if (offer.runtimeKind && offer.runtimeKind !== agent.runtimeKind) fail(409, 'RUNTIME_CHANGED', 'The agent connection changed. Request a fresh offer.');
     if (task.input) await verifiedBytes(task.input, await repo.get('artifact', task.input.artifactId), task.id);
+    await assertReadyToStart(repo, task, agent, now());
     await context.approvals.requireApproval(repo, actor, task);
     const member = actor.memberships.find(item => item.id === task.tenantId);
     if (member.role !== 'owner' && !task.companyApprovalRequired) fail(403, 'APPROVAL_REQUIRED', 'Corporate execution is not implemented in local unpaid mode.');
@@ -132,7 +134,7 @@ function createExecution(context) {
       const grants = await repo.page('agent-grant', 'tenant_id', principal.agentId, { limit: 100, statuses: ['queued', 'running'] }), result = [];
       for (const grant of grants.filter(item => item.agentId === principal.agentId)) {
         const task = await repo.get('task', grant.taskId), assignment = task?.assignment;
-        if (assignment && ['queued', 'running'].includes(assignment.status)) result.push({ taskId: task.id, assignmentId: assignment.id, status: assignment.status, waitingForPermission: waitingForPermission(assignment), leaseUntil: assignment.leaseUntil || 0, attempt: assignment.attempt });
+        if (assignment && ['queued', 'running'].includes(assignment.status)) result.push({ taskId: task.id, assignmentId: assignment.id, status: assignment.status, waitingForPermission: waitingForPermission(assignment), pausedByBuyer: pausedByBuyer(assignment), leaseUntil: assignment.leaseUntil || 0, attempt: assignment.attempt });
       }
       return result;
     });
@@ -147,6 +149,7 @@ function createExecution(context) {
       const task = await taskForRuntime(repo, principal, id), assignment = task.assignment;
       if (assignment.id !== body.assignmentId || !['queued', 'running'].includes(assignment.status)) fail(409, 'STATE_CONFLICT', 'This assignment cannot be claimed.');
       if (assignment.permissionWait) fail(409, 'PERMISSION_PENDING', 'Wait for the user to approve access before claiming work.');
+      if (assignment.buyerPause) fail(409, 'PAUSED_BY_BUYER', 'The buyer paused this work. Keep polling and claim again after it is resumed.');
       if (assignment.status === 'running' && assignment.leaseUntil > now()) fail(409, 'LEASE_BUSY', 'Another worker holds the lease.');
       if (assignment.attempt >= (assignment.attemptLimit || 3)) {
         // Return a durable failure rather than throwing and rolling it back.

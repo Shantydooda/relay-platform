@@ -271,7 +271,7 @@ function createLinkRuntime({
       }
     }
     for (const assignment of await pages('assignments', 'assignments')) {
-      if (assignment.waitingForPermission || (assignment.status === 'running' && assignment.leaseUntil > Date.now()))
+      if (assignment.waitingForPermission || assignment.pausedByBuyer || (assignment.status === 'running' && assignment.leaseUntil > Date.now()))
         continue;
       try {
         await execute(assignment);

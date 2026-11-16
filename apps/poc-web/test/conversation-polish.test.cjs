@@ -353,3 +353,19 @@ test('touch-first devices are told to tap Send, because on-screen keyboards have
   delete ctx.matchMedia;
   assert.equal(vm.runInContext('touchFirst()', ctx), false);
 });
+test('the activity page shows this workspace’s updates escaped, with who acted and a link to the task', () => {
+  const ctx = context();
+  ctx.state.tenantId = 'ws';
+  ctx.state.activity = { truncated: true, items: [
+    { taskId: 't1', taskTitle: 'Leads <script>', tenantId: 'ws', label: 'Work paused', actor: 'you', createdAt: 1700000000000 },
+    { taskId: 't2', taskTitle: 'Other workspace', tenantId: 'other', label: 'Brief saved', actor: 'you', createdAt: 1700000000001 },
+  ] };
+  const html = vm.runInContext('activityPage()', ctx);
+  assert.match(html, /Work paused/);
+  assert.match(html, /href="#task=t1"/);
+  assert.match(html, /Leads &lt;script>/);
+  assert.doesNotMatch(html, /Other workspace/);
+  assert.match(html, /latest 100 updates/);
+  ctx.state.activity = { items: [] };
+  assert.match(vm.runInContext('activityPage()', ctx), /No activity yet/);
+});

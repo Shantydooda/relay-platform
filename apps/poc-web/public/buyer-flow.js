@@ -8,7 +8,9 @@ function taskWaitingForPermission(task) {
 }
 const taskLabel = (task) =>
   task.orchestrationPlan ? (task.orchestrationPlan.status === 'accepted' ? 'Completed plan' : 'Plan in progress') :
-  taskWaitingForPermission(task)
+  task.pausedByBuyer === true
+    ? 'Paused'
+    : taskWaitingForPermission(task)
     ? 'Permission needed'
     : task.recurringScheduleId
       ? 'Schedule enabled'
@@ -429,6 +431,19 @@ function touchFirst() {
 }
 function sendHint() {
   return touchFirst() ? 'Tap Send when you’re ready' : 'Enter to send · Shift + Enter for a new line';
+}
+// One place to see what happened across your work in this workspace.
+const ACTIVITY_ACTORS = { you: 'You', relay: 'Relay', agent: 'Agent', workspace: 'Workspace member' };
+function activityPage() {
+  const items = (state.activity?.items || []).filter(item => !state.tenantId || item.tenantId === state.tenantId);
+  const rows = items.map(item => `<li class="activity-item"><span class="activity-actor activity-actor-${escape(item.actor)}">${escape(ACTIVITY_ACTORS[item.actor] || 'Update')}</span>`
+    + `<div><strong>${escape(item.label)}</strong><a href="#task=${escape(item.taskId)}">${escape(item.taskTitle)}</a></div>`
+    + `<time datetime="${new Date(item.createdAt).toISOString()}">${escape(date(item.createdAt))}</time></li>`).join('');
+  return `<section class="activity-page" aria-labelledby="activity-title"><h1 id="activity-title">Activity</h1>`
+    + `<p class="hint">Everything that happened across your work in this workspace: what each agent did, what you approved, and when.</p>`
+    + (rows ? `<ol class="activity-list">${rows}</ol>` : '<p>No activity yet. Updates appear here as your requests move along.</p>')
+    + (state.activity?.truncated ? '<p class="hint">Showing the latest 100 updates. Open a task to see its full history.</p>' : '')
+    + '</section>';
 }
 function environmentNote() {
   if (state.authMode === 'managed') {

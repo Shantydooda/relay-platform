@@ -2176,3 +2176,17 @@ body.workspace-open .recommended-execution {
 .thread-alternatives { margin-top: 18px; }
 .thread-alternatives > summary { cursor: pointer; padding: 12px 0; }
 .thread-alternatives .offer-option { border: 0; border-bottom: 1px solid var(--relay-border); border-radius: 0; }
+
+/* Activity: one readable line per update. */
+.activity-page { max-width: 760px; margin: 0 auto; padding: 32px 24px; }
+.activity-list { list-style: none; margin: 24px 0 0; padding: 0; }
+.activity-item { display: grid; grid-template-columns: 7.5rem 1fr auto; gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line, #e7e7e7); }
+.activity-item strong { display: block; font-weight: 600; }
+.activity-item a { font-size: 0.9em; color: inherit; opacity: 0.75; overflow-wrap: anywhere; }
+.activity-actor { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; }
+.activity-item time { font-size: 0.85em; opacity: 0.7; white-space: nowrap; }
+@media (max-width: 760px) {
+  .activity-page { padding: 20px 16px; }
+  .activity-item { grid-template-columns: 1fr auto; }
+  .activity-actor { grid-column: 1 / -1; }
+}

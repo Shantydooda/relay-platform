@@ -113,3 +113,17 @@ test('replaying a once-successful decision cannot report an invalidated approval
   await f.store.changeTeamRole(f.actors.owner, f.tenantId, { memberId: f.actors.approver.user.id, expectedRole: 'employee', role: 'approver' });
   await assert.rejects(f.store.decideApproval(f.actors.approver, f.taskId, body, key), { code: 'APPROVAL_STALE' });
 });
+
+test('health names the service it is, so a monitor can tell pilot, staging and local apart', async () => {
+  const { createApp } = require('../src/app.cjs');
+  const store = { health: async () => {}, storage: 'sqlite', features: {} };
+  const server = createApp({ store, origin: 'http://127.0.0.1:4198' });
+  await new Promise(resolve => server.listen(4198, '127.0.0.1', resolve));
+  try {
+    const body = await (await fetch('http://127.0.0.1:4198/health')).json();
+    assert.equal(body.service, 'relay-local');
+    assert.equal(body.mode, 'local-only');
+  } finally {
+    await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
+  }
+});

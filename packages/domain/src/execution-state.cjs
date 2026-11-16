@@ -11,4 +11,19 @@ function waitingForPermission(assignment) {
   );
 }
 
-module.exports = { waitingForPermission };
+// A buyer can pause active work. Like a permission wait, it is a substate of a
+// queued assignment, not a terminal status. Informational, never authorization.
+function pausedByBuyer(assignment) {
+  return Boolean(
+    assignment &&
+    ['queued', 'running'].includes(assignment.status) &&
+    assignment.buyerPause,
+  );
+}
+
+// Held work must not be claimed, timed out or counted as overdue.
+function executionHeld(assignment) {
+  return waitingForPermission(assignment) || pausedByBuyer(assignment);
+}
+
+module.exports = { waitingForPermission, pausedByBuyer, executionHeld };

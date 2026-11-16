@@ -125,7 +125,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if(method==='GET'&&path==='/health/live') return send(200,{status:'alive'});
       if(method==='GET'&&path==='/health') {
         await store.health?.();
-        return send(200,{status:'ok',service:'relay-account-task-poc',storage:store.storage||(managed?'postgres':'sqlite'),mode});
+        return send(200,{status:'ok',service:{'local-only':'relay-local','managed-staging':'relay-staging','managed-pilot':'relay-pilot'}[mode],storage:store.storage||(managed?'postgres':'sqlite'),mode});
       }
       if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed,features:store.features||{}});
       if (!managed && method === 'GET' && ['/drive/callback','/drive/picker'].includes(path)) res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
@@ -236,6 +236,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if (path === '/api/schedules' && method === 'GET') return send(200, await store.listSchedules(actor, url.searchParams.get('tenantId')));
         if (path === '/api/operations/backlog' && method === 'GET') return send(200, await store.operationsBacklog(actor));
         if (path === '/api/execution-queue' && method === 'GET') return send(200, await store.executionQueue(actor));
+        if (path === '/api/activity' && method === 'GET') return send(200, await store.activity(actor));
         const scheduleRoute = path.match(/^\/api\/schedules\/([0-9a-f-]{36})$/);
         if (scheduleRoute && method === 'POST') return send(200, await store.updateSchedule(actor, scheduleRoute[1], await jsonBody(req), key));
         const orchestrationRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(orchestrate|handover|complete-plan|recover-plan)$/);
@@ -294,6 +295,11 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         }
         const cancelExecution = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/cancel-execution$/);
         if (cancelExecution && method === 'POST') return send(200, await store.cancelExecution(actor, cancelExecution[1], await jsonBody(req), key));
+        const holdExecution = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(pause|resume)-execution$/);
+        if (holdExecution && method === 'POST') {
+          const run = holdExecution[2] === 'pause' ? store.pauseExecution : store.resumeExecution;
+          return send(200, await run(actor, holdExecution[1], await jsonBody(req), key));
+        }
         const connection = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/(connect-local|disconnect)$/);
         if (connection && method === 'POST') {
           const [, id, action] = connection, body = await jsonBody(req);

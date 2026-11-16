@@ -219,3 +219,15 @@ identity check and reached the controlled upload. No user task was mutated.
 Syntax/diff checks passed and localhost serves the updated handlers. Demo, staging
 and provider configuration were untouched. Full backend checks were not repeated
 for this UI-only increment; prior whole-suite results remain dated evidence.
+
+## Buyer pause (added 16 Nov 2026)
+
+A buyer can pause active work with one command (`POST /api/tasks/:id/pause-execution`) and resume it later (`/resume-execution`). It follows the permission-wait model rather than adding a stored status:
+
+- The assignment returns to `queued`, the current lease is revoked so the runtime must stop, and the remaining execution time is frozen in `assignment.buyerPause`.
+- `packages/domain/src/execution-state.cjs` projects `pausedByBuyer` and `executionHeld` (permission wait or buyer pause). Held work is never claimed, timed out or reported as overdue.
+- Supplier feeds expose an optional `pausedByBuyer` boolean; claims return `PAUSED_BY_BUYER` while it is true. Older runtimes that ignore the field are still stopped by the claim guard and lease revocation.
+- If a permission wait and a buyer pause overlap, approving permission does not restart the clock: the frozen time moves to the pause, and only the buyer's resume restarts it.
+- A pause never consumes one of the runtime's retry attempts. Actions a supplier already took are not undone.
+
+Compatibility: additive optional fields and two new commands; no stored enum change or migration.

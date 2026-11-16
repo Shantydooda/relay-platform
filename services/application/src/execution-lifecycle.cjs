@@ -1,6 +1,7 @@
 'use strict';
 
-const { waitingForPermission } = require('../../../packages/domain/src/execution-state.cjs');
+const { waitingForPermission, pausedByBuyer, executionHeld } = require('../../../packages/domain/src/execution-state.cjs');
+const { pauseByBuyer, resumeByBuyer } = require('./buyer-pause.cjs');
 
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
@@ -24,9 +25,16 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
     const check = async action => {
       await taskFor(repo, actor, task.id, true);
       if (action === 'cancel') checkCancel(task);
+      else if (action === 'pause') pauseByBuyer(structuredClone(task), now(), actor.user.id);
+      else if (action === 'resume') resumeByBuyer(structuredClone(task), now());
       else await checkRetry(repo, actor, structuredClone(task));
     };
-    return { cancel: await availability(() => check('cancel')), retry: await availability(() => check('retry')) };
+    return {
+      cancel: await availability(() => check('cancel')),
+      retry: await availability(() => check('retry')),
+      pause: await availability(() => check('pause')),
+      resume: await availability(() => check('resume')),
+    };
   }
   async function cancelExecution(actor, id, body, key) {
     exactKeys(body, ['expectedVersion', 'reason']);
@@ -48,6 +56,24 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       return { taskId: id, version: task.version, status: 'cancelled', paymentStatus: task.assignment.mode === 'stripe-sandbox' ? task.settlement.status : 'not_applicable_local_unpaid' };
     });
   }
+  // Pause and resume are buyer commands on the current assignment. Both are versioned
+  // and idempotent; the runtime learns of a pause through its revoked lease and the feed.
+  function holdCommand(name, apply, eventType) {
+    return async function (actor, id, body, key) {
+      exactKeys(body, ['expectedVersion']);
+      return command(actor.user.id, key, [name, id, body], repo => taskFor(repo, actor, id, true), async repo => {
+        const task = await taskFor(repo, actor, id, true);
+        expected(task, body.expectedVersion);
+        apply(task, actor);
+        touch(task, now());
+        event(task, actor.user.id, eventType, now());
+        await saveTask(repo, task);
+        return { taskId: id, version: task.version, status: task.assignment.status, pausedByBuyer: pausedByBuyer(task.assignment) };
+      });
+    };
+  }
+  const pauseExecution = holdCommand('pause-execution', (task, actor) => pauseByBuyer(task, now(), actor.user.id), 'execution.paused');
+  const resumeExecution = holdCommand('resume-execution', task => resumeByBuyer(task, now()), 'execution.resumed');
   async function executionQueue(actor) {
     if (!actor?.user?.id || actor.recoveryRequired) fail(403, 'FORBIDDEN', 'Sign in to view execution.');
     return repository.read(async repo => {
@@ -65,7 +91,8 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
         items.push({ actions, taskId: id, title: task.title, status: job.status, version: task.version,
           waitingSince: job.authorizedAt, heartbeatAt: job.heartbeatAt || null,
           waitingForPermission: waitingForPermission(job),
-          overdue: job.permissionWait ? false : job.status === 'queued' ? job.queueDeadlineAt <= now() : job.status === 'running' && job.leaseUntil <= now(),
+          pausedByBuyer: pausedByBuyer(job),
+          overdue: executionHeld(job) ? false : job.status === 'queued' ? job.queueDeadlineAt <= now() : job.status === 'running' && job.leaseUntil <= now(),
           attempt: job.attempt, error: job.error || null, progress: job.progress,
           canRetry: actions.retry.allowed });
       }
@@ -105,7 +132,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       for (const row of rows) {
         changed += await repository.transaction(`reconcile:${row.id}`, async repo => {
           const task = await repo.get('task', row.id, true), assignment = task?.assignment;
-          if (!assignment || assignment.status !== status || assignment.permissionWait) return 0;
+          if (!assignment || assignment.status !== status || executionHeld(assignment)) return 0;
           let error;
           if (assignment.deadlineAt && assignment.deadlineAt <= now()) error = 'EXECUTION_TIMEOUT';
           else if (status === 'queued' && assignment.queueDeadlineAt && assignment.queueDeadlineAt <= now()) error = 'SUPPLIER_UNAVAILABLE';
@@ -133,6 +160,6 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
     }
     return { cursors: next, changed };
   }
-  return { lifecycleActions, cancelExecution, reconcileExecutions, executionQueue, retryExecution };
+  return { lifecycleActions, cancelExecution, pauseExecution, resumeExecution, reconcileExecutions, executionQueue, retryExecution };
 }
 module.exports = { createLifecycle };

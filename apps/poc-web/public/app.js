@@ -126,7 +126,7 @@ function header() {
     : (state.detail ? (state.detail.task.status === 'draft' ? 'request' : 'tasks') : state.buyerTab || 'request');
   const nav = builderSide
     ? [['dashboard', 'Dashboard'], ['agents', 'Agents'], ['opportunities', 'Opportunities'], ['work', 'Tasks'], ['earnings', 'Earnings'], ['settings', 'Settings']]
-    : [['request', 'New chat'], ['tasks', 'Work'], ['market', 'Agents'], ...(state.features?.workspaceApps ? [['apps', 'Apps']] : []), ...(state.features?.recurring ? [['scheduled', 'Scheduled work']] : []), ['business', 'Business workspace'], ['billing', 'History & spend'], ['tools', 'Connected tools']];
+    : [['request', 'New chat'], ['tasks', 'Work'], ['activity', 'Activity'], ['market', 'Agents'], ...(state.features?.workspaceApps ? [['apps', 'Apps']] : []), ...(state.features?.recurring ? [['scheduled', 'Scheduled work']] : []), ['business', 'Business workspace'], ['billing', 'History & spend'], ['tools', 'Connected tools']];
   const isMobileNavigation = globalThis.matchMedia?.('(max-width: 760px)').matches;
   const navigationOpen = !isMobileNavigation || (root.querySelector('.workspace-navigation')?.open ?? false);
   const recent = builderSide ? [] : [...state.tasks].filter(task => !task.orchestrationStep?.supersededBy)
@@ -165,7 +165,7 @@ function newTask() {
 }
 
 function taskList() { return taskDashboard(); }
-function buyerPage(){if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
+function buyerPage(){if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
 function focusOfferReview(offerId, reviewing) {
  const action = reviewing ? 'accept-offer' : 'review-offer';
  const target = [...root.querySelectorAll('[data-action]')].find(button =>
@@ -247,6 +247,7 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   const tenant=state.account.memberships.find(m=>m.id===state.tenantId)||state.account.memberships[0];
   state.tenantId=tenant?.id;
   if (!background) state.spendingHistory = state.features?.unifiedBackend && state.buyerTab === 'billing' && tenant ? await api('/api/payments/history?tenantId='+encodeURIComponent(tenant.id)+'&from='+encodeURIComponent(state.spendingFrom||'')+'&to='+encodeURIComponent(state.spendingTo||'')+'&currency='+encodeURIComponent(state.spendingCurrency||'USD')) : null;
+  state.activity=state.account.user.workspace!=='builder'&&state.buyerTab==='activity'?await api('/api/activity'):null;
   if(state.features?.recurring){state.schedules=tenant?(await api('/api/schedules?tenantId='+encodeURIComponent(tenant.id))).schedules:[];state.executionQueue=await api('/api/execution-queue');}
   if(state.features?.workspaceApps)state.workspaceApps=tenant?await api('/api/workspace-apps?tenantId='+encodeURIComponent(tenant.id)):null;
   if(state.buyerTab==='market'&&state.account.user.workspace!=='builder'){
@@ -730,6 +731,11 @@ root.addEventListener('click',event=>{
       const task=state.detail.task;
       await command(`/api/tasks/${task.id}/authorize-local`,'POST',{expectedVersion:task.version,mode:'local-unpaid'});
       state.reviewStart=false;state.followExecution=true;await refresh();state.scrollTarget='.execution-update';render();
+    }
+    else if(action==='pause-execution'||action==='resume-execution'){
+      const task=state.detail.task;
+      await command(`/api/tasks/${task.id}/${action}`,'POST',{expectedVersion:task.version});
+      await refresh();render();
     }
     else if(action==='accept-delivery'){
       const task=state.detail.task;

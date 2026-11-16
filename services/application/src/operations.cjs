@@ -70,6 +70,12 @@ function createOperations({
         if (!a || !['queued', 'running', 'failed'].includes(a.status))
           return null;
         const since = a.startedAt || a.authorizedAt || task.createdAt;
+        if (a.buyerPause && ['queued', 'running'].includes(a.status))
+          return {
+            state: 'paused_by_buyer',
+            since: a.buyerPause.startedAt,
+            action: 'The task owner paused this work. Nothing to do until they resume it.',
+          };
         if (a.permissionWait)
           return {
             state: 'waiting_permission',

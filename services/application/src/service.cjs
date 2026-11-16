@@ -1,6 +1,6 @@
 'use strict';
 
-const { waitingForPermission } = require('../../../packages/domain/src/execution-state.cjs');
+const { waitingForPermission, pausedByBuyer } = require('../../../packages/domain/src/execution-state.cjs');
 
 const { randomUUID, createHash } = require('node:crypto');
 const { assertUnfunded, paymentView } = require('./payments.cjs');
@@ -47,6 +47,7 @@ function taskView(task, now) {
   const { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, input } = task;
   return { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, status,
     waitingForPermission: waitingForPermission(task.assignment),
+    pausedByBuyer: pausedByBuyer(task.assignment),
     companyApprovalRequired: !!task.companyApprovalRequired,
     approvalStatus: require('./approvals.cjs').approvalView(task, now)?.status || null,
     recurringScheduleId: task.recurringScheduleId || null, scheduleId: task.scheduleId || null, scheduledFor: task.scheduledFor || null,
@@ -435,9 +436,10 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const feed = require('./supplier-feed.cjs').createSupplierFeed(context);
   const recurring = require('./recurring.cjs').createRecurring(context, execution);
   const lifecycle = require('./execution-lifecycle.cjs').createLifecycle(context);
+  const { activity } = require('./activity.cjs').createActivity(context);
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
-  return { recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: localExecution && !!resolveActor, notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
+  return { activity, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: localExecution && !!resolveActor, notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),
@@ -469,7 +471,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
 function publicExecution(task) {
   if (!task.assignment) return null;
   const { id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt } = task.assignment;
-  return { waitingForPermission: waitingForPermission(task.assignment), id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? (task.settlement?.status || 'unknown') : 'not_applicable_local_unpaid' };
+  return { waitingForPermission: waitingForPermission(task.assignment), pausedByBuyer: pausedByBuyer(task.assignment), id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? (task.settlement?.status || 'unknown') : 'not_applicable_local_unpaid' };
 }
 function publicSubmission(submission) {
   const { id, version, status, createdAt, evidence, files } = submission;

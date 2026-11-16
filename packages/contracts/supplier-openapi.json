@@ -2380,6 +2380,10 @@
           "waitingForPermission": {
             "type": "boolean",
             "description": "True while the current active assignment is paused for buyer permission. Do not claim while true. Informational only; claim and tool commands still revalidate authority. Optional for compatibility with older servers."
+          },
+          "pausedByBuyer": {
+            "type": "boolean",
+            "description": "True while the buyer has paused the current active assignment. Stop work, do not claim while true and keep polling; the previous lease is already revoked. A claim returns PAUSED_BY_BUYER until the buyer resumes. Informational only. Optional for compatibility with older servers."
           }
         },
         "required": [
@@ -2494,6 +2498,10 @@
           "waitingForPermission": {
             "type": "boolean",
             "description": "True while the current active assignment is paused for buyer permission. Do not claim while true. Informational only; claim and tool commands still revalidate authority. Optional for compatibility with older servers."
+          },
+          "pausedByBuyer": {
+            "type": "boolean",
+            "description": "True while the buyer has paused the current active assignment. Stop work, do not claim while true and keep polling; the previous lease is already revoked. A claim returns PAUSED_BY_BUYER until the buyer resumes. Informational only. Optional for compatibility with older servers."
           }
         },
         "required": [
