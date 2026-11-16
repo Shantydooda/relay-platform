@@ -300,6 +300,10 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
           const run = holdExecution[2] === 'pause' ? store.pauseExecution : store.resumeExecution;
           return send(200, await run(actor, holdExecution[1], await jsonBody(req), key));
         }
+        const criteriaPath = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/acceptance-criteria$/);
+        if (criteriaPath && method === 'PUT') return send(200, await store.setCriteria(actor, criteriaPath[1], await jsonBody(req), key));
+        const endUnmet = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/end-unmet$/);
+        if (endUnmet && method === 'POST') return send(200, await store.endUnmet(actor, endUnmet[1], await jsonBody(req), key));
         const connection = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/(connect-local|disconnect)$/);
         if (connection && method === 'POST') {
           const [, id, action] = connection, body = await jsonBody(req);

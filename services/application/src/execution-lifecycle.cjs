@@ -27,6 +27,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       if (action === 'cancel') checkCancel(task);
       else if (action === 'pause') pauseByBuyer(structuredClone(task), now(), actor.user.id);
       else if (action === 'resume') resumeByBuyer(structuredClone(task), now());
+      else if (action === 'end') require('./acceptance.cjs').checkEnd(task);
       else await checkRetry(repo, actor, structuredClone(task));
     };
     return {
@@ -34,6 +35,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       retry: await availability(() => check('retry')),
       pause: await availability(() => check('pause')),
       resume: await availability(() => check('resume')),
+      end: await availability(() => check('end')),
     };
   }
   async function cancelExecution(actor, id, body, key) {

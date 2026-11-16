@@ -52,7 +52,8 @@ function createSupplierFeed({ repository, credentials, opportunityView }) {
       const toolGrants = (await repo.list('tool-grant', 'tenant_id', task.tenantId)).filter(grant => grant.subjectKind === 'task' && grant.subjectId === id && grant.assignmentId === assignmentId && grant.agentId === principal.agentId && grant.status === 'active').map(({ id, sourceId, operation, expiresAt }) => ({ id, sourceId, operation, expiresAt }));
       return { taskId: id, assignmentId, messages: task.messages.map(({authorId,...message})=>message), changeProposals: task.changeProposals || [], contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], toolGrants, taskVersion: task.version, status, waitingForPermission: waitingForPermission(task.assignment), pausedByBuyer: pausedByBuyer(task.assignment), attempt, leaseUntil: leaseUntil || null,
         deadlineAt: deadlineAt || null, progress, error: error || null,
-        submissions: task.submissions.map(item => ({ id: item.id, version: item.version, status: item.status })) };
+        acceptanceCriteria: task.assignment.agreement?.acceptanceCriteria || [],
+        submissions: task.submissions.map(item => ({ id: item.id, version: item.version, status: item.status, unmetCriteria: item.unmetCriteria || [] })) };
     });
   }
   async function opportunities(principal, after = '', limit = 50) {

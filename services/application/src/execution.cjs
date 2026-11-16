@@ -7,6 +7,7 @@ const { randomUUID, timingSafeEqual } = require('node:crypto');
 const { saveTask } = require('./supplier-feed.cjs');
 const { executionWindowMs } = require('./quote-limits.cjs');
 const { assertReadyToStart } = require('./start-preflight.cjs');
+const { unmetCriteriaInput, revisionRounds, MAX_REVISION_ROUNDS } = require('./acceptance.cjs');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const LEASE_MS = 30000;
 const MAX_FILE_BYTES = 256 * 1024;
@@ -24,7 +25,7 @@ function decode(value, limit = MAX_FILE_BYTES, binary = false) {
   return bytes;
 }
 function createExecution(context) {
-  const { objectStore, fileScanner, repository, command, taskFor, now, localExecution, hash, expected, touch, event } = context;
+  const { objectStore, fileScanner, repository, command, taskFor, now, localExecution, hash, expected, touch, event, autoAcceptAfterMs = null } = context;
   const { runtimeAgent, runtimePrincipal, heartbeat, issueCredential, issueSupplierCredential, revokeCredential } = context.credentials;
   async function verifiedBytes(metadata, artifact, taskId) {
     if (!artifact || artifact.taskId !== taskId || (!artifact.objectKey && typeof artifact.base64 !== 'string')) fail(409, 'FILE_UNAVAILABLE', 'File bytes are unavailable.');
@@ -122,7 +123,7 @@ function createExecution(context) {
     task.assignment = { id: randomUUID(), agentId: agent.id, operatorId: offer.operatorId, offerId: offer.id,
       status: 'queued', authorizedAt: now(), mode, attempt: 0, progress: 'Waiting for the runtime',
       runtimeKind: agent.runtimeKind, runtimeVersion: agent.runtimeVersion || null, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + executionWindowMs(offer.deliveryMinutes),
-      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null } };
+      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null, acceptanceCriteria: task.acceptanceCriteria || [] } };
     touch(task, now()); event(task, actor.user.id, 'assignment.authorized_local', now());
     await saveTask(repo, task);
     await repo.save('grant', { id: task.assignment.id, ownerId: offer.operatorId, tenantId: task.tenantId, taskId: task.id, agentId: agent.id });
@@ -263,7 +264,8 @@ function createExecution(context) {
         if (artifact?.submissionId !== submission.id) fail(409, 'FILE_UNAVAILABLE', 'Submission bytes are unavailable.');
         await verifiedBytes(file, artifact, task.id);
       }
-    } else if (task.submissions.length >= 3) fail(409, 'REVISION_LIMIT', 'This local runtime supports two revisions.');
+    } else if (task.assignment.runtimeKind !== 'supplier-hosted' && task.submissions.length >= 3) fail(409, 'REVISION_LIMIT', 'This local runtime supports two revisions.');
+    else if (revisionRounds(task) >= MAX_REVISION_ROUNDS) fail(409, 'REVISION_LIMIT', `This work has had ${MAX_REVISION_ROUNDS} rounds of changes. End it as unmet or accept it.`);
     return submission;
   }
   async function executionActions(repo, actor, task) {
@@ -282,17 +284,39 @@ function createExecution(context) {
     for (const action of ['startLocal', 'startFunded', 'accept', 'revise']) actions[action] = await availability(() => check(action));
     return actions;
   }
+  function acceptSubmission(task, submission, progress) {
+    submission.status = 'accepted'; task.assignment.status = 'accepted'; task.assignment.acceptedAt = now();
+    task.assignment.progress = progress;
+  }
+  // Silence counts as acceptance only when the deployment opts in (acceptance.cjs, rule 4).
+  async function reconcileAutoAccept(cursor = '') {
+    if (!Number.isSafeInteger(autoAcceptAfterMs) || autoAcceptAfterMs <= 0) return { cursor: '', changed: 0, enabled: false };
+    const rows = await repository.read(repo => repo.page('execution-index', 'status', 'buyer_review', { after: cursor, limit: 100 }));
+    let changed = 0;
+    for (const row of rows) {
+      changed += await repository.transaction(`auto-accept:${row.id}`, async repo => {
+        const task = await repo.get('task', row.id, true), submission = task?.submissions.at(-1);
+        if (task?.assignment?.status !== 'buyer_review' || submission?.status !== 'ready' || submission.createdAt + autoAcceptAfterMs > now()) return 0;
+        if (task.assignment.mode === 'stripe-sandbox' || task.settlement) return 0; // money release is not automatic
+        try { await checkReview(repo, task, 'accept-delivery', submission.id); } catch (error) { if (error.status === 409) return 0; throw error; }
+        acceptSubmission(task, submission, 'Accepted automatically: the buyer didn’t respond within the review window.');
+        touch(task, now()); event(task, 'system', 'delivery.auto_accepted', now()); await saveTask(repo, task);
+        return 1;
+      });
+    }
+    return { cursor: rows.length === 100 ? rows.at(-1).id : '', changed, enabled: true };
+  }
   async function reviewDelivery(actor, id, action, body, key) {
-    exactKeys(body, ['expectedVersion', 'submissionId', 'notes']);
+    exactKeys(body, action === 'request-revision' ? ['expectedVersion', 'submissionId', 'notes', 'unmetCriteria'] : ['expectedVersion', 'submissionId', 'notes']);
     if (!['accept-delivery', 'request-revision'].includes(action)) fail(400, 'INVALID_INPUT', 'Unknown review action.');
     return command(actor.user.id, key, [action, id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
       const submission = await checkReview(repo, task, action, body.submissionId);
       if (action === 'accept-delivery') {
-        submission.status = 'accepted'; task.assignment.status = 'accepted'; task.assignment.acceptedAt = now();
-        task.assignment.progress = 'The buyer accepted this delivery.';
+        acceptSubmission(task, submission, 'The buyer accepted this delivery.');
       } else {
         const notes = text(body.notes, 'Revision notes', 1, 2000);
+        submission.unmetCriteria = unmetCriteriaInput(task, body.unmetCriteria);
         if (task.assignment.runtimeKind !== 'supplier-hosted' && !['Sort rows descending', 'Keep duplicate rows', 'Sort rows ascending'].includes(notes)) fail(422, 'UNSUPPORTED_REVISION', 'Choose a supported CSV revision: Sort rows descending, Keep duplicate rows, or Sort rows ascending.');
         submission.status = 'revision_requested'; task.assignment.status = 'queued'; task.assignment.attempt = 0;
         task.assignment.progress = `Revision queued: ${notes}`; task.assignment.completedAt = null;
@@ -347,6 +371,6 @@ function createExecution(context) {
     const file = await download(actor, id, submissionId, fileId);
     return require('./file-preview.cjs').filePreview(file);
   }
-  return { executionActions, authorizeWithin, scanFile, previewFile, issueCredential, issueSupplierCredential, revokeCredential, runtimePrincipal, heartbeat, addInput, authorizeLocal, assignments, claim, progress, submit, failExecution, reviewDelivery, download };
+  return { reconcileAutoAccept, executionActions, authorizeWithin, scanFile, previewFile, issueCredential, issueSupplierCredential, revokeCredential, runtimePrincipal, heartbeat, addInput, authorizeLocal, assignments, claim, progress, submit, failExecution, reviewDelivery, download };
 }
 module.exports = { createExecution, MAX_FILE_BYTES };
