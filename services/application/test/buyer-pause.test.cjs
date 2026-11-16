@@ -85,3 +85,20 @@ test('terminal assignments never report a live pause from retained metadata', ()
   assert.equal(pausedByBuyer(task.assignment), false);
   assert.equal(executionHeld(task.assignment), false);
 });
+
+test('a permission request made while the buyer has paused the work keeps the frozen time exact', () => {
+  const task = running(); // deadline 100000
+  pauseByBuyer(task, 40000, 'buyer'); // 60000 remaining, frozen by the pause
+  // Much later, the supplier asks for read access while the work is still paused.
+  task.permissionRequests = [{ assignmentId: 'job', status: 'pending' }];
+  pauseForPermission(task, 500000);
+  const job = task.assignment;
+  assert.equal(job.permissionWait.remainingMs, 60000, 'time comes from the pause, not the stale deadline');
+  assert.equal(job.buyerPause.remainingMs, null, 'only one place holds the frozen time');
+  assert.equal(pausedByBuyer(job), true);
+  task.permissionRequests[0].status = 'approved';
+  resumeAfterPermission(task, 600000);
+  assert.equal(job.buyerPause.remainingMs, 60000);
+  resumeByBuyer(task, 700000);
+  assert.equal(job.deadlineAt, 700000 + 120000 + 60000);
+});

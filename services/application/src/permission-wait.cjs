@@ -7,13 +7,22 @@ const { holdThroughPermission } = require('./buyer-pause.cjs');
 function pauseForPermission(task, now) {
   const job = task.assignment;
   if (!job.permissionWait) {
-    job.permissionWait = { startedAt: now, remainingMs: Math.max(1, (job.deadlineAt || now + 300000) - now) };
+    // Frozen time lives in exactly one place. If the buyer already paused the work, its
+    // deadline is stale: take the time the pause froze, and let the permission wait hold it.
+    const pausedTime = job.buyerPause?.remainingMs;
+    job.permissionWait = {
+      startedAt: now,
+      remainingMs: Number.isFinite(pausedTime) ? pausedTime : Math.max(1, (job.deadlineAt || now + 300000) - now),
+    };
+    if (job.buyerPause) job.buyerPause.remainingMs = null;
     if (job.status === 'running') job.attemptLimit = (job.attemptLimit || 3) + 1;
   }
   job.status = 'queued';
   job.leaseHash = null;
   job.leaseUntil = 0;
-  job.progress = 'Waiting for your permission. Execution time is paused.';
+  job.progress = job.buyerPause
+    ? 'Paused by you. The agent has also asked for permission; execution time is paused.'
+    : 'Waiting for your permission. Execution time is paused.';
 }
 
 function resumeAfterPermission(task, now) {
