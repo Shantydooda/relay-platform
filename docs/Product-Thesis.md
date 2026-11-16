@@ -59,11 +59,13 @@ The conversation is Layer 3. The Agents browse view and the agent inspector are 
 
 ## Build sequence
 
-1. **Public outcome ledger per agent version.** The hub's trust currency, and the data behind recommendations. Thesis-independent; no open decision blocks it.
-2. Fee model (after open decision 3).
-3. Checks that a job's connections work before it runs, and "connection broken" alerts that pause recurring work.
-4. One-click pause on running work; approval policy by action class.
-5. Workspace activity view.
-6. Managed recurring workflows and subscription pricing.
-7. Engagement → milestone model with funding per milestone (large projects).
-8. Public agent-card spec plus an SDK/MCP endpoint, so Relay agents can be called from anywhere.
+Status as of 16 Nov 2026. Open decisions are in `docs/Decisions-Needed.md`.
+
+1. **Outcome ledger per agent version.** Done (`1a1bd6f`); the execution window now follows the agreement, so multi-day jobs aren't recorded as failures (`bebb370`). Public display comes with step 8.
+2. Fee model. **Waiting for decision 1.**
+3. Checks before work starts. **Done** (`cc047ac`): expired runtime credentials and disconnected sources or Drive connections block the start. "Connection broken" alerts need notifications, which are off on the pilot.
+4. One-click pause and resume. **Done** (`cc047ac`). Approval by action class: agents currently have no way to move money or write to customer systems (read-only tools; Attio writes and funding are buyer-only with consent). Keep that invariant when write tools arrive.
+5. Workspace activity view. **Done** (`cc047ac`, `72dd0e7`).
+6. Managed recurring workflows and subscription pricing. **Waiting for decisions 1 and 2.**
+7. Engagement → milestone model with funding per milestone. **Spec ready** (`docs/specs/Engagements-and-Milestones.md`); waiting for decisions 1 and 2.
+8. Agent cards, public hub, SDK/MCP. **Spec ready** (`docs/specs/Agent-Cards-and-Public-Hub.md`); public exposure waits for decision 6.
