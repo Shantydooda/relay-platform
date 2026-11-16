@@ -108,7 +108,7 @@ function createAcceptance({ command, taskFor, expected, now, touch, event, saveT
       job.leaseHash = null;
       job.endReason = reason;
       job.unmetCriteria = unmet;
-      job.progress = 'The buyer ended this work because the agreed criteria weren’t met. The runtime must stop.';
+      job.progress = 'The buyer ended this work because the agreed checklist wasn’t met. It counts as a failed run. Stop work on it.';
       const latest = task.submissions.at(-1);
       if (latest?.status === 'ready') latest.status = 'rejected';
       touch(task, time);

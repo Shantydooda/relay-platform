@@ -25,6 +25,7 @@ const assets = {
   '/marketplace.js':['marketplace.js','text/javascript; charset=utf-8'],
   '/execution-ui.js':['execution-ui.js','text/javascript; charset=utf-8'],
   '/approvals-ui.js':['approvals-ui.js','text/javascript; charset=utf-8'],
+  '/acceptance-ui.js':['acceptance-ui.js','text/javascript; charset=utf-8'],
   '/teams-ui.js':['teams-ui.js','text/javascript; charset=utf-8'],
   '/payments-ui.js':['payments-ui.js','text/javascript; charset=utf-8'],
   '/supplier-ui.js':['supplier-ui.js','text/javascript; charset=utf-8'],

@@ -231,3 +231,15 @@ A buyer can pause active work with one command (`POST /api/tasks/:id/pause-execu
 - A pause never consumes one of the runtime's retry attempts. Actions a supplier already took are not undone.
 
 Compatibility: additive optional fields and two new commands; no stored enum change or migration.
+
+## Acceptance criteria and ending as unmet (added 17 Nov 2026)
+
+Policy: `docs/Decisions-Needed.md` §2, "Acceptance and exits". Code: `services/application/src/acceptance.cjs`.
+
+- `PUT /api/tasks/:id/acceptance-criteria` `{expectedVersion, criteria: string[]}` sets the checklist (0–12 items, 3–300 characters, distinct; ids `c1…`). Allowed only before an assignment exists and while unfunded. It bumps `scopeVersion`, clears the selection and records `criteria.updated`, so old offers can no longer be selected or recommended.
+- Authorization copies the list into `assignment.agreement.acceptanceCriteria`. Every view after that (`acceptance`, `task.acceptanceCriteria`, supplier task, claim) reads the frozen copy.
+- `request-revision` accepts optional `unmetCriteria` (ids from the agreement), stored on the submission. The claim response returns `acceptanceCriteria` and the last round's `unmetCriteria`.
+- `POST /api/tasks/:id/end-unmet` `{expectedVersion, reason, unmetCriteria?}` moves `queued | running | buyer_review` to `failed` with `error: BUYER_ENDED_UNMET`, revokes the lease and rejects a ready submission. It is refused with `END_NOT_YET` before 2 revision rounds and with `REFUND_REQUIRED` while a payment is held. `actions.execution.end` reports the same check. An ended run is not a recovery item: `retryExecution` refuses it and it is left out of the execution queue. Try-another-agent stays available.
+- `reconcileAutoAccept` moves `buyer_review` to `accepted` (`delivery.auto_accepted`, actor `system`) only when `autoAcceptAfterMs` is configured, the latest submission is older than the window, and the task has no payment.
+
+Compatibility: additive optional fields, two commands and no stored enum change or migration.

@@ -148,6 +148,10 @@ test('criteria are part of the scope, fixes name unmet criteria, and the buyer c
     assert.equal(assignment.status, 'failed');
     assert.equal(assignment.error, 'BUYER_ENDED_UNMET');
     await assert.rejects(builder.client.claim(taskId, { assignmentId: assignment.assignmentId }, randomUUID()));
+    const queue = (await f.request('/api/execution-queue', f.buyer));
+    assert.equal(queue.status, 200);
+    assert.equal(queue.body.items.some(item => item.taskId === taskId), false, 'an ended run is not a recovery item');
+    assert.equal(detail.actions.execution.retry.allowed, false, 'the same agent cannot be restarted');
     const card = (await f.request(`/api/agent-market/${builder.agentId}`, f.buyer)).body.agent.trackRecord;
     assert.equal(card.outcomes.failed, 1);
     assert.equal(card.outcomes.runs, 1);

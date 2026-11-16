@@ -6,6 +6,7 @@ const { randomUUID, createHash } = require('node:crypto');
 const { assertUnfunded, paymentView } = require('./payments.cjs');
 const { capabilityView } = require('./qualification.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
+const { criteriaFor, acceptanceView, createAcceptance } = require('./acceptance.cjs');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const copy = value => structuredClone(value);
@@ -55,7 +56,7 @@ function taskView(task, now) {
     contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], contextReads: task.contextReads || [],
     scoping: task.scoping?.version === task.version ? (task.scoping.status === 'pending' && task.scoping.expiresAt <= now ? { status: 'failed', error: 'The local reply was interrupted. Try again; your message is saved.' } : task.scoping) : null,
     selectedOfferId: offer && offer.expiresAt > now ? offer.id : null,
-    acceptanceCriteria: task.acceptanceCriteria || [],
+    acceptanceCriteria: criteriaFor(task),
     input: input ? { filename: input.filename, size: input.size, sha256: input.sha256, notes: input.notes } : null };
 }
 function retryAvailable(task, tenantId = task.tenantId) {
@@ -373,7 +374,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       }
       const retry = ['owner', 'employee'].includes(membership(actor, task.tenantId).role) && task.assignment?.status === 'failed'
         ? (retryAvailable(task) ? { available: true } : { available: false, retriedBy: task.retriedBy || null }) : null;
-      return { retry, acceptance: require('./acceptance.cjs').acceptanceView(task), actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
+      return { retry, acceptance: acceptanceView(task), actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
         approval: require('./approvals.cjs').approvalView(task, now()), execution: publicExecution(task), payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), submissions: task.submissions.map(publicSubmission) };
     });
   }
@@ -469,7 +470,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const recurring = require('./recurring.cjs').createRecurring(context, execution);
   const lifecycle = require('./execution-lifecycle.cjs').createLifecycle(context);
   const { activity } = require('./activity.cjs').createActivity(context);
-  const acceptance = require('./acceptance.cjs').createAcceptance({ ...context, saveTask, assertUnfunded });
+  const acceptance = createAcceptance({ ...context, saveTask, assertUnfunded });
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
   return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: localExecution && !!resolveActor, notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
@@ -510,7 +511,8 @@ function publicExecution(task) {
   return { waitingForPermission: waitingForPermission(task.assignment), pausedByBuyer: pausedByBuyer(task.assignment), id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? (task.settlement?.status || 'unknown') : 'not_applicable_local_unpaid' };
 }
 function publicSubmission(submission) {
-  const { id, version, status, createdAt, evidence, files } = submission;
-  return { id, version, status, createdAt, evidence, files: files.map(({ id, filename, mime, size, sha256, scan }) => ({ id, filename, mime, size, sha256, ...(scan ? { scan } : {}) })) };
+  const { id, version, status, createdAt, evidence, files, unmetCriteria } = submission;
+  return { id, version, status, createdAt, evidence, files: files.map(({ id, filename, mime, size, sha256, scan }) => ({ id, filename, mime, size, sha256, ...(scan ? { scan } : {}) })),
+    ...(unmetCriteria?.length ? { unmetCriteria } : {}) };
 }
 module.exports = { createApplication, publicSubmission };
