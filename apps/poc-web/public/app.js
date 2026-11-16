@@ -802,10 +802,11 @@ async function boot(){
       document.title=state.features?.pilotConnections?'Relay · Private pilot':'Relay · Private staging';
       document.querySelector('.poc-strip').textContent=state.features?.pilotConnections?'Private pilot · invite-only · test quotes · execution and payments not enabled':'Private staging · real accounts and saved tasks · no payments or agent execution';
       if(location.pathname==='/auth/confirm'){
-        const params=new URLSearchParams(location.hash.slice(1));
-        const tokenHash=params.get('token_hash'),type=params.get('type');
+        const link=confirmationFromLink(location.hash);
+        // Remove tokens from the address bar and history before anything else runs.
         history.replaceState(null,'','/auth/confirm');
-        if(tokenHash&&['email','recovery'].includes(type)){state.confirmation={tokenHash,type};state.auth='confirm';render();return;}
+        if(link.confirmation){state.confirmation=link.confirmation;state.auth='confirm';render();return;}
+        if(link.error){state.auth='recover';render();notice.textContent=link.error;return;}
       }
     }
     const invite=location.hash.match(/^#team-invite=([A-Za-z0-9_-]{43})$/);if(invite){state.teamInviteToken=invite[1];state.buyerTab='business';history.replaceState(null,'',location.pathname);}

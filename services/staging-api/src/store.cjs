@@ -13,6 +13,19 @@ const {
 } = require('../../poc-api/src/security.cjs');
 const IDLE = 30 * 60 * 1000,
   MAX_LIFETIME = 60 * 60 * 1000;
+// Authentication methods Supabase records for email-link sign-ins.
+const LINK_METHODS = new Set(['otp', 'magiclink', 'recovery', 'email/signup', 'invite', 'email_change']);
+const LINK_MAX_AGE = 15 * 60 * 1000;
+// Reads claims for routing decisions only. The token is trusted solely after
+// Supabase validates it in issue().
+function linkClaims(accessToken) {
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString('utf8'));
+    return payload && typeof payload === 'object' ? payload : {};
+  } catch {
+    return {};
+  }
+}
 const emailNotice = Object.freeze({
   verificationRequired: true,
   message:
@@ -103,6 +116,40 @@ function createManagedStore({
     // Refresh tokens are deliberately discarded: staging sessions are bounded
     // to one access-token lifetime and require a fresh login afterward.
     return raw;
+  }
+  // Supabase's default email links (used when custom templates are unavailable)
+  // verify the token on Supabase's side and redirect with an access token in the
+  // URL fragment. Accept that token only when Supabase confirms it, it is fresh,
+  // and it came from an email link rather than a password sign-in. A recovery
+  // link always yields a recovery-only session, whatever the claimed type says.
+  async function verifyLinkSession(body, ip, previousToken) {
+    exactKeys(body, ['accessToken', 'type']);
+    const accessToken = body.accessToken;
+    if (
+      typeof accessToken !== 'string' ||
+      accessToken.length > 8192 ||
+      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(accessToken) ||
+      !['email', 'recovery'].includes(body.type)
+    )
+      fail(400, 'INVALID_LINK', 'This email link is invalid. Request a new one.');
+    await limit(ip, `link:${digest(accessToken)}`);
+    const claims = linkClaims(accessToken);
+    const methods = Array.isArray(claims.amr) ? claims.amr.map(entry => entry?.method) : [];
+    const fromEmailLink = methods.some(method => LINK_METHODS.has(method));
+    const issuedAt = Number(claims.iat) * 1000;
+    if (!fromEmailLink || !Number.isFinite(issuedAt) || issuedAt < now() - LINK_MAX_AGE || issuedAt > now() + 60000)
+      fail(400, 'INVALID_LINK', 'This email link has expired or was already used. Request a new one.');
+    const recovery = body.type === 'recovery' || methods.includes('recovery');
+    // issue() asks Supabase to validate the token (signature, expiry, revocation)
+    // and applies the invite list before any session is created.
+    return {
+      raw: await issue(
+        { data: { session: { access_token: accessToken, expires_at: claims.exp } } },
+        recovery ? 'recovery' : 'app',
+        previousToken,
+      ),
+      recoveryRequired: recovery,
+    };
   }
   async function principal(raw, { allowRecovery = false } = {}) {
     if (!raw || !/^[A-Za-z0-9_-]{43}$/.test(raw))
@@ -306,6 +353,8 @@ function createManagedStore({
       return recoveryNotice;
     },
     async verify(body, ip, previousToken) {
+      if (Object.hasOwn(body || {}, 'accessToken'))
+        return verifyLinkSession(body, ip, previousToken);
       exactKeys(body, ['tokenHash', 'type']);
       if (
         typeof body.tokenHash !== 'string' ||

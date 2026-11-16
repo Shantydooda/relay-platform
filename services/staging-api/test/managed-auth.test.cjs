@@ -664,3 +664,60 @@ test('managed HTTP task creation rechecks role after route authentication', asyn
   f.provider.memberships = async () => [{ id: f.tenantId, role: 'owner' }];
   assert.equal((await f.store.list(actor, f.tenantId)).length, 0);
 });
+
+// Supabase's default email links redirect with an access token in the URL fragment.
+function linkToken(claims) {
+  const part = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${part({ alg: 'HS256', typ: 'JWT' })}.${part(claims)}.signature-checked-by-provider`;
+}
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+test('a default-format reset link yields a recovery-only session after the provider validates it', async () => {
+  const { store, calls, rows } = fixture();
+  const accessToken = linkToken({ iat: nowSeconds(), exp: nowSeconds() + 3600, amr: [{ method: 'recovery' }] });
+  const result = await store.verify({ accessToken, type: 'recovery' }, 'ip');
+  assert.equal(result.recoveryRequired, true);
+  assert.ok(calls.some(([name, token]) => name === 'identity' && token === accessToken), 'the provider validated the token');
+  await assert.rejects(store.principal(result.raw), { code: 'RECOVERY_ONLY' });
+  await store.principal(result.raw, { allowRecovery: true });
+  assert.ok([...rows.values()].every(row => !JSON.stringify(row).includes(accessToken)), 'the access token is stored only sealed');
+});
+
+test('a reset link cannot be relabelled to skip the password reset', async () => {
+  const { store } = fixture();
+  const accessToken = linkToken({ iat: nowSeconds(), exp: nowSeconds() + 3600, amr: [{ method: 'recovery' }] });
+  const result = await store.verify({ accessToken, type: 'email' }, 'ip');
+  assert.equal(result.recoveryRequired, true);
+  await assert.rejects(store.principal(result.raw), { code: 'RECOVERY_ONLY' });
+});
+
+test('a default-format confirmation link opens the workspace', async () => {
+  const { store } = fixture();
+  const accessToken = linkToken({ iat: nowSeconds(), exp: nowSeconds() + 3600, amr: [{ method: 'otp' }] });
+  const result = await store.verify({ accessToken, type: 'email' }, 'ip');
+  assert.equal(result.recoveryRequired, false);
+  const actor = await store.principal(result.raw);
+  assert.equal(actor.user.email, 'invited@example.test');
+});
+
+test('link sessions refuse password tokens, stale or malformed tokens, uninvited accounts and provider rejection', async () => {
+  const fresh = { iat: nowSeconds(), exp: nowSeconds() + 3600 };
+  const cases = [
+    [{ accessToken: linkToken({ ...fresh, amr: [{ method: 'password' }] }), type: 'email' }, 'INVALID_LINK'],
+    [{ accessToken: linkToken({ ...fresh, amr: [] }), type: 'email' }, 'INVALID_LINK'],
+    [{ accessToken: linkToken({ iat: nowSeconds() - 16 * 60, exp: nowSeconds() + 3000, amr: [{ method: 'otp' }] }), type: 'email' }, 'INVALID_LINK'],
+    [{ accessToken: 'not-a-token', type: 'email' }, 'INVALID_LINK'],
+    [{ accessToken: linkToken({ ...fresh, amr: [{ method: 'otp' }] }), type: 'admin' }, 'INVALID_LINK'],
+    [{ accessToken: linkToken({ ...fresh, amr: [{ method: 'otp' }] }), type: 'email', extra: true }, 'INVALID_FIELDS'],
+  ];
+  for (const [body, code] of cases) {
+    const { store } = fixture();
+    await assert.rejects(store.verify(body, 'ip'), error => error.code === code || (code === 'INVALID_FIELDS' && error.status === 400), JSON.stringify(body).slice(0, 80));
+  }
+  const uninvited = fixture();
+  uninvited.identity.email = 'stranger@example.test';
+  await assert.rejects(uninvited.store.verify({ accessToken: linkToken({ ...fresh, amr: [{ method: 'otp' }] }), type: 'email' }, 'ip'), { code: 'ACCESS_DENIED' });
+  const rejected = fixture();
+  rejected.provider.identity = async () => ({ data: null, error: { status: 401 } });
+  await assert.rejects(rejected.store.verify({ accessToken: linkToken({ ...fresh, amr: [{ method: 'otp' }] }), type: 'email' }, 'ip'), { code: 'SIGN_IN_REQUIRED' });
+});
