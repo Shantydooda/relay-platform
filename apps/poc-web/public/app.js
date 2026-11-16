@@ -76,6 +76,7 @@ function navigationIcon(name) {
     apps: '<rect class="navigation-icon-surface" x="3" y="3" width="7" height="7" rx="2.5"/><rect x="14" y="3" width="7" height="7" rx="2.5"/><rect x="3" y="14" width="7" height="7" rx="2.5"/><path d="M14 17.5h7m-3.5-3.5v7"/>',
     market: '<rect class="navigation-icon-surface" x="3" y="6" width="18" height="15" rx="5"/><path d="M7 6V4h10v2M8 12h.01m8 0h.01M9 17h6"/>',
     scheduled: '<rect class="navigation-icon-surface" x="3" y="5" width="18" height="16" rx="5"/><path d="M8 3v4m8-4v4M3 10h18m-9 3v3l2 1"/>',
+    activity: '<rect class="navigation-icon-surface" x="3" y="4" width="18" height="17" rx="5"/><path d="M7 13h2.5l1.5-3 2 6 1.5-3H17"/>',
     business: '<rect class="navigation-icon-surface" x="3" y="7" width="18" height="14" rx="5"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13c5 3 13 3 18 0m-9 0v3"/>',
     billing: '<rect class="navigation-icon-surface" x="3" y="5" width="18" height="15" rx="5"/><path d="M3 10h18m-13 5h3m3 0h2"/>',
     tools: '<path class="navigation-icon-surface" d="M9 7H7a4 4 0 0 0-4 4v2a4 4 0 0 0 4 4h2m6-10h2a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4h-2"/><path d="M8 12h8"/><circle cx="8" cy="12" r="1"/><circle cx="16" cy="12" r="1"/>',
@@ -137,7 +138,7 @@ function header() {
     <details class="workspace-navigation" ${navigationOpen ? 'open' : ''}>
       <summary>Workspace menu</summary>
       <nav aria-label="${builderSide ? 'Builder' : 'Buyer'} navigation">
-        ${nav.filter(([id]) => builderSide || ['request', 'tasks', 'market', 'scheduled'].includes(id)).map(([id, label]) => `<button class="${active === id ? 'active' : ''}" ${active === id ? 'aria-current="page"' : ''} data-action="${builderSide ? 'builder-tab' : 'buyer-nav'}" data-tab="${id}">${navigationIcon(id)}<span>${label}</span></button>`).join('')}
+        ${nav.filter(([id]) => builderSide || ['request', 'tasks', 'activity', 'market', 'scheduled'].includes(id)).map(([id, label]) => `<button class="${active === id ? 'active' : ''}" ${active === id ? 'aria-current="page"' : ''} data-action="${builderSide ? 'builder-tab' : 'buyer-nav'}" data-tab="${id}">${navigationIcon(id)}<span>${label}</span></button>`).join('')}
         ${!builderSide ? `<details class="workspace-more" ${['apps','business','billing','tools'].includes(active) ? 'open' : ''}><summary>Workspace</summary>${nav.filter(([id]) => ['apps','business','billing','tools'].includes(id)).map(([id,label]) => `<button data-action="buyer-nav" data-tab="${id}" ${active === id ? 'aria-current="page"' : ''}>${navigationIcon(id)}<span>${label}</span></button>`).join('')}</details>` : ''}
       </nav>
       ${recent.length ? `<section class="recent-conversations" aria-label="Recent conversations"><h2>Recent conversations</h2>${recent.map(task => `<button data-action="task" data-id="${escape(task.id)}" ${state.detail?.task.id === task.id ? 'aria-current="page"' : ''}>${navigationIcon('conversation')}<span>${escape(task.title || 'Untitled task')}</span></button>`).join('')}</section>` : ''}
