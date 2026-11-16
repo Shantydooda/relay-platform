@@ -161,7 +161,7 @@ function newTask() {
   const welcome = state.sendingRequest
     ? `<div class="request-pending"><article class="thread-message buyer message-enter"><span class="thread-speaker">You · sending</span><p class="offer-details">${escape(state.sendingRequest)}</p></article>${activityCard('Sending your message', 'Starting your private conversation.', true)}</div>`
     : `<div class="request-welcome">${relayCharacter('large')}<h1>${state.preferredAgent ? `What should ${escape(state.preferredAgent.preferenceMode === 'builder' ? state.preferredAgent.operatorName || 'this builder' : state.preferredAgent.name)} do?` : 'What would you like done?'}</h1><p>${state.preferredAgent ? `This request will go directly to ${escape(state.preferredAgent.preferenceMode === 'builder' ? `${state.preferredAgent.operatorName || 'This builder'}’s qualified agents` : state.preferredAgent.name)} for a quote. You still approve the price and scope.` : 'Start a conversation. We’ll work out the details together.'}</p></div>`;
-  return `<section class="request-work">${welcome}${state.preferredAgent?.repeatFromTaskId ? `<p class="hint">New request · add any files and tool access again. <a href="#task=${escape(state.preferredAgent.repeatFromTaskId)}">Back to completed task</a></p>` : ''}<div class="request-dock">${!state.sendingRequest ? exampleButtons() : ''}${composer('request', 'Tell Relay what you need…', state.sendingRequest ? 'Sending…' : 'Send', state.sendingRequest ? '' : state.prompt, 'Enter to send · Shift + Enter for a new line') .replace('<textarea', state.sendingRequest ? '<textarea disabled' : '<textarea').replace('type="submit"', state.sendingRequest ? 'type="submit" disabled' : 'type="submit"')}</div></section>`;
+  return `<section class="request-work">${welcome}${state.preferredAgent?.repeatFromTaskId ? `<p class="hint">New request · add any files and tool access again. <a href="#task=${escape(state.preferredAgent.repeatFromTaskId)}">Back to completed task</a></p>` : ''}<div class="request-dock">${!state.sendingRequest ? exampleButtons() : ''}${composer('request', 'Tell Relay what you need…', state.sendingRequest ? 'Sending…' : 'Send', state.sendingRequest ? '' : state.prompt, sendHint()) .replace('<textarea', state.sendingRequest ? '<textarea disabled' : '<textarea').replace('type="submit"', state.sendingRequest ? 'type="submit" disabled' : 'type="submit"')}</div></section>`;
 }
 
 function taskList() { return taskDashboard(); }
@@ -781,7 +781,8 @@ root.addEventListener('keydown',event=>{
   }
   if (event.target.tagName !== 'TEXTAREA' || event.key !== 'Enter' || event.isComposing) return;
   const chat = ['request', 'message'].includes(event.target.form?.id);
-  if ((chat && !event.shiftKey) || event.metaKey || event.ctrlKey) {
+  // On-screen keyboards have no Shift + Enter, so Enter adds a line and the Send button submits.
+  if ((chat && !event.shiftKey && !touchFirst()) || event.metaKey || event.ctrlKey) {
     event.preventDefault();
     if (!state.busy && event.target.value.trim()) event.target.form.requestSubmit();
   }

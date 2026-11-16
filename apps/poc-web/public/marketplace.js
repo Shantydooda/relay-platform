@@ -14,19 +14,36 @@ function trackRecordText(trackRecord) {
   if (trackRecord.outcomes?.label) return trackRecord.outcomes.label;
   return `${Number(trackRecord.capabilityAccepted) || 0} accepted deliveries for this capability`;
 }
+// One statement of what a quote means, matching what checkout actually charges:
+// funding collects exactly the quoted amount; no Relay fee or tax is added today.
+function priceNote() {
+  return state.payments?.configured
+    ? 'Quoted price. Funding collects exactly this amount; no Relay fee is added in this environment and taxes are not calculated.'
+    : 'Quoted price. No payment is collected in this environment.';
+}
+// Quotes only come from connected, assessed agents. After a while with none, say so plainly
+// instead of implying that matching is still in progress.
+const QUOTE_WAIT_NOTICE_MS = 30 * 60000;
+function waitingForQuotes() {
+  const postedAt = (state.detail?.events || []).find(event => event.type === 'task.posted')?.createdAt;
+  if (postedAt && Date.now() - postedAt > QUOTE_WAIT_NOTICE_MS) {
+    return '<div class="matching-state" role="status"><div><strong>No qualified quote yet</strong><p>Your request stays open. Only agents that are connected and assessed for this kind of work can quote, and none has so far. You can refine the request here; I’ll show a recommendation if a quote arrives.</p></div></div>';
+  }
+  return '<div class="matching-state" role="status"><span class="activity-spinner" aria-hidden="true"></span><div><strong>Waiting for quotes from qualified agents</strong><p>Only agents that are connected and assessed for this kind of work can quote. You can keep talking here; I’ll show a recommendation when a suitable quote arrives.</p></div></div>';
+}
 const scopeMatches = (offer,task) => (offer.scopeVersion ?? offer.taskVersion) === (task.scopeVersion ?? task.version);
 const builderLabels = {dashboard:'Overview',agents:'Your agents',opportunities:'Opportunities',quotes:'Your offers',work:'Tasks',earnings:'Earnings',settings:'Settings'};
 
 function offerCard(o, task, trackExposure = true) {
   const available = ['posted','selected'].includes(task.status) && scopeMatches(o,task) && o.expiresAt > Date.now();
   return `<article ${trackExposure ? `data-offer-exposure="${escape(o.id)}" data-shortlisted="${Boolean(o.exposure?.shortlisted)}"` : ''} class="panel offer-card ${o.selected?'chosen':''}">
-    <div class="section-heading"><div><span class="eyebrow">${o.agentType==='general'?'General-purpose':'Domain specialist'}</span><h3>${escape(o.agentName)}</h3><small>Operated by ${escape(o.operatorName)}</small></div><strong>${money(o.amountMinor, o.currency)}<small>supplier quote · total not final</small></strong></div>
+    <div class="section-heading"><div><span class="eyebrow">${o.agentType==='general'?'General-purpose':'Domain specialist'}</span><h3>${escape(o.agentName)}</h3><small>Operated by ${escape(o.operatorName)}</small></div><strong>${money(o.amountMinor, o.currency)}<small>quoted price</small></strong></div>
     <p>${escape(o.capability)}</p><span class="tag">${o.qualification==='qualified'?(o.qualificationCurrent?`${RelaySupplier.assessmentTitle(o.qualificationEvidence)} passed`:'Previous assessment pass · retest required'):'Not currently assessed'}</span>
     ${o.exposure?.featured?`<p class="tag">Qualified newcomer opportunity</p><p class="hint">${escape(o.exposure.reason)}</p>`:''}
     ${o.trackRecord?`<p class="hint">${escape(trackRecordText(o.trackRecord))}. Local and sandbox history, not paid-customer proof.</p>`:''}
     <p class="offer-details">${escape(o.proposal)}</p>
     <div class="offer-facts"><div><small>First delivery estimate</small><strong>${deliveryDuration(o.deliveryMinutes)} after starting</strong></div><div><small>Valid until</small><strong>${date(o.expiresAt)}</strong></div></div>
-    <details class="quiet-details"><summary>Capability evidence and price details</summary>${typeof RelaySupplier==='object'?RelaySupplier.evidence(o.qualificationEvidence):''}<p>Qualification is a snapshot at quote time and covers only the displayed rubric. No paid-work reliability history is available.</p><p>${escape(o.currency || 'USD')} supplier quote. Relay fees, tax and payment collection are not configured locally. This is not a final checkout total.</p></details>
+    <details class="quiet-details"><summary>Capability evidence and price details</summary>${typeof RelaySupplier==='object'?RelaySupplier.evidence(o.qualificationEvidence):''}<p>Qualification is a snapshot at quote time and covers only the displayed rubric.</p><p>${escape(o.currency || 'USD')} · ${escape(priceNote())}</p></details>
     ${o.selected?'<span class="tag posted">Selected · not started</span>':available?(state.reviewOffer===o.id?'':`<button data-action="review-offer" data-id="${o.id}">${task.status==='selected'?'Compare this offer':'Review offer'}</button>`):`<p class="muted">${!scopeMatches(o,task)?'The brief changed. A new offer is required.':o.expiresAt<=Date.now()?'Offer expired.':task.status==='cancelled'?'Request closed.':'Another offer was awarded.'}</p>`}
     ${state.reviewOffer===o.id&&available?`<div class="offer-confirm"><h3>Choose ${escape(o.agentName)}?</h3><p>${money(o.amountMinor, o.currency)} supplier quote · ${deliveryDuration(o.deliveryMinutes)} after work starts. ${state.detail.approval?'Changing the selection releases the previous reservation and requires fresh company approval.':'This saves your selection and opens the start requirements.'} No payment is collected and no execution is authorized.</p><button class="primary" data-action="accept-offer" data-id="${o.id}">Confirm selection</button><button data-action="close-review">Keep comparing</button></div>`:''}
   </article>`;
@@ -63,7 +80,7 @@ function recommendationInspector(task) {
     <details><summary>Review assessment evidence</summary>${typeof RelaySupplier === 'object' ? RelaySupplier.evidence(offer.qualificationEvidence) : ''}</details>
     <h3>Included delivery</h3><p class="offer-details">${escape(offer.proposal)}</p>${offer.selected ? '<button class="quiet" data-action="contact-operator">Message operator</button>' : ''}
     ${offer.recommendation ? `<h3>Why this match</h3><p>${escape(offer.recommendation.limitations)}</p>` : ''}
-    <small>Fees and taxes are not included. Work begins only after the required approvals.</small>
+    <small>${escape(priceNote())} Work begins only after the required approvals.</small>
   </section>`;
 }
 
@@ -80,7 +97,7 @@ function recommendedOffers(task, offers) {
     <div class="recommendation-facts"><div><small>Quoted price</small><strong>${money(recommended.amountMinor, recommended.currency)}</strong></div><div><small>First delivery</small><strong>${deliveryDuration(recommended.deliveryMinutes)} after starting</strong></div></div>
     <p class="recommendation-trust">${recommended.qualificationCurrent ? '✓ Capability assessed' : 'Assessment not current'} · ${escape(trackRecordText(recommended.trackRecord))}</p>
     <div class="inline-actions">${!reviewing ? `<button class="primary" data-action="review-offer" data-id="${escape(recommended.id)}">Continue with this agent</button>` : ''}<button class="quiet" data-action="inspect-recommendation">View details</button></div>
-    ${reviewing ? `<div class="offer-confirm"><h3>Confirm this execution option</h3><p class="offer-details">${escape(recommended.proposal)}</p><p>${money(recommended.amountMinor, recommended.currency)} supplier quote. Fees and tax are not included. You’ll review permissions before work starts.</p><button class="primary" data-action="accept-offer" data-id="${escape(recommended.id)}">Confirm selection</button><button class="quiet" data-action="close-review">Keep discussing</button></div>` : ''}
+    ${reviewing ? `<div class="offer-confirm"><h3>Confirm this execution option</h3><p class="offer-details">${escape(recommended.proposal)}</p><p>${money(recommended.amountMinor, recommended.currency)} · ${escape(priceNote())} You’ll review permissions before work starts.</p><button class="primary" data-action="accept-offer" data-id="${escape(recommended.id)}">Confirm selection</button><button class="quiet" data-action="close-review">Keep discussing</button></div>` : ''}
   </section>${alternatives.length ? `<details class="thread-alternatives" ${(recommended.recommendation.preferences?.alternatives || alternatives.some(offer => offer.id === state.reviewOffer)) ? 'open' : ''}><summary>See ${alternatives.length} alternative offer${alternatives.length === 1 ? '' : 's'}</summary>${alternatives.slice(0, 3).map(offer => compactOffer(offer, task)).join('')}${alternatives.length > 3 ? `<details><summary>More offers (${alternatives.length - 3})</summary>${alternatives.slice(3).map(offer => compactOffer(offer, task)).join('')}</details>` : ''}</details>` : ''}`;
 }
 function offerCards(){
@@ -89,7 +106,7 @@ function offerCards(){
  if(task.recurringScheduleId)return '<article class="panel"><h3>Your schedule is enabled</h3><p>Each run has its own conversation, offer checks and delivery.</p><button data-action="buyer-nav" data-tab="scheduled">Manage schedule</button></article>';
  if(state.detail.execution&&selected)return `<article class="thread-message relay"><span class="thread-speaker">Relay</span><details><summary>Agreed offer · ${escape(selected.agentName)}</summary><p>${escape(selected.proposal)}</p><p>Actual local execution · no payment collected.</p>${RelaySupplier.evidence(selected.qualificationEvidence)}</details></article>`;
  if(task.scheduleId)return `<article class="thread-message relay"><span class="thread-speaker">Relay</span><h3>${selected?'Offer selected within your saved rules':'Waiting for your chosen agent'}</h3>${selected?`<p>${escape(selected.agentName)} · ${money(selected.amountMinor, selected.currency)} test quote · ${deliveryDuration(selected.deliveryMinutes)} after starting</p><details><summary>Offer & capability evidence</summary><p>${escape(selected.proposal)}</p>${RelaySupplier.evidence(selected.qualificationEvidence)}</details>`:'<p>Only the agent chosen for this recurring task can bid. Relay checks each fresh offer against the saved limits.</p>'}<p>${task.workPlan&&task.workPlan.cadence!=='once'?RelayRecurring.setup(task):state.detail.approval&&state.detail.approval.status!=='approved'?'Request company approval below before this run can start.':'The schedule handles authorization. No additional start button is needed.'}</p><button data-action="buyer-nav" data-tab="scheduled">View schedule & context</button></article>`;
- if(!state.offers.length)return `<div class="matching-state" role="status"><span class="activity-spinner" aria-hidden="true"></span><div><strong>Matching your request with available specialists</strong><p>You can keep talking here. I’ll show a recommendation when a suitable quote arrives.</p></div></div>`;
+ if(!state.offers.length)return waitingForQuotes();
  const others=state.offers.filter(o=>!o.selected);
  return `<article class="thread-message relay offer-section" aria-label="Agent offers"><span class="thread-speaker">Relay</span>
  ${selected?`<section class="panel selected-agreement"><strong>Selected: ${escape(selected.agentName)}</strong><p>${money(selected.amountMinor, selected.currency)} supplier quote · ${deliveryDuration(selected.deliveryMinutes)} to first delivery after work starts</p><p class="hint">${selected.runtimeBid?'This is a local test offer. No real money moves. Explicit task permission is required before the runtime starts.':'This agent is selected. Work starts only after confirmed funding, readiness and required inputs.'}</p>${task.workPlan&&task.workPlan.cadence!=='once'?RelayRecurring.setup(task):state.detail.approval&&state.detail.approval.status!=='approved'?'<p class="hint">Company approval is needed. Continue in the approval card below.</p>':state.reviewStart?'':'<button class="primary" data-action="review-start">Review start requirements</button>'}</section><details class="thread-alternatives" ${state.reviewOffer?'open':''}><summary>Compare other offers</summary><div class="thread-offers">${[selected,...others].map(o=>offerCard(o,task)).join('')}</div></details>`:`${currentRecommendation(task, others) ? '<p>Here’s the execution option I’d recommend for your request.</p>' : ''}${recommendedOffers(task,others)}`}

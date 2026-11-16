@@ -423,6 +423,13 @@ function isAssistantSystemNotice(message) {
   ].includes(message.body);
 }
 
+// Touch-first devices (phones, tablets without a keyboard or mouse) send with the button.
+function touchFirst() {
+  return typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
+}
+function sendHint() {
+  return touchFirst() ? 'Tap Send when you’re ready' : 'Enter to send · Shift + Enter for a new line';
+}
 function environmentNote() {
   if (state.authMode === 'managed') {
     const disabled = [!state.payments?.configured && 'payments', !state.features?.localExecution && 'supplier execution'].filter(Boolean);
@@ -438,7 +445,7 @@ function assistantAvailability(task) {
 }
 
 function conversationComposer(task) {
-  return composer('message', 'Message Relay…', 'Send', state.messageDrafts[task.id] || '', 'Enter to send · Shift + Enter for a new line')
+  return composer('message', 'Message Relay…', 'Send', state.messageDrafts[task.id] || '', sendHint())
     .replaceAll('Message about this task', 'Message Relay')
     .replace('<div class="replybox">', '<button type="button" class="composer-context-button" data-action="conversation-context" aria-controls="conversation-details-panel" aria-label="Add files or choose context">+ Files & context</button><div class="replybox">');
 }

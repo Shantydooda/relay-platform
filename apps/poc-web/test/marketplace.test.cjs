@@ -545,9 +545,9 @@ test('hosted unified buyer shows quote matching without enabling it on legacy st
  state.authMode='managed';state.features={unifiedBackend:true};state.messageDrafts={};
  state.detail.messages=[];state.detail.events=[];state.detail.task.id='hosted-task';
  ctx.composer=()=>'<form id="message"></form>';
- assert.match(vm.runInContext('taskView()',ctx),/Matching your request with available specialists/);
+ assert.match(vm.runInContext('taskView()',ctx),/Waiting for quotes from qualified agents/);
  state.features={};
- assert.doesNotMatch(vm.runInContext('taskView()',ctx),/Matching your request with available specialists/);
+ assert.doesNotMatch(vm.runInContext('taskView()',ctx),/Waiting for quotes from qualified agents/);
 });
 test('delivery estimates read as days and hours, never raw four-digit minutes',()=>{
  const {state,ctx}=ui();
@@ -577,4 +577,18 @@ test('offer cards show verified outcome counts from the server, falling back to 
  const html=vm.runInContext('offerCards()',ctx);
  assert.match(html,/5 runs · 4 accepted first time · 1 failed/);
  assert.match(html,/2 accepted deliveries for this capability/);
+});
+test('price wording matches what funding collects, and a long wait for quotes is stated plainly',()=>{
+ const {state,ctx}=ui();
+ state.payments={configured:true};
+ assert.match(vm.runInContext('priceNote()',ctx),/Funding collects exactly this amount; no Relay fee is added/);
+ state.payments={configured:false};
+ assert.match(vm.runInContext('priceNote()',ctx),/No payment is collected/);
+ state.offers=[];
+ state.detail.events=[{type:'task.posted',createdAt:Date.now()-5*60000}];
+ assert.match(vm.runInContext('waitingForQuotes()',ctx),/Waiting for quotes from qualified agents/);
+ state.detail.events=[{type:'task.posted',createdAt:Date.now()-31*60000}];
+ const late=vm.runInContext('waitingForQuotes()',ctx);
+ assert.match(late,/No qualified quote yet/);
+ assert.doesNotMatch(late,/activity-spinner/);
 });

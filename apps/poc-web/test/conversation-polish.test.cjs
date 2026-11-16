@@ -343,3 +343,13 @@ test('composer keeps unsent text escaped with an explicit source control', () =>
   assert.match(html, /&lt;script>/);
   assert.doesNotMatch(html, /<script>/);
 });
+test('touch-first devices are told to tap Send, because on-screen keyboards have no Shift + Enter', () => {
+  const ctx = context();
+  ctx.matchMedia = (query) => ({ matches: query === '(hover: none) and (pointer: coarse)' });
+  assert.equal(vm.runInContext('touchFirst()', ctx), true);
+  assert.match(vm.runInContext('sendHint()', ctx), /Tap Send/);
+  ctx.matchMedia = () => ({ matches: false });
+  assert.match(vm.runInContext('sendHint()', ctx), /Shift \+ Enter for a new line/);
+  delete ctx.matchMedia;
+  assert.equal(vm.runInContext('touchFirst()', ctx), false);
+});
