@@ -4,12 +4,17 @@ Claude Code reads this file automatically. Read `AGENTS.md` too: those are the e
 
 ## 1. What Relay is
 
-Relay is a conversation-first marketplace for **agentic project work at any scale**. A buyer describes an outcome. Builders' agents quote on it. The buyer picks an offer, the agent does the work under scoped permissions, and the buyer reviews the delivery.
+Relay is a **browse-first marketplace for AI agents and agentic work at any scale**, like Hugging Face for discovery. Buyers browse agent cards that lead with verified evidence, then buy in one of three ways the builder offers:
+- **Use it:** a self-serve product, charged per checked run;
+- **Hire it:** a fixed-scope package with acceptance criteria agreed up front;
+- **Commission it:** a custom project via "Post a request", with milestones at scale.
+
+**Chat-based discovery was removed on 17 Nov 2026** (founder decision; `docs/specs/Marketplace-Model.md`). Don't bring it back as the front door. Any future assistant could only be a helper inside the request form.
 
 The agreed thesis (`docs/Product-Thesis.md`) has three layers:
 1. **Hub (free, public, the moat):** a trustworthy community like Hugging Face's. Agent cards carry evidence that is verified, never self-reported.
 2. **Transactions:** quotes, agreements, held payment, delivery review, payout. Relay takes a fee.
-3. **Managed outcomes:** Relay sells the result, routes it to builders and stands behind it. Relay keeps a margin.
+3. **Managed outcomes:** Relay sells the result, routes it to builders and stands behind it. Relay keeps a margin. Buyers reach it through "Post a request", not chat.
 
 Non-negotiable product principles:
 - **Evidence is verified, never self-reported.** Every number shows its sample size and time window. A rate appears only from 20 decided runs (`MIN_RATE_SAMPLE`). Failures always count.
@@ -41,7 +46,7 @@ These come from the founder's brief and stay in force until he changes them.
 | Old staging | `relay-staging` from `render.yaml` on `main` | Not the pilot. `render.yaml` doesn't describe `relay-pilot-app`. |
 | Local | `npm run start:local` (poc-api, SQLite) | Local execution, a sandbox payments harness and the local model (Ollama) for scoping. |
 
-What the pilot runs: `scoping: false` (no hosted assistant yet, decision pending), supplier execution off, payments off.
+What the pilot runs: `scoping: false` (no hosted assistant; no longer needed since chat discovery is being removed), supplier execution off, payments off.
 
 ## 4. Repository map
 
@@ -126,8 +131,16 @@ Earlier and already live:
 
 It still needs an end-to-end test, unit tests, UI (a checklist editor, criteria on offers and the agreement, unmet checkboxes in the revision form, an "End as unmet" button, activity labels), builder views and docs.
 
-Next after that:
-- a UI/UX review (promised to the founder, not started);
+Next after that: **the marketplace model** (`docs/specs/Marketplace-Model.md`), in this order:
+- marketplace home, evidence-first cards, real routes, chat removed;
+- packages, reusing the acceptance work;
+- the "Post a request" form;
+- self-serve products for the seed category (on the workspace-apps foundation; independent security review before builder code or language-model runtimes);
+- subscriptions after payments are live.
+
+The UI/UX review is done: `claude/UX-Review-2026-11-17.md` in the project. Its quick fixes (Work status counts, notification badge, shimmer, plain-language offer copy) can run in parallel.
+
+Also queued:
 - wiring the fee schedule into offers, charge, ledger and payout in **one** change, verified by the Postgres payment suites;
 - the engagements and milestones model;
 - public hub pages (needs founder decisions);
@@ -137,7 +150,7 @@ Founder decisions still open (`docs/Decisions-Needed.md`):
 - the fee model (working assumption: tiered option B, all-in, live 0%);
 - the guarantee policy;
 - the funding choice when a buyer tries another agent (recommended: refund, then fund the new task);
-- the hosted assistant provider and data rules;
+- marketplace details: package and per-run fees, trial runs, flag thresholds, where self-serve runs execute;
 - auto-deploy and `render.yaml`;
 - when the public hub opens.
 
