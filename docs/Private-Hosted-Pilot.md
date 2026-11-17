@@ -245,3 +245,22 @@ Validation: 790 backend tests passed, plus the final 3 focused supervised-worker
 checks after credential-file read hardening. `git diff --check` passed. No source
 push, provider activation, invitation grant or deployment was performed in this
 increment; the pilot storage credential file is still empty.
+
+### Unpaid supplier execution switch (added 17 Nov 2026)
+
+The pilot can let buyers start agreed work with builders' supplier-hosted runtimes, with no payment. It is **off** until the operator turns it on in the Render service's environment:
+
+| `RELAY_PILOT_UNPAID_EXECUTION` | Effect |
+| --- | --- |
+| unset or `disabled` | As before: quotes and selection only. |
+| `enabled` | Buyers can start selected work (unpaid); runtimes claim, deliver and receive revision requests; buyers accept, request changes, pause, cancel or end as unmet; the outcome ledger and "try another agent" work. The execution sweeper runs, so deadlines and lost leases end runs. |
+| anything else | The pilot refuses to start (`INVALID_PILOT_UNPAID_EXECUTION`). |
+
+What stays closed even when it is enabled: payments (any Stripe setting still stops startup), local CSV processes, same-agent recovery, multi-agent plans, scheduled work, workspace apps, Drive, Attio and notifications. The code is `services/application/src/capabilities.cjs`; the pilot reads the variable in `services/pilot-api/src/config.cjs`.
+
+Before turning it on:
+1. Deploy a commit that contains the switch. Setting the variable on an older build does nothing.
+2. Decide how delivered files are stored. With `RELAY_PILOT_STORAGE=private-bucket`, deliveries are quarantined until the supervised scanner marks them clean, so the scanner must be running or buyers cannot preview, download or accept. With storage disabled, deliveries are stored inline (text, JSON or CSV, up to 256 KiB per file).
+3. Remember that a buyer's brief and attached input reach the selected builder's runtime once work starts. Invite only builders you trust with test data.
+
+Turning it off again stops new starts. Work already running keeps its agreement; the buyer can still review, cancel or end it.
