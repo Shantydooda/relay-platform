@@ -33,7 +33,7 @@ Non-negotiable product principles:
 
 ### Marketplace layout (decided 17 Nov 2026)
 
-Hugging Face's browse pattern carrying Relay's evidence. The full spec is in `docs/specs/Marketplace-Model.md` → "Layout". The design canvas is at https://claude.ai/artifact/MT5nZQNokuKusGRi3csHZx; its agents and numbers are illustrative only, so never ship them as data.
+Hugging Face's browse pattern carrying Relay's evidence. The full spec is in `docs/specs/Marketplace-Model.md` → "Layout". **Design reference in the repo: `docs/design/marketplace/`**, with static HTML mockups (`browse.html`, `agent-page.html`), desktop and mobile screenshots, and the design source; read its README first. (The original canvas, https://claude.ai/artifact/MT5nZQNokuKusGRi3csHZx, needs the founder's login.) Its agents and numbers are illustrative only, so never ship them as data.
 - **Browse page:**
   - Left filter rail: categories (seed first), ways to buy, a price range, works with (only connectors that really work), and evidence filters (passed Relay test, 20+ verified runs, repeat buyers, hosted on Relay).
   - Right: a dense two-column list. Each row is `builder/agent-name` in monospace, then one meta line: category · ways to buy · from-price · evidence · version and when it was updated.
