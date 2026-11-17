@@ -2,6 +2,15 @@
 
 Claude Code reads this file automatically. Read `AGENTS.md` too: those are the engineering standards and they take priority. This file covers what Relay is, how the repo is organised, what's deployed, the rules that always apply, and where the work stands. Last updated 17 Nov 2026.
 
+## 0. Current working mode: local development (from 17 Nov 2026)
+
+The founder's instruction: **run Relay on localhost while the marketplace changes are built.**
+- Start it with `npm run start:local`. It serves http://127.0.0.1:4180 (override with `RELAY_POC_PORT`), with SQLite and local identity. Keep it running, and check every change there in a browser, at desktop and mobile widths.
+- Ollama isn't needed: chat discovery is being removed. If the server reports scoping as unavailable, that's expected.
+- Use disposable local accounts and data only. Never point local at the pilot's Supabase, and never copy pilot data in.
+- Don't ask for pilot deploys while this work is in progress. Push finished, tested increments to `codex/v1-production-foundation` as usual. Ask the founder to deploy only when a coherent slice is done and `npm test` plus `npm run test:postgres` pass on Node 24.
+- When a slice is ready to look at, tell the founder the local URL and what to try.
+
 ## 1. What Relay is
 
 Relay is a **browse-first marketplace for AI agents and agentic work at any scale**, like Hugging Face for discovery. Buyers browse agent cards that lead with verified evidence, then buy in one of three ways the builder offers:
@@ -21,6 +30,25 @@ Non-negotiable product principles:
 - **No pay-to-rank.** Ranking uses fit, verified outcomes and fair exposure for qualified newcomers.
 - **One engagement → milestones → work items** model for large projects (`docs/specs/Engagements-and-Milestones.md`; not built yet).
 - **Pilot and sandbox evidence is labelled as such** and never presented as paid-customer proof.
+
+### Marketplace layout (decided 17 Nov 2026)
+
+Hugging Face's browse pattern carrying Relay's evidence. The full spec is in `docs/specs/Marketplace-Model.md` → "Layout". The design canvas is at https://claude.ai/artifact/MT5nZQNokuKusGRi3csHZx; its agents and numbers are illustrative only, so never ship them as data.
+- **Browse page:**
+  - Left filter rail: categories (seed first), ways to buy, a price range, works with (only connectors that really work), and evidence filters (passed Relay test, 20+ verified runs, repeat buyers, hosted on Relay).
+  - Right: a dense two-column list. Each row is `builder/agent-name` in monospace, then one meta line: category · ways to buy · from-price · evidence · version and when it was updated.
+  - Sorting by most verified runs, newest or price; no paid placement. "Post a request" at the end of the list.
+- **Hugging Face numbers become Relay evidence:**
+  - downloads → verified runs;
+  - likes → accepted share (from 20 runs) or raw counts below that; saves are never a trust signal;
+  - model size → ways to buy and the from-price;
+  - updated → agent version and when it was updated.
+  - New agents show "Passed Relay test · no runs yet" plus a "New" tag.
+- **Agent page, like a model card:**
+  - Header `builder / agent` with chips, and tabs: Agent card · Evidence · Packages · Versions · Discussion.
+  - The card holds: an evidence strip with denominators, what it does, inputs and output, checks run every time, the access it asks for, and results by version.
+  - A buying panel on the right: Use it, Hire it (packages), a custom quote link, and the builder.
+- Take the information architecture only, never Hugging Face's branding or visuals. While there are fewer than about 30 agents, show one more description line per row.
 
 Seed category: **B2B data & research**, with sales & marketing next (`docs/Seed-Category.md`). Builders can still offer any kind of work. The seed category only decides where Relay focuses its own go-to-market and evaluation effort.
 
@@ -106,7 +134,7 @@ npm run start:local
 
 ## 7. State of the work
 
-Pushed to `codex/v1-production-foundation` (head `b0501df`, the commit that adds this file; the acceptance patch also applies on top of it). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
+Pushed to `codex/v1-production-foundation` (see `git log` for the head; the acceptance patch applies on `5222ef5` and on anything after it that only touches docs). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
 - the auth fix for Supabase's default email links (`01dc6da`);
 - the seed category and its matching vocabulary (`2793988`);
 - the fee rule, at 0% and not wired (`e99c5ce`);
