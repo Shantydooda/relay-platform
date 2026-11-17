@@ -134,7 +134,7 @@ npm run start:local
 
 ## 7. State of the work
 
-Pushed to `codex/v1-production-foundation` (see `git log` for the head; the acceptance patch applies on `5222ef5` and on anything after it that only touches docs). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
+Pushed to `codex/v1-production-foundation` (see `git log` for the head). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
 - the auth fix for Supabase's default email links (`01dc6da`);
 - the seed category and its matching vocabulary (`2793988`);
 - the fee rule, at 0% and not wired (`e99c5ce`);
@@ -151,7 +151,7 @@ Earlier and already live:
 - recommendation fixes;
 - landing thesis copy.
 
-**In progress: acceptance criteria and exits.** The server side is drafted and *not pushed*. The full patch, policy and to-do list are in the project doc `claude/Handoff-Acceptance-WIP.md` (claude.ai project "Relay"). The patch applies on `5222ef5` with `git am`. The policy:
+**In progress: acceptance criteria and exits.** The server side is drafted and *not pushed*. The patch, policy and to-do list are in the repo at **`docs/handoff/`**: apply with `git am docs/handoff/acceptance-wip.patch`, then follow its README. Delete that folder once the work is merged. The policy:
 1. a checklist of up to 12 acceptance criteria on the scope (a scope change);
 2. fixes are free until the criteria are met (revision requests name unmet criteria; safety cap of 10 rounds);
 3. after 2 rounds the buyer can **end as unmet**, which counts as failed and unlocks "try another agent". It's refused while a payment is held;
