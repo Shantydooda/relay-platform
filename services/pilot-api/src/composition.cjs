@@ -4,7 +4,7 @@ const { createMembershipProducer } = require('../../staging-api/src/membership-p
 const { createMembershipProviderStream, postgresProviderReader } = require('../../staging-api/src/membership-provider-stream.cjs');
 const { startWorker, workerHealth } = require('../../operations/src/worker.cjs');
 
-function composePilot({ provider, repository, pool, sessionKey, membershipKey, objectStore, logger = console, now = Date.now }) {
+function composePilot({ provider, repository, pool, sessionKey, membershipKey, objectStore, unpaidExecution = false, logger = console, now = Date.now }) {
   const issuer = 'relay-pilot', keyId = 'pilot-v1';
   let producer, pendingSync;
   const sync = () => {
@@ -19,7 +19,7 @@ function composePilot({ provider, repository, pool, sessionKey, membershipKey, o
   } };
   const managed = createUnifiedManagedStore({ provider: synchronizedProvider, repository, sessionKey, now,
     membershipFeed: { issuer, keys: { [keyId]: membershipKey } },
-    applicationOptions: { localExecution: false, pilotConnections: true, objectStore },
+    applicationOptions: { localExecution: false, pilotConnections: true, pilotUnpaidExecution: unpaidExecution, objectStore },
   });
   let stream;
   producer = createMembershipProducer({ repository, issuer, keyId, key: membershipKey, now,
@@ -39,6 +39,13 @@ function composePilot({ provider, repository, pool, sessionKey, membershipKey, o
       workers.push(startWorker({ name: 'conversation-recovery', logger, run: async () => {
         cursor = (await managed.store.reconcileScoping(cursor)).next;
       } }));
+      if (unpaidExecution) {
+        // Deadlines, lost leases and queue timeouts end runs only through this sweeper.
+        let executionCursors = {};
+        workers.push(startWorker({ name: 'execution-recovery', logger, run: async () => {
+          executionCursors = (await managed.store.reconcileExecutions(executionCursors)).cursors;
+        } }));
+      }
     },
     health: () => workerHealth(workers),
     async close() {

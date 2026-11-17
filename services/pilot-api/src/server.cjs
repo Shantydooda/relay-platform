@@ -23,7 +23,9 @@ async function start() {
       server.once('error', reject);
       server.listen(config.port, '0.0.0.0', resolve);
     });
-    console.info('Relay private pilot listening. Payments and supplier execution disabled.');
+    console.info(config.unpaidExecution
+      ? 'Relay private pilot listening. Unpaid supplier execution enabled; payments disabled.'
+      : 'Relay private pilot listening. Payments and supplier execution disabled.');
     let stopping = false;
     const shutdown = async () => {
       if (stopping) return;

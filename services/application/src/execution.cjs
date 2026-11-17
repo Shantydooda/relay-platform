@@ -38,8 +38,11 @@ function createExecution(context) {
     return bytes;
   }
   context.verifiedBytes = verifiedBytes;
-  function localOnly() {
-    if (!localExecution) fail(403, 'LOCAL_EXECUTION_DISABLED', 'Unpaid execution is only available in explicit local development mode.');
+  // Starting work needs the environment to allow it: unpaid work needs the unpaid
+  // capability, funded work the sandbox payments capability (checked in checkStart).
+  function startAllowed(mode) {
+    if (mode === 'stripe-sandbox' ? !context.capabilities.sandboxPayments : !context.capabilities.unpaidExecution)
+      fail(403, 'LOCAL_EXECUTION_DISABLED', 'Starting work is not enabled in this environment.');
   }
   async function taskForRuntime(repo, principal, id) {
     const task = await repo.get('task', id, true);
@@ -76,8 +79,9 @@ function createExecution(context) {
     });
   }
   async function authorizeLocal(actor, id, body, key) {
-    localOnly(); exactKeys(body, ['expectedVersion', 'mode']);
+    exactKeys(body, ['expectedVersion', 'mode']);
     if (!['local-unpaid', 'stripe-sandbox'].includes(body.mode)) fail(400, 'INVALID_MODE', 'Explicit unpaid local execution consent is required.');
+    startAllowed(body.mode);
     return command(actor.user.id, key, ['authorize-local', id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
       if (task.scheduleId) fail(409, 'SCHEDULE_MANAGED', 'The schedule starts this run automatically after its checks and any company approval.');
@@ -88,7 +92,7 @@ function createExecution(context) {
     require('./orchestration.cjs').ready(task);
     if (task.orchestrationStep && mode !== 'local-unpaid') fail(409, 'PLAN_LOCAL_ONLY', 'Orchestration currently supports local unpaid execution only.');
     if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Review and enable the recurring schedule. Each run gets its own execution.');
-    localOnly();
+    startAllowed(mode);
     if (mode === 'local-unpaid') assertUnfunded(task);
     else {
       if (!context.sandboxPaymentsEnabled) fail(503, 'SANDBOX_NOT_CONNECTED', 'Connect the Stripe sandbox before starting funded test work.');

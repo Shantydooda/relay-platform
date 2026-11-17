@@ -59,3 +59,12 @@ test('missing or malformed keys, certificate, storage mode and port are rejected
   assert.throws(() => loadConfig(pilotEnv({ RELAY_PILOT_STORAGE: 'public' })), /INVALID_PILOT_STORAGE_MODE/);
   for (const PORT of ['80', '70000', 'abc']) assert.throws(() => loadConfig(pilotEnv({ PORT })), /INVALID_PORT/, PORT);
 });
+
+test('unpaid supplier execution is off unless explicitly enabled, and payments stay refused', () => {
+  assert.equal(loadConfig(pilotEnv()).unpaidExecution, false);
+  assert.equal(loadConfig(pilotEnv({ RELAY_PILOT_UNPAID_EXECUTION: 'disabled' })).unpaidExecution, false);
+  assert.equal(loadConfig(pilotEnv({ RELAY_PILOT_UNPAID_EXECUTION: 'enabled' })).unpaidExecution, true);
+  for (const value of ['true', '1', 'yes', 'ENABLED'])
+    assert.throws(() => loadConfig(pilotEnv({ RELAY_PILOT_UNPAID_EXECUTION: value })), /INVALID_PILOT_UNPAID_EXECUTION/, value);
+  assert.throws(() => loadConfig(pilotEnv({ RELAY_PILOT_UNPAID_EXECUTION: 'enabled', STRIPE_SECRET_KEY: 'set' })), /PILOT_PAYMENTS_NOT_CONFIGURED/);
+});

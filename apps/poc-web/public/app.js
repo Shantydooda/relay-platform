@@ -817,7 +817,7 @@ async function boot(){
     if(state.authMode==='local')document.title='Relay · Local workspace';
     if(state.authMode==='managed'){
       document.title=state.features?.pilotConnections?'Relay · Private pilot':'Relay · Private staging';
-      document.querySelector('.poc-strip').textContent=state.features?.pilotConnections?'Private pilot · invite-only · test quotes · execution and payments not enabled':'Private staging · real accounts and saved tasks · no payments or agent execution';
+      document.querySelector('.poc-strip').textContent=state.features?.pilotConnections?(state.features?.unpaidExecution?'Private pilot · invite-only · unpaid test runs · payments not enabled':'Private pilot · invite-only · test quotes · execution and payments not enabled'):'Private staging · real accounts and saved tasks · no payments or agent execution';
       if(location.pathname==='/auth/confirm'){
         const link=confirmationFromLink(location.hash);
         // Remove tokens from the address bar and history before anything else runs.

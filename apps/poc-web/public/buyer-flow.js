@@ -461,7 +461,7 @@ function activityPage() {
 }
 function environmentNote() {
   if (state.authMode === 'managed') {
-    const disabled = [!state.payments?.configured && 'payments', !state.features?.localExecution && 'supplier execution'].filter(Boolean);
+    const disabled = [!state.payments?.configured && 'payments', !(state.features?.unpaidExecution || state.features?.localExecution) && 'supplier execution'].filter(Boolean);
     return `${state.features?.scoping ? 'Relay suggestions · confirm scope before posting.' : 'Manual brief review · assistant replies are not enabled here yet.'}${disabled.length ? ` ${disabled.join(' and ').replace(/^./, c => c.toUpperCase())} ${disabled.length > 1 ? 'are' : 'is'} disabled in this environment. No money moves.` : ''}`;
   }
   return `${state.features?.scoping ? 'Local model suggestions · confirm scope before posting.' : 'Manual brief review · local model not configured.'} ${state.payments?.configured ? 'Sandbox payments only. Start permission is separate from funding.' : 'Stripe sandbox is not connected. Local execution can run unpaid.'}`;
