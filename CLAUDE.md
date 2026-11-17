@@ -166,7 +166,7 @@ Next after that: **the marketplace model** (`docs/specs/Marketplace-Model.md`), 
 - self-serve products for the seed category (on the workspace-apps foundation; independent security review before builder code or language-model runtimes);
 - subscriptions after payments are live.
 
-The UI/UX review is done: `claude/UX-Review-2026-11-17.md` in the project. Its quick fixes (Work status counts, notification badge, shimmer, plain-language offer copy) can run in parallel.
+The UI/UX review is done: `docs/UX-Review-2026-11-17.md`. The marketplace decision supersedes most of it. Its quick fixes (Work status counts, notification badge, shimmer, plain buyer vocabulary) can run in parallel.
 
 Also queued:
 - wiring the fee schedule into offers, charge, ledger and payout in **one** change, verified by the Postgres payment suites;
@@ -189,4 +189,4 @@ Founder decisions still open (`docs/Decisions-Needed.md`):
 - **Pilot capabilities are off on purpose** (scoping, execution, payments). Don't "fix" them by changing config.
 - **`render.yaml` describes the old staging service.** Syncing a blueprint could change live services, so don't.
 - Copy must never imply localhost or demo-only behaviour on the pilot, or promise outcomes the evidence doesn't support.
-- Keep `docs/` and the project docs in step when decisions change. The founder reads the claude.ai project `Relay`: `Product-Thesis`, `Decisions-Needed`, `Seed-Category`, `specs/*`, `QA-Audit-2026-11-15`, `Handoff-Acceptance-WIP`.
+- Keep `docs/` and the project docs in step when decisions change. The founder reads the claude.ai project `Relay` (mirrors of `Product-Thesis`, `Decisions-Needed`, `Seed-Category`, `specs/*`, the UX review and the audit). Claude Code can't read the project, so everything it needs lives in this repo.
