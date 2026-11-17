@@ -79,14 +79,8 @@ node --test path/to/file.test.cjs
 npm run start:local
 ```
 
-- Run `npm test` **and** `npm run test:postgres` on Node 24 before every deploy. The previous working environment couldn't run the Postgres and pglite suites, so **the application-level tests behind these changes have only run through the SQLite end-to-end path**:
-  - start preflight
-  - buyer pause
-  - activity
-  - agent card
-  - retry
-  - acceptance
-  Treat a full run as outstanding until it passes.
+- Run `npm test` **and** `npm run test:postgres` on Node 24 before every deploy. CI (`.github/workflows/ci.yml`) runs both on every PR, on the Node version in `.nvmrc`: "Core and browser contracts" runs `npm audit --omit=dev`, `npm test` and `npm run test:web`, and "Native PostgreSQL and recovery" runs `db:local:setup` then `npm run test:postgres`. A green CI run is the full-suite evidence; a local run in a cloud container is not, because `initdb` refuses to run as root there and only Node 22 may be installed.
+- The acceptance work (PR #3) passed both CI jobs on Node 24. Earlier changes (start preflight, buyer pause, activity, agent card, retry) were pushed before CI covered them on this branch. Their next CI run is their first full run.
 - End-to-end tests use `services/poc-api/test/helpers/recommendation-flow.cjs`: a real localhost server and the real supplier SDK. Two builders are qualified on `csv-normalize-v1`. Options are `{ repository, now, autoAcceptAfterMs }`, and each test needs its own port.
 - Frontend tests load public JS into `vm` contexts (see `apps/poc-web/test/*.test.cjs`).
 - Browser QA has used Playwright with system Chrome. Verify changed flows in a browser, desktop and mobile.
@@ -101,12 +95,13 @@ npm run start:local
 
 ## 7. State of the work
 
-Pushed to `codex/v1-production-foundation` (head `b0501df`, the commit that adds this file; the acceptance patch also applies on top of it). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
+**The live pilot runs `1ad3d8b`** until the founder deploys. On `codex/v1-production-foundation` but not deployed yet:
 - the auth fix for Supabase's default email links (`01dc6da`);
 - the seed category and its matching vocabulary (`2793988`);
 - the fee rule, at 0% and not wired (`e99c5ce`);
 - the agent card v1 track record (`cb3444f`);
-- "Try another agent" after a failure (`c3a6cce`).
+- "Try another agent" after a failure (`c3a6cce`);
+- **acceptance criteria and exits**, from PR #3 (branch `claude/nice-sagan-pccp0j`). Merge that PR before this file is accurate on this point.
 
 Earlier and already live:
 - the outcome ledger;
@@ -118,13 +113,13 @@ Earlier and already live:
 - recommendation fixes;
 - landing thesis copy.
 
-**In progress: acceptance criteria and exits.** The server side is drafted and *not pushed*. The full patch, policy and to-do list are in the project doc `claude/Handoff-Acceptance-WIP.md` (claude.ai project "Relay"). The patch applies on `5222ef5` with `git am`. The policy:
-1. a checklist of up to 12 acceptance criteria on the scope (a scope change);
-2. fixes are free until the criteria are met (revision requests name unmet criteria; safety cap of 10 rounds);
-3. after 2 rounds the buyer can **end as unmet**, which counts as failed and unlocks "try another agent". It's refused while a payment is held;
-4. auto-accept on buyer silence, behind `autoAcceptAfterMs`, **off**.
+**Acceptance criteria and exits** (policy: `docs/Decisions-Needed.md` §2; transitions: `docs/State-Machines.md`; code: `services/application/src/acceptance.cjs`, `apps/poc-web/public/acceptance-ui.js`):
+1. A checklist of up to 12 acceptance criteria on the scope. Changing it is a scope change; authorized work keeps the copy frozen in its agreement.
+2. Fixes are free until the checklist is met. Revision requests name unmet criteria, and the runtime gets them on `claim`. The safety cap is 10 rounds for supplier-hosted runtimes.
+3. After 2 rounds the buyer can **end as unmet** (`BUYER_ENDED_UNMET`). It counts as failed and unlocks "try another agent". Restarting the same agent is refused, and the run is left out of the execution queue. Ending is refused while a payment is held.
+4. Auto-accept on buyer silence, behind `autoAcceptAfterMs`, stays **off**. No deployment sets it and no worker calls `reconcileAutoAccept`.
 
-It still needs an end-to-end test, unit tests, UI (a checklist editor, criteria on offers and the agreement, unmet checkboxes in the revision form, an "End as unmet" button, activity labels), builder views and docs.
+Still open on it: connecting refunds to the end-as-unmet exit, and choosing the auto-accept review window before turning it on.
 
 Next after that:
 - a UI/UX review (promised to the founder, not started);
