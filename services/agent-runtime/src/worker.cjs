@@ -1,5 +1,8 @@
 'use strict';
 
+// Uses `next` from servers that send it, otherwise status, holds and the lease.
+const { shouldClaim } = require('../../../packages/supplier-sdk/src/index.cjs');
+
 const { randomUUID, createHash } = require('node:crypto');
 const { createTransport } = require('../../../packages/supplier-sdk/src/transport.cjs');
 const { normalizeCsv } = require('./csv.cjs');
@@ -82,7 +85,7 @@ function createRuntime({ origin, token, fetchImpl = fetch, pollMs = 2000, transp
     }
     const assignments = await collection('assignments', 'assignments');
     for (const assignment of assignments) {
-      if (stopped || assignment.waitingForPermission || assignment.pausedByBuyer || assignment.status === 'running' && assignment.leaseUntil > Date.now()) continue;
+      if (stopped || !shouldClaim(assignment)) continue;
       let job;
       try {
         job = await request(`/api/runtime/tasks/${assignment.taskId}/claim`, { assignmentId: assignment.assignmentId });

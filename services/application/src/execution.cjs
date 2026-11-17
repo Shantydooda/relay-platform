@@ -4,7 +4,7 @@ const { waitingForPermission, pausedByBuyer } = require('../../../packages/domai
 
 const { assertUnfunded } = require('./payments.cjs');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
-const { saveTask } = require('./supplier-feed.cjs');
+const { saveTask, assignmentItem } = require('./supplier-feed.cjs');
 const { executionWindowMs } = require('./quote-limits.cjs');
 const { assertReadyToStart } = require('./start-preflight.cjs');
 const { unmetCriteriaInput, revisionRounds, MAX_REVISION_ROUNDS } = require('./acceptance.cjs');
@@ -38,10 +38,11 @@ function createExecution(context) {
     return bytes;
   }
   context.verifiedBytes = verifiedBytes;
-  // Starting work needs the environment to allow it: unpaid work needs the unpaid
-  // capability, funded work the sandbox payments capability (checked in checkStart).
+  // Starting work needs the environment to allow it. Unpaid work needs the unpaid
+  // capability. Funded sandbox work stays local-only; checkStart then reports a
+  // missing sandbox connection with its own code.
   function startAllowed(mode) {
-    if (mode === 'stripe-sandbox' ? !context.capabilities.sandboxPayments : !context.capabilities.unpaidExecution)
+    if (mode === 'stripe-sandbox' ? !localExecution : !context.capabilities.unpaidExecution)
       fail(403, 'LOCAL_EXECUTION_DISABLED', 'Starting work is not enabled in this environment.');
   }
   async function taskForRuntime(repo, principal, id) {
@@ -139,7 +140,7 @@ function createExecution(context) {
       const grants = await repo.page('agent-grant', 'tenant_id', principal.agentId, { limit: 100, statuses: ['queued', 'running'] }), result = [];
       for (const grant of grants.filter(item => item.agentId === principal.agentId)) {
         const task = await repo.get('task', grant.taskId), assignment = task?.assignment;
-        if (assignment && ['queued', 'running'].includes(assignment.status)) result.push({ taskId: task.id, assignmentId: assignment.id, status: assignment.status, waitingForPermission: waitingForPermission(assignment), pausedByBuyer: pausedByBuyer(assignment), leaseUntil: assignment.leaseUntil || 0, attempt: assignment.attempt });
+        if (assignment && ['queued', 'running'].includes(assignment.status)) result.push(assignmentItem(task, now()));
       }
       return result;
     });
@@ -159,7 +160,8 @@ function createExecution(context) {
       if (assignment.attempt >= (assignment.attemptLimit || 3)) {
         // Return a durable failure rather than throwing and rolling it back.
         assignment.status = 'failed'; assignment.error = 'RETRY_EXHAUSTED'; assignment.endedAt = now();
-        touch(task, now()); event(task, principal.actor.user.id, 'execution.failed', now()); await saveTask(repo, task);
+        // Relay's retry limit ended the run, not the agent.
+        touch(task, now()); event(task, 'system', 'execution.failed', now()); await saveTask(repo, task);
         return { taskId: id, exhausted: true };
       }
       const agent = await runtimeAgent(repo, principal, 'execution:write');
@@ -305,6 +307,7 @@ function createExecution(context) {
         if (task.assignment.mode === 'stripe-sandbox' || task.settlement) return 0; // money release is not automatic
         try { await checkReview(repo, task, 'accept-delivery', submission.id); } catch (error) { if (error.status === 409) return 0; throw error; }
         acceptSubmission(task, submission, 'Accepted automatically: the buyer didn’t respond within the review window.');
+        task.assignment.autoAccepted = true;
         touch(task, now()); event(task, 'system', 'delivery.auto_accepted', now()); await saveTask(repo, task);
         return 1;
       });

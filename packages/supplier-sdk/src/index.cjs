@@ -13,6 +13,15 @@ function page({ after = '', limit = 50 } = {}) {
   return `?after=${encodeURIComponent(after)}&limit=${limit}`;
 }
 
+// Whether a runtime should claim this assignment now. Servers that send `next`
+// decide it; for older servers it falls back to status, holds and the lease.
+// A true result is a hint: the claim itself still checks every guard.
+function shouldClaim(assignment, now = Date.now()) {
+  if (assignment?.next) return assignment.next.action === 'claim';
+  return !!assignment && !assignment.waitingForPermission && !assignment.pausedByBuyer &&
+    !(assignment.status === 'running' && assignment.leaseUntil > now);
+}
+
 function createSupplierClient(options) {
   const request = createTransport(options);
   const taskCommand = (action, taskId, body, key) => request(`/tasks/${id(taskId)}/${action}`, body, key, 'POST');
@@ -35,4 +44,4 @@ function createSupplierClient(options) {
     fail: (taskId, body, key) => taskCommand('fail', taskId, body, key)
   });
 }
-module.exports = { createSupplierClient, SupplierError };
+module.exports = { createSupplierClient, SupplierError, shouldClaim };

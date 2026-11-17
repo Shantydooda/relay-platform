@@ -8,6 +8,7 @@ const { capabilityView } = require('./qualification.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
 const { criteriaFor, acceptanceView, createAcceptance } = require('./acceptance.cjs');
 const { environmentCapabilities } = require('./capabilities.cjs');
+const { workState } = require('../../../packages/domain/src/work-state.cjs');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const copy = value => structuredClone(value);
@@ -47,11 +48,14 @@ function taskView(task, now) {
   const offer = task.offers.find(item => item.id === task.selectedOfferId);
   const status = task.recurringScheduleId ? 'scheduled' : task.assignment?.status || (offer && offer.expiresAt > now ? 'selected' : task.status);
   const { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, input } = task;
+  const approvalStatus = require('./approvals.cjs').approvalView(task, now)?.status || null;
   return { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, status,
+    // Phase, whose move it is, why, and how a finished run ended. See packages/domain/src/work-state.cjs.
+    work: workState(task, now, { approvalStatus, retryAvailable: retryAvailable(task) }),
     waitingForPermission: waitingForPermission(task.assignment),
     pausedByBuyer: pausedByBuyer(task.assignment),
     companyApprovalRequired: !!task.companyApprovalRequired,
-    approvalStatus: require('./approvals.cjs').approvalView(task, now)?.status || null,
+    approvalStatus,
     recurringScheduleId: task.recurringScheduleId || null, scheduleId: task.scheduleId || null, scheduledFor: task.scheduledFor || null,
     workPlan: task.workPlan || null, orchestrationPlan: task.orchestrationPlan || null, orchestrationStep: task.orchestrationStep ? { ...task.orchestrationStep, handoffs: task.orchestrationStep.handoffs.map(({sourceTaskId,submissionId,submissionVersion})=>({sourceTaskId,submissionId,submissionVersion})) } : null,
     contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], contextReads: task.contextReads || [],

@@ -143,7 +143,7 @@ const RelayExecution = {
       (file) => file.scan && file.scan.status !== 'clean',
     );
     return `<article class="thread-message relay execution-update"><span class="thread-speaker">${relayCharacter()}Relay</span>
-      <div class="execution-progress-card"><p class="activity-heading"><strong>${escape(checking && execution.status === 'buyer_review' ? 'Files received · safety checks pending' : taskLabel(task))}</strong>${execution.startedAt ? ` · <span data-execution-clock data-started="${execution.startedAt}" data-completed="${execution.completedAt || execution.endedAt || ''}" data-end-label="${execution.completedAt ? 'delivered' : 'ended'}">${this.clock(execution.startedAt, execution.completedAt || execution.endedAt, execution.completedAt ? 'delivered' : 'ended')}</span>` : ''}</p>
+      <div class="execution-progress-card"><p class="activity-heading"><strong>${escape(!task.work && checking && execution.status === 'buyer_review' ? 'Files received · safety checks pending' : taskLabel(task))}</strong>${execution.startedAt ? ` · <span data-execution-clock data-started="${execution.startedAt}" data-completed="${execution.completedAt || execution.endedAt || ''}" data-end-label="${execution.completedAt ? 'delivered' : 'ended'}">${this.clock(execution.startedAt, execution.completedAt || execution.endedAt, execution.completedAt ? 'delivered' : 'ended')}</span>` : ''}</p>
       ${['queued', 'running'].includes(execution.status) && !taskWaitingForPermission(task) && !execution.pausedByBuyer ? '<span class="activity-spinner" aria-hidden="true"></span>' : ''}${typeof RelayAcceptance === 'object' && execution.error === 'BUYER_ENDED_UNMET' ? RelayAcceptance.ended(execution) : `<p>${escape(execution.status === 'accepted' ? 'The buyer accepted this delivery.' : execution.progress || 'Waiting for the runtime')}</p>`}</div><details class="quiet-details"><summary>Execution details</summary><p class="hint">${this.where()} · ${execution.paymentStatus === 'not_applicable_local_unpaid' ? 'unpaid' : 'sandbox funded'} · attempt ${execution.attempt || 0}</p></details>
       <ol class="execution-milestones" aria-label="Task progress"><li class="done">Authorized</li><li class="${execution.startedAt ? 'done' : ''}">${execution.startedAt ? 'Started' : 'Waiting to start'}</li><li class="${current ? 'done' : ''}">${current ? 'Files received' : 'Delivery pending'}</li><li class="${execution.status === 'accepted' ? 'done' : ''}">${execution.status === 'accepted' ? 'Accepted' : 'Your review'}</li></ol>
       ${current ? this.files(task.id, [current]) : ''}
@@ -166,12 +166,17 @@ const RelayExecution = {
   },
   builderTask(task) {
     if (!task.execution) return '';
-    return `<article class="panel" data-notification-task="${escape(task.id)}"><span class="tag">${escape(taskLabel(task))}</span><h2>${escape(task.title)}</h2><p>${escape(task.agentName)} · ${this.where().toLowerCase()} · ${task.execution.paymentStatus === 'not_applicable_local_unpaid' ? 'unpaid' : 'sandbox funded'}</p><p>${escape(task.execution.status === 'accepted' ? 'The buyer accepted this delivery.' : task.execution.progress || '')}</p>
+    return `<article class="panel" data-notification-task="${escape(task.id)}"><span class="tag">${escape(builderLabel(task))}</span><h2>${escape(task.title)}</h2><p>${escape(task.agentName)} · ${this.where().toLowerCase()} · ${task.execution.paymentStatus === 'not_applicable_local_unpaid' ? 'unpaid' : 'sandbox funded'}</p><p>${escape(task.execution.status === 'accepted' ? 'The buyer accepted this delivery.' : task.execution.progress || '')}</p>
       <details><summary>Agreed brief</summary><p>${escape(task.brief)}</p></details>
       ${typeof RelayAcceptance === 'object' ? RelayAcceptance.summary(task.acceptanceCriteria, (task.submissions || []).findLast(item => item.status === 'revision_requested')?.unmetCriteria || [], 'Buyer’s checklist') : ''}
       ${builderConversation(task)}${this.files(task.id, task.submissions || [])}<p class="hint">The buyer accepts or requests revisions from their conversation. ${task.payment ? 'Accepted delivery becomes eligible for sandbox settlement in Earnings.' : 'No earnings or payout is created by this unpaid local run.'}</p></article>`;
   },
 };
+
+// The builder's words for the same work state the buyer sees.
+function builderLabel(task) {
+  return typeof RelayWorkState === 'object' && RelayWorkState.known(task) ? RelayWorkState.label(task, 'builder') : taskLabel(task);
+}
 
 async function csvFileBase64(file) {
   if (!file || !file.size || file.size > 262144)

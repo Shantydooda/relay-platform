@@ -3,6 +3,7 @@ const { createHash } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
 const {
   createSupplierClient,
+  shouldClaim,
 } = require('../../../packages/supplier-sdk/src/index.cjs');
 const { inventory, supportedBrief, sourceText } = require('./inventory.cjs');
 
@@ -271,7 +272,7 @@ function createLinkRuntime({
       }
     }
     for (const assignment of await pages('assignments', 'assignments')) {
-      if (assignment.waitingForPermission || assignment.pausedByBuyer || (assignment.status === 'running' && assignment.leaseUntil > Date.now()))
+      if (!shouldClaim(assignment))
         continue;
       try {
         await execute(assignment);

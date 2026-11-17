@@ -84,8 +84,11 @@ test('criteria are part of the scope, fixes name unmet criteria, and the buyer c
     await f.bid(taskId, detail.task.version);
     const builder = await hire(f, taskId);
 
-    // The agreement freezes the criteria; the runtime sees them.
+    // The agreement freezes the criteria; the runtime sees them and is told to claim.
     let assignment = await builder.client.task(taskId);
+    assert.deepEqual(assignment.next, { action: 'claim', reason: 'READY' });
+    assert.equal(assignment.ending, null);
+    assert.deepEqual((await builder.client.assignments()).assignments.find(item => item.taskId === taskId).next, { action: 'claim', reason: 'READY' });
     assert.deepEqual(assignment.acceptanceCriteria, detail.task.acceptanceCriteria);
     detail = (await f.request(path, f.buyer)).body;
     response = await f.request(`${path}/acceptance-criteria`, f.buyer, { expectedVersion: detail.task.version, criteria: ['Something else entirely'] }, 'PUT');
@@ -94,6 +97,9 @@ test('criteria are part of the scope, fixes name unmet criteria, and the buyer c
 
     // Round 1: deliver, then request changes naming an unmet criterion.
     let delivered = await deliver(builder, taskId, 1);
+    assert.deepEqual((await builder.client.task(taskId)).next, { action: 'wait', reason: 'DELIVERY_IN_REVIEW' });
+    const reviewWork = (await f.request(path, f.buyer)).body.task.work;
+    assert.deepEqual([reviewWork.phase, reviewWork.waitingOn, reviewWork.reason], ['in_review', 'buyer', 'DELIVERY_READY']);
     assert.deepEqual(delivered.claimed.unmetCriteria, [], 'nothing is unmet on the first attempt');
     detail = (await f.request(path, f.buyer)).body;
     assert.deepEqual(detail.acceptance, { criteria: detail.task.acceptanceCriteria, revisionRounds: 0, endAfterRounds: 2, unmetCriteria: [] });
@@ -110,6 +116,7 @@ test('criteria are part of the scope, fixes name unmet criteria, and the buyer c
     assert.equal(response.status, 200, JSON.stringify(response.body));
     assignment = await builder.client.task(taskId);
     assert.deepEqual(assignment.submissions[0].unmetCriteria, ['c1'], 'the builder sees what is not met');
+    assert.deepEqual(assignment.next, { action: 'claim', reason: 'REVISION_REQUESTED' });
 
     // Round 2: the claim tells the runtime what to fix.
     delivered = await deliver(builder, taskId, 2);
@@ -147,6 +154,12 @@ test('criteria are part of the scope, fixes name unmet criteria, and the buyer c
     assignment = await builder.client.task(taskId);
     assert.equal(assignment.status, 'failed');
     assert.equal(assignment.error, 'BUYER_ENDED_UNMET');
+    assert.deepEqual(assignment.next, { action: 'stop', reason: 'ENDED_UNMET' });
+    assert.deepEqual(assignment.ending, { endedBy: 'buyer', reason: 'ENDED_UNMET', code: 'BUYER_ENDED_UNMET' });
+    // The buyer and the builder read the same answer: ended by the buyer, and the buyer may try another agent.
+    assert.deepEqual(detail.task.work, { phase: 'ended', waitingOn: 'buyer', reason: 'ENDED_UNMET', ending: assignment.ending });
+    const work = (await f.request('/api/work', builder.operator)).body.tasks.find(task => task.id === taskId);
+    assert.deepEqual(work.work, detail.task.work);
     await assert.rejects(builder.client.claim(taskId, { assignmentId: assignment.assignmentId }, randomUUID()));
     const queue = (await f.request('/api/execution-queue', f.buyer));
     assert.equal(queue.status, 200);
@@ -184,6 +197,7 @@ test('auto-accept, when a deployment opts in, accepts a delivery only after the 
     assert.equal(detail.execution.status, 'accepted');
     assert.equal(detail.submissions.at(-1).status, 'accepted');
     assert.ok(detail.events.some(event => event.type === 'delivery.auto_accepted'));
+    assert.deepEqual(detail.task.work.ending, { endedBy: 'relay', reason: 'AUTO_ACCEPTED', code: null });
     const log = (await f.request('/api/activity', f.buyer)).body.items.filter(item => item.taskId === taskId);
     assert.deepEqual([log[0].label, log[0].actor], ['Delivery accepted automatically', 'relay']);
   } finally {
