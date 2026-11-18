@@ -2,5 +2,7 @@
   "name": "@relay/poc-web",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "test": "node --check public/app.js" }
+  "scripts": {
+    "test": "node --check public/agent-market-ui.js && node --check public/workspace-apps-ui.js && node --check public/recurring-ui.js && node --check public/payments-ui.js && node --check public/execution-ui.js && node --check public/app.js && node --check public/marketplace.js && node --check public/buyer-flow.js && node --check public/managed-auth.js && node --test test/*.test.cjs"
+  }
 }

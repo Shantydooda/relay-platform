@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect Drive · Relay</title>
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/drive.js" defer></script>
+  </head>
+  <body>
+    <main
+      class="panel"
+      style="max-width: 680px; margin: 64px auto; padding: 32px"
+    >
+      <h1>Bring your context into Relay.</h1>
+      <p>
+        Select a Google Doc, text, CSV or JSON file. Files are limited to 16 KB.
+        Linking a file never grants agents access automatically.
+      </p>
+      <label
+        >How should Relay use this file?
+        <select id="source-mode">
+          <option value="snapshot">Save a snapshot</option>
+          <option value="live">Read the latest file for authorized work</option>
+        </select>
+      </label>
+      <p>
+        A snapshot stays unchanged. Latest reads check Drive when an authorized
+        task or automation uses the source; Relay does not watch the whole
+        folder.
+      </p>
+      <label id="live-consent-field" hidden
+        ><input type="checkbox" id="live-consent" /> Allow repeat reads of this
+        selected file when I choose latest data. Agent access still requires a
+        separate permission.</label
+      >
+      <p id="drive-status" role="status">Checking your connection…</p>
+      <button id="pick" hidden>Choose a Drive file</button>
+      <p><a href="/#tools">Return to connected tools</a></p>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,83 @@
+'use strict';
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {randomUUID}=require('node:crypto');
+const {openDatabase}=require('../src/database.cjs');
+const {createStore}=require('../src/store.cjs');
+async function fixture(t){
+ const db=openDatabase(':memory:');t.after(()=>db.close());let time=Date.now();const store=createStore(db,()=>time,{identityOnly:true});
+ const sessions=[];for(const name of ['owner','employee','other'])sessions.push(await store.register({name,email:name+'@example.test',password:'local fixture password only',workspace:'buyer'},name));
+ const actor=i=>store.principal(sessions[i]);const team=store.createTeam(actor(0),{name:'Orbit'},randomUUID());
+ return{db,store,actor,team,advance:n=>time+=n};
+}
+test('team creation is idempotent and joining is email-bound, one-use and role-scoped',async t=>{
+ const f=await fixture(t),key=randomUUID();const a=f.store.createTeam(f.actor(0),{name:'Second team'},key);assert.deepEqual(a,f.store.createTeam(f.actor(0),{name:'Second team'},key));
+ const invite=f.store.inviteTeamMember(f.actor(0),f.team.tenantId,{email:'employee@example.test',role:'employee'});
+ assert.throws(()=>f.store.acceptTeamInvite(f.actor(2),{token:invite.token}),{code:'INVITE_UNAVAILABLE'});
+ assert.equal(f.store.previewTeamInvite(f.actor(1),{token:invite.token}).name,'Orbit');
+ f.store.acceptTeamInvite(f.actor(1),{token:invite.token});f.store.acceptTeamInvite(f.actor(1),{token:invite.token});
+ assert.equal(f.actor(1).memberships.find(m=>m.id===f.team.tenantId).role,'employee');
+ assert.throws(()=>f.store.inviteTeamMember(f.actor(1),f.team.tenantId,{email:'other@example.test',role:'employee'}),{code:'FORBIDDEN'});
+ assert.equal(f.store.team(f.actor(1),f.team.tenantId).members.length,0);
+ const saved=f.db.prepare('SELECT token_hash FROM team_invites WHERE id=?').get(invite.inviteId);assert.notEqual(saved.token_hash,invite.token);
+});
+test('revocation defeats stale actors and accepted invitation replay, and expiry fails closed',async t=>{
+ const f=await fixture(t),invite=f.store.inviteTeamMember(f.actor(0),f.team.tenantId,{email:'employee@example.test',role:'approver'});
+ f.store.acceptTeamInvite(f.actor(1),{token:invite.token});const stale=f.actor(1);
+ f.store.removeTeamAccess(f.actor(0),f.team.tenantId,{memberId:stale.user.id});
+ assert.throws(()=>f.store.team(stale,f.team.tenantId),{code:'FORBIDDEN'});
+ assert.throws(()=>f.store.acceptTeamInvite(f.actor(1),{token:invite.token}),{code:'INVITE_UNAVAILABLE'});
+ const next=f.store.inviteTeamMember(f.actor(0),f.team.tenantId,{email:'other@example.test',role:'employee'});
+ f.advance(24*3600000+1);
+ assert.throws(()=>f.store.acceptTeamInvite({...stale,user:{...stale.user,id:f.db.prepare("SELECT id FROM users WHERE email='other@example.test'").get().id}},{token:next.token}),{code:'INVITE_UNAVAILABLE'});
+});
+test('owner cannot be removed and invitations cannot grant ownership or cross-workspace access',async t=>{
+ const f=await fixture(t);
+ assert.throws(()=>f.store.removeTeamAccess(f.actor(0),f.team.tenantId,{memberId:f.actor(0).user.id}),{code:'MEMBER_PROTECTED'});
+ assert.throws(()=>f.store.inviteTeamMember(f.actor(0),f.team.tenantId,{email:'other@example.test',role:'owner'}),{code:'INVALID_ROLE'});
+ assert.throws(()=>f.store.team(f.actor(2),f.team.tenantId),{code:'FORBIDDEN'});
+ const invitation=f.store.inviteTeamMember(f.actor(0),f.team.tenantId,{email:'employee@example.test',role:'employee'});
+ f.store.removeTeamAccess(f.actor(0),f.team.tenantId,{inviteId:invitation.inviteId});
+ assert.throws(()=>f.store.acceptTeamInvite(f.actor(1),{token:invitation.token}),{code:'INVITE_UNAVAILABLE'});
+});
+test('team tasks stay separate, employees see own work and removed members lose next-request access',async t=>{
+ const f=await fixture(t);
+ const {createSqliteRepository}=require('../../application/src/repository.cjs');
+ const {createApplication}=require('../../application/src/service.cjs');
+ const app=createApplication({repository:createSqliteRepository(f.db),localExecution:true});
+ const invite=f.store.inviteTeamMember(f.actor(0),f.team.tenantId,{email:'employee@example.test',role:'employee'});
+ f.store.acceptTeamInvite(f.actor(1),{token:invite.token});
+ const created=await app.createTask(f.actor(1),{tenantId:f.team.tenantId,title:'Team request',brief:'Research supplied companies.'},randomUUID());
+ assert.equal((await app.list(f.actor(0),f.team.tenantId)).length,1);
+ assert.equal((await app.list(f.actor(1),f.actor(1).memberships.find(m=>!m.company).id)).length,0);
+ await assert.rejects(app.detail(f.actor(2),created.taskId),{code:'NOT_FOUND'});
+ f.store.removeTeamAccess(f.actor(0),f.team.tenantId,{memberId:f.actor(1).user.id});
+ await assert.rejects(app.detail(f.actor(1),created.taskId),{code:'NOT_FOUND'});
+ assert.equal((await app.detail(f.actor(0),created.taskId)).task.title,'Team request');
+});
+test('role changes are owner-only, reject stale edits and preserve private audit history', async t => {
+  const f = await fixture(t);
+  const id = f.team.tenantId;
+  const invite = f.store.inviteTeamMember(f.actor(0), id, { email: 'employee@example.test', role: 'employee' });
+  f.store.acceptTeamInvite(f.actor(1), { token: invite.token });
+  const memberId = f.actor(1).user.id;
+  const change = { memberId, expectedRole: 'employee', role: 'approver' };
+  assert.throws(() => f.store.changeTeamRole(f.actor(1), id, change), { code: 'FORBIDDEN' });
+  assert.throws(() => f.store.changeTeamRole(f.actor(0), id, { ...change, role: 'owner' }), { code: 'INVALID_ROLE' });
+  f.store.changeTeamRole(f.actor(0), id, change);
+  assert.equal(f.actor(1).memberships.find(m => m.id === id).role, 'approver');
+  assert.throws(() => f.store.changeTeamRole(f.actor(0), id, change), { code: 'MEMBER_CHANGED' });
+  assert.throws(() => f.store.changeTeamRole(f.actor(0), id, { memberId: f.actor(0).user.id, expectedRole: 'owner', role: 'employee' }), { code: 'MEMBER_PROTECTED' });
+  assert.throws(() => f.store.teamHistory(f.actor(1), id), { code: 'FORBIDDEN' });
+  const history = f.store.teamHistory(f.actor(0), id);
+  assert.equal(history.entries[0].action, 'member.role_changed');
+  assert.deepEqual(history.entries[0].details, { from: 'employee', to: 'approver' });
+  assert.equal(history.entries[0].subjectName, 'employee');
+  assert.equal(history.entries.filter(e => e.action === 'member.role_changed').length, 1);
+  assert.throws(() => f.store.teamHistory(f.actor(0), id, 'invalid'), { code: 'INVALID_CURSOR' });
+  const before = String(history.entries[0].cursor);
+  assert.ok(f.store.teamHistory(f.actor(0), id, before).entries.every(e => e.cursor < Number(before)));
+  f.store.removeTeamAccess(f.actor(0), id, { memberId });
+  assert.equal(f.store.teamHistory(f.actor(0), id).entries[0].action, 'member.removed');
+  assert.throws(() => f.store.changeTeamRole(f.actor(0), id, change), { code: 'MEMBER_PROTECTED' });
+});

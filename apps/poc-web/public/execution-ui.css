@@ -1,0 +1,186 @@
+.runtime-panel {
+  margin-top: 24px;
+}
+.runtime-panel .inline-actions {
+  flex-wrap: wrap;
+}
+.delivery-submission {
+  border: 1px solid var(--relay-border);
+  border-radius: 14px;
+  padding: 20px;
+  margin: 18px 0;
+}
+.delivery-submission h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.delivery-submission p {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.delivery-files {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.file-download {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--relay-border);
+  border-radius: 10px;
+  color: var(--relay-accent);
+  text-decoration: none;
+  background: var(--relay-subtle);
+  font-size: 13px;
+}
+.file-download:hover {
+  background: var(--relay-accent-soft);
+}
+.file-download span {
+  font-size: 11px;
+  color: var(--relay-muted);
+}
+.delivery-review {
+  border-top: 1px solid var(--relay-border);
+  padding-top: 18px;
+}
+.delivery-review .market-form {
+  margin-top: 22px;
+}
+.execution-update > p {
+  white-space: normal;
+}
+.thread-message .market-form {
+  padding: 12px 0;
+}
+.thread-message input[type="file"] {
+  max-width: 100%;
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .delivery-files {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Supplier setup instructions stay readable within the existing panel grid. */
+.runtime-panel pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.delivery-file {
+  min-width: 0;
+  border: 1px solid var(--relay-border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.delivery-file > strong,
+.delivery-file > span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.delivery-file > span {
+  margin: 8px 0 12px;
+  font-size: 12px;
+}
+.delivery-file .inline-actions {
+  flex-wrap: wrap;
+}
+.delivery-file .file-download {
+  padding: 10px 14px;
+}
+.delivery-file:has(.delivery-preview) {
+  grid-column: 1 / -1;
+}
+.delivery-preview {
+  margin-top: 16px;
+  border-top: 1px solid var(--relay-border);
+  padding-top: 16px;
+}
+.delivery-preview pre {
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 16px;
+  background: var(--relay-subtle);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.delivery-preview code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+/* Task guidance uses the existing workspace type and color system. */
+.conversation-next {
+  max-width: 760px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--relay-muted);
+}
+.conversation-next strong {
+  color: var(--relay-text);
+  font-weight: 600;
+}
+.file-check-details {
+  margin: 10px 0 14px;
+  font-size: 12px;
+}
+.delivery-history,
+.revision-request {
+  margin: 18px 0;
+}
+.delivery-submission > .quiet-details {
+  margin-top: 18px;
+}
+.connection-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  padding: 0;
+  margin: 24px 0;
+  list-style: none;
+  counter-reset: connection;
+}
+.connection-steps li {
+  counter-increment: connection;
+}
+.connection-steps li::before {
+  content: counter(connection);
+  display: block;
+  margin-bottom: 10px;
+  color: var(--relay-muted);
+  font-size: 12px;
+}
+.connection-steps strong,
+.connection-steps span {
+  display: block;
+}
+.connection-steps span {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .connection-steps {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .connection-steps li::before {
+    float: left;
+    margin: 0 12px 24px 0;
+  }
+  .conversation-next {
+    font-size: 12px;
+  }
+}

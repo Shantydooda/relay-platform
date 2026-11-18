@@ -1,0 +1,494 @@
+From e6249eb253446eee857f62336f9e0d932e162489 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 17 Nov 2026 00:03:24 +0100
+Subject: [PATCH] WIP: acceptance criteria, end-as-unmet exit, opt-in
+ auto-accept (server only, untested)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Bu1FGfVSmSJ8eaBKHK1YDd
+---
+ packages/contracts/supplier-openapi.json      |  41 ++++++
+ services/application/src/acceptance.cjs       | 125 ++++++++++++++++++
+ services/application/src/compose.cjs          |   2 +-
+ .../application/src/execution-lifecycle.cjs   |   2 +
+ services/application/src/execution.cjs        |  38 +++++-
+ services/application/src/service.cjs          |  12 +-
+ services/application/src/supplier-feed.cjs    |   3 +-
+ services/poc-api/src/app.cjs                  |   4 +
+ services/poc-api/src/unified-store.cjs        |   4 +-
+ .../test/helpers/recommendation-flow.cjs      |   4 +-
+ .../staging-api/src/application-access.cjs    |   1 +
+ 11 files changed, 218 insertions(+), 18 deletions(-)
+ create mode 100644 services/application/src/acceptance.cjs
+
+diff --git a/packages/contracts/supplier-openapi.json b/packages/contracts/supplier-openapi.json
+index 9fe708e..174d438 100644
+--- a/packages/contracts/supplier-openapi.json
++++ b/packages/contracts/supplier-openapi.json
+@@ -2320,6 +2320,14 @@
+                 "expiresAt"
+               ]
+             }
++          },
++          "acceptanceCriteria": {
++            "type": "array",
++            "maxItems": 12,
++            "items": {
++              "$ref": "#/components/schemas/AcceptanceCriterion"
++            },
++            "description": "The buyer's acceptance checklist. Empty when none was given."
+           }
+         },
+         "required": [
+@@ -2486,6 +2494,13 @@
+                 },
+                 "status": {
+                   "type": "string"
++                },
++                "unmetCriteria": {
++                  "type": "array",
++                  "items": {
++                    "type": "string"
++                  },
++                  "description": "Criterion ids the buyer marked as not met when requesting changes."
+                 }
+               },
+               "required": [
+@@ -2502,6 +2517,14 @@
+           "pausedByBuyer": {
+             "type": "boolean",
+             "description": "True while the buyer has paused the current active assignment. Stop work, do not claim while true and keep polling; the previous lease is already revoked. A claim returns PAUSED_BY_BUYER until the buyer resumes. Informational only. Optional for compatibility with older servers."
++          },
++          "acceptanceCriteria": {
++            "type": "array",
++            "maxItems": 12,
++            "items": {
++              "$ref": "#/components/schemas/AcceptanceCriterion"
++            },
++            "description": "The checklist frozen in the agreement."
+           }
+         },
+         "required": [
+@@ -3023,6 +3046,24 @@
+             "$ref": "#/components/schemas/LinkQualificationSubmission"
+           }
+         ]
++      },
++      "AcceptanceCriterion": {
++        "type": "object",
++        "required": [
++          "id",
++          "text"
++        ],
++        "additionalProperties": false,
++        "description": "One item of the buyer's acceptance checklist. Fixes needed to meet agreed criteria are part of the agreed price.",
++        "properties": {
++          "id": {
++            "type": "string"
++          },
++          "text": {
++            "type": "string",
++            "maxLength": 300
++          }
++        }
+       }
+     },
+     "parameters": {
+diff --git a/services/application/src/acceptance.cjs b/services/application/src/acceptance.cjs
+new file mode 100644
+index 0000000..1bd0938
+--- /dev/null
++++ b/services/application/src/acceptance.cjs
+@@ -0,0 +1,125 @@
++'use strict';
++
++// Acceptance policy (docs/Decisions-Needed.md §2, "Acceptance and exits").
++//
++// 1. Acceptance criteria are a short checklist on the scope. Changing them is a
++//    scope change: offers made for the old scope are invalidated, and authorized
++//    work keeps the criteria frozen in its agreement.
++// 2. Fixes are free until the agreed criteria are met. A revision request can
++//    name the criteria that are not met yet.
++// 3. Either side can exit. After END_AFTER_ROUNDS revision rounds the buyer can end
++//    the work as unmet: it counts as a failed run in the outcome ledger and the
++//    buyer can try another agent. The builder can already withdraw by failing the
++//    assignment.
++// 4. Silence counts as acceptance only when the deployment turns it on
++//    (autoAcceptAfterMs). It stays off until payments are live.
++//
++// No money moves here. Ending work that has a held payment is refused until refunds
++// are wired to this exit, so the buyer is never told money moved when it didn't.
++
++const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
++
++const MAX_CRITERIA = 12;
++const END_AFTER_ROUNDS = 2;
++// Free fixes are bounded only by the exit rule, plus a safety cap on runaway loops.
++const MAX_REVISION_ROUNDS = 10;
++const ENDABLE = ['queued', 'running', 'buyer_review'];
++
++function normalizeCriteria(value) {
++  if (!Array.isArray(value)) fail(400, 'INVALID_INPUT', 'Acceptance criteria must be a list.');
++  if (value.length > MAX_CRITERIA) fail(400, 'INVALID_INPUT', `Keep acceptance criteria to ${MAX_CRITERIA} items.`);
++  const seen = new Set();
++  return value.map((item, index) => {
++    const criterion = text(item, `Criterion ${index + 1}`, 3, 300);
++    const key = criterion.toLowerCase();
++    if (seen.has(key)) fail(400, 'INVALID_INPUT', 'Each acceptance criterion must be different.');
++    seen.add(key);
++    return { id: `c${index + 1}`, text: criterion };
++  });
++}
++
++function criteriaFor(task) {
++  return task.assignment?.agreement?.acceptanceCriteria || task.acceptanceCriteria || [];
++}
++
++function revisionRounds(task) {
++  return (task.submissions || []).filter(item => item.status === 'revision_requested').length;
++}
++
++function unmetCriteriaInput(task, value) {
++  if (value === undefined) return [];
++  const agreed = new Set(criteriaFor(task).map(item => item.id));
++  if (!Array.isArray(value) || value.some(id => !agreed.has(id)) || new Set(value).size !== value.length)
++    fail(400, 'INVALID_INPUT', 'Choose criteria from the agreement.');
++  return value;
++}
++
++function checkEnd(task) {
++  const job = task.assignment;
++  if (!job || !ENDABLE.includes(job.status)) fail(409, 'STATE_CONFLICT', 'Only work in progress or awaiting review can be ended.');
++  if (revisionRounds(task) < END_AFTER_ROUNDS)
++    fail(409, 'END_NOT_YET', `You can end the work as unmet after ${END_AFTER_ROUNDS} rounds of changes. Request changes first, naming what isn’t met.`);
++  if (job.mode === 'stripe-sandbox' || (task.settlement && task.settlement.status !== 'refunded'))
++    fail(409, 'REFUND_REQUIRED', 'This work has a held payment. Ending it needs a refund, and refunds aren’t connected to this step yet.');
++}
++
++function acceptanceView(task) {
++  return { criteria: criteriaFor(task), revisionRounds: revisionRounds(task), endAfterRounds: END_AFTER_ROUNDS,
++    unmetCriteria: task.assignment?.unmetCriteria || [] };
++}
++
++function createAcceptance({ command, taskFor, expected, now, touch, event, saveTask, assertUnfunded }) {
++  async function setCriteria(actor, id, body, key) {
++    exactKeys(body, ['expectedVersion', 'criteria']);
++    const criteria = normalizeCriteria(body.criteria);
++    return command(actor.user.id, key, ['acceptance-criteria', id, body], repo => taskFor(repo, actor, id, true), async repo => {
++      const task = await taskFor(repo, actor, id, true);
++      expected(task, body.expectedVersion);
++      if (task.status === 'cancelled') fail(409, 'TASK_CLOSED', 'This request is closed.');
++      if (task.assignment) fail(409, 'TASK_ASSIGNED', 'Authorized work keeps its agreed criteria. Propose a change instead.');
++      if (task.orchestrationPlan || task.orchestrationStep) require('./orchestration.cjs').fixedScope(task);
++      if (task.scheduleId || task.recurringScheduleId) fail(409, 'SCHEDULE_MANAGED', 'Recurring runs use an immutable scope.');
++      assertUnfunded(task);
++      const time = now();
++      task.acceptanceCriteria = criteria;
++      task.scopeVersion++;
++      task.scopes.push({ version: task.scopeVersion, title: task.title, brief: task.brief, acceptanceCriteria: criteria,
++        createdAt: time, inputHash: task.input?.sha256 || null });
++      task.selectedOfferId = null;
++      touch(task, time);
++      event(task, actor.user.id, 'criteria.updated', time);
++      await saveTask(repo, task);
++      return { taskId: id, version: task.version, scopeVersion: task.scopeVersion, acceptanceCriteria: criteria };
++    });
++  }
++
++  async function endUnmet(actor, id, body, key) {
++    exactKeys(body, ['expectedVersion', 'reason', 'unmetCriteria']);
++    const reason = text(body.reason, 'Reason', 3, 1000);
++    return command(actor.user.id, key, ['end-unmet', id, body], repo => taskFor(repo, actor, id, true), async repo => {
++      const task = await taskFor(repo, actor, id, true);
++      expected(task, body.expectedVersion);
++      checkEnd(task);
++      const unmet = unmetCriteriaInput(task, body.unmetCriteria);
++      const job = task.assignment, time = now();
++      job.status = 'failed';
++      job.error = 'BUYER_ENDED_UNMET';
++      job.endedAt = time;
++      job.leaseHash = null;
++      job.endReason = reason;
++      job.unmetCriteria = unmet;
++      job.progress = 'The buyer ended this work because the agreed criteria weren’t met. The runtime must stop.';
++      const latest = task.submissions.at(-1);
++      if (latest?.status === 'ready') latest.status = 'rejected';
++      touch(task, time);
++      event(task, actor.user.id, 'execution.ended_unmet', time);
++      await saveTask(repo, task);
++      return { taskId: id, version: task.version, status: 'failed' };
++    });
++  }
++
++  return { setCriteria, endUnmet };
++}
++
++module.exports = { createAcceptance, acceptanceView, checkEnd, normalizeCriteria, criteriaFor, revisionRounds, unmetCriteriaInput,
++  MAX_CRITERIA, END_AFTER_ROUNDS, MAX_REVISION_ROUNDS };
+diff --git a/services/application/src/compose.cjs b/services/application/src/compose.cjs
+index 3dc0c25..8eda605 100644
+--- a/services/application/src/compose.cjs
++++ b/services/application/src/compose.cjs
+@@ -2,7 +2,7 @@
+ 
+ const IDENTITY_METHODS = ['principal', 'register', 'login', 'csrf', 'logout', 'workspace', 'verify', 'reset', 'emailAction'];
+ const APPLICATION_METHODS = ['createOrchestration', 'approveHandover', 'completeOrchestration', 'recoverOrchestration', 'cancelScoping', 'reconcileScoping', 'supplierMessage', 'proposeChange', 'reviewChange', 'operationsBacklog', 'notifications', 'readNotifications', 'attioDeliveries', 'attioStatus', 'controlAttio', 'prepareAttio', 'sendAttio', 'driveStatus', 'beginDrive', 'completeDrive', 'drivePicker', 'importDriveFile', 'disconnectDrive', 'attachTaskContext', 'requestToolPermission', 'declineToolPermission', 'downloadAppOutput', 'workspaceApps', 'saveToolSource', 'installApp', 'controlApp', 'controlAppHost', 'reviewAppRun', 'grantTaskTool', 'revokeToolGrant', 'readAgentTool', 'reconcileApps', 'createSchedule', 'listSchedules', 'updateSchedule', 'reconcileSchedules', 'executionQueue', 'retryExecution', 'companyBudget', 'configureBudget', 'requestApproval', 'decideApproval', 'paymentRecovery', 'retryPaymentRecovery', 'receivePaymentEvent', 'reconcilePayments', 'paymentStatus', 'spendingHistory', 'onboardOperator', 'refreshOperator', 'sandboxPayment', 'reconcilePayment', 'taskPayment', 'checkoutLink', 'startQualification', 'qualificationJobs', 'submitQualification', 'assist', 'confirmScope', 'waitForScoping', 'createTask', 'mutateTask', 'detail', 'list', 'marketplace', 'features',
+-  'issueCredential', 'issueSupplierCredential', 'supplierEvents', 'supplierAssignment', 'supplierOpportunities', 'supplierAssignments', 'activity', 'cancelExecution', 'pauseExecution', 'resumeExecution', 'reconcileExecutions', 'revokeCredential', 'runtimePrincipal', 'heartbeat', 'addInput',
++  'issueCredential', 'issueSupplierCredential', 'supplierEvents', 'supplierAssignment', 'supplierOpportunities', 'supplierAssignments', 'activity', 'setCriteria', 'endUnmet', 'reconcileAutoAccept', 'cancelExecution', 'pauseExecution', 'resumeExecution', 'reconcileExecutions', 'revokeCredential', 'runtimePrincipal', 'heartbeat', 'addInput',
+   'authorizeLocal', 'assignments', 'claim', 'progress', 'submit', 'failExecution', 'reviewDelivery', 'download', 'previewFile', 'scanFile', 'reconcileFileScans'];
+ 
+ function composeIdentity(identity, application) {
+diff --git a/services/application/src/execution-lifecycle.cjs b/services/application/src/execution-lifecycle.cjs
+index 57355cb..ce355ab 100644
+--- a/services/application/src/execution-lifecycle.cjs
++++ b/services/application/src/execution-lifecycle.cjs
+@@ -27,6 +27,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
+       if (action === 'cancel') checkCancel(task);
+       else if (action === 'pause') pauseByBuyer(structuredClone(task), now(), actor.user.id);
+       else if (action === 'resume') resumeByBuyer(structuredClone(task), now());
++      else if (action === 'end') require('./acceptance.cjs').checkEnd(task);
+       else await checkRetry(repo, actor, structuredClone(task));
+     };
+     return {
+@@ -34,6 +35,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
+       retry: await availability(() => check('retry')),
+       pause: await availability(() => check('pause')),
+       resume: await availability(() => check('resume')),
++      end: await availability(() => check('end')),
+     };
+   }
+   async function cancelExecution(actor, id, body, key) {
+diff --git a/services/application/src/execution.cjs b/services/application/src/execution.cjs
+index 306c43f..e8ebe34 100644
+--- a/services/application/src/execution.cjs
++++ b/services/application/src/execution.cjs
+@@ -7,6 +7,7 @@ const { randomUUID, timingSafeEqual } = require('node:crypto');
+ const { saveTask } = require('./supplier-feed.cjs');
+ const { executionWindowMs } = require('./quote-limits.cjs');
+ const { assertReadyToStart } = require('./start-preflight.cjs');
++const { unmetCriteriaInput, revisionRounds, MAX_REVISION_ROUNDS } = require('./acceptance.cjs');
+ const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
+ const LEASE_MS = 30000;
+ const MAX_FILE_BYTES = 256 * 1024;
+@@ -24,7 +25,7 @@ function decode(value, limit = MAX_FILE_BYTES, binary = false) {
+   return bytes;
+ }
+ function createExecution(context) {
+-  const { objectStore, fileScanner, repository, command, taskFor, now, localExecution, hash, expected, touch, event } = context;
++  const { objectStore, fileScanner, repository, command, taskFor, now, localExecution, hash, expected, touch, event, autoAcceptAfterMs = null } = context;
+   const { runtimeAgent, runtimePrincipal, heartbeat, issueCredential, issueSupplierCredential, revokeCredential } = context.credentials;
+   async function verifiedBytes(metadata, artifact, taskId) {
+     if (!artifact || artifact.taskId !== taskId || (!artifact.objectKey && typeof artifact.base64 !== 'string')) fail(409, 'FILE_UNAVAILABLE', 'File bytes are unavailable.');
+@@ -122,7 +123,7 @@ function createExecution(context) {
+     task.assignment = { id: randomUUID(), agentId: agent.id, operatorId: offer.operatorId, offerId: offer.id,
+       status: 'queued', authorizedAt: now(), mode, attempt: 0, progress: 'Waiting for the runtime',
+       runtimeKind: agent.runtimeKind, runtimeVersion: agent.runtimeVersion || null, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + executionWindowMs(offer.deliveryMinutes),
+-      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null } };
++      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null, acceptanceCriteria: task.acceptanceCriteria || [] } };
+     touch(task, now()); event(task, actor.user.id, 'assignment.authorized_local', now());
+     await saveTask(repo, task);
+     await repo.save('grant', { id: task.assignment.id, ownerId: offer.operatorId, tenantId: task.tenantId, taskId: task.id, agentId: agent.id });
+@@ -263,7 +264,8 @@ function createExecution(context) {
+         if (artifact?.submissionId !== submission.id) fail(409, 'FILE_UNAVAILABLE', 'Submission bytes are unavailable.');
+         await verifiedBytes(file, artifact, task.id);
+       }
+-    } else if (task.submissions.length >= 3) fail(409, 'REVISION_LIMIT', 'This local runtime supports two revisions.');
++    } else if (task.assignment.runtimeKind !== 'supplier-hosted' && task.submissions.length >= 3) fail(409, 'REVISION_LIMIT', 'This local runtime supports two revisions.');
++    else if (revisionRounds(task) >= MAX_REVISION_ROUNDS) fail(409, 'REVISION_LIMIT', `This work has had ${MAX_REVISION_ROUNDS} rounds of changes. End it as unmet or accept it.`);
+     return submission;
+   }
+   async function executionActions(repo, actor, task) {
+@@ -282,17 +284,39 @@ function createExecution(context) {
+     for (const action of ['startLocal', 'startFunded', 'accept', 'revise']) actions[action] = await availability(() => check(action));
+     return actions;
+   }
++  function acceptSubmission(task, submission, progress) {
++    submission.status = 'accepted'; task.assignment.status = 'accepted'; task.assignment.acceptedAt = now();
++    task.assignment.progress = progress;
++  }
++  // Silence counts as acceptance only when the deployment opts in (acceptance.cjs, rule 4).
++  async function reconcileAutoAccept(cursor = '') {
++    if (!Number.isSafeInteger(autoAcceptAfterMs) || autoAcceptAfterMs <= 0) return { cursor: '', changed: 0, enabled: false };
++    const rows = await repository.read(repo => repo.page('execution-index', 'status', 'buyer_review', { after: cursor, limit: 100 }));
++    let changed = 0;
++    for (const row of rows) {
++      changed += await repository.transaction(`auto-accept:${row.id}`, async repo => {
++        const task = await repo.get('task', row.id, true), submission = task?.submissions.at(-1);
++        if (task?.assignment?.status !== 'buyer_review' || submission?.status !== 'ready' || submission.createdAt + autoAcceptAfterMs > now()) return 0;
++        if (task.assignment.mode === 'stripe-sandbox' || task.settlement) return 0; // money release is not automatic
++        try { await checkReview(repo, task, 'accept-delivery', submission.id); } catch (error) { if (error.status === 409) return 0; throw error; }
++        acceptSubmission(task, submission, 'Accepted automatically: the buyer didn’t respond within the review window.');
++        touch(task, now()); event(task, 'system', 'delivery.auto_accepted', now()); await saveTask(repo, task);
++        return 1;
++      });
++    }
++    return { cursor: rows.length === 100 ? rows.at(-1).id : '', changed, enabled: true };
++  }
+   async function reviewDelivery(actor, id, action, body, key) {
+-    exactKeys(body, ['expectedVersion', 'submissionId', 'notes']);
++    exactKeys(body, action === 'request-revision' ? ['expectedVersion', 'submissionId', 'notes', 'unmetCriteria'] : ['expectedVersion', 'submissionId', 'notes']);
+     if (!['accept-delivery', 'request-revision'].includes(action)) fail(400, 'INVALID_INPUT', 'Unknown review action.');
+     return command(actor.user.id, key, [action, id, body], repo => taskFor(repo, actor, id, true), async repo => {
+       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
+       const submission = await checkReview(repo, task, action, body.submissionId);
+       if (action === 'accept-delivery') {
+-        submission.status = 'accepted'; task.assignment.status = 'accepted'; task.assignment.acceptedAt = now();
+-        task.assignment.progress = 'The buyer accepted this delivery.';
++        acceptSubmission(task, submission, 'The buyer accepted this delivery.');
+       } else {
+         const notes = text(body.notes, 'Revision notes', 1, 2000);
++        submission.unmetCriteria = unmetCriteriaInput(task, body.unmetCriteria);
+         if (task.assignment.runtimeKind !== 'supplier-hosted' && !['Sort rows descending', 'Keep duplicate rows', 'Sort rows ascending'].includes(notes)) fail(422, 'UNSUPPORTED_REVISION', 'Choose a supported CSV revision: Sort rows descending, Keep duplicate rows, or Sort rows ascending.');
+         submission.status = 'revision_requested'; task.assignment.status = 'queued'; task.assignment.attempt = 0;
+         task.assignment.progress = `Revision queued: ${notes}`; task.assignment.completedAt = null;
+@@ -347,6 +371,6 @@ function createExecution(context) {
+     const file = await download(actor, id, submissionId, fileId);
+     return require('./file-preview.cjs').filePreview(file);
+   }
+-  return { executionActions, authorizeWithin, scanFile, previewFile, issueCredential, issueSupplierCredential, revokeCredential, runtimePrincipal, heartbeat, addInput, authorizeLocal, assignments, claim, progress, submit, failExecution, reviewDelivery, download };
++  return { reconcileAutoAccept, executionActions, authorizeWithin, scanFile, previewFile, issueCredential, issueSupplierCredential, revokeCredential, runtimePrincipal, heartbeat, addInput, authorizeLocal, assignments, claim, progress, submit, failExecution, reviewDelivery, download };
+ }
+ module.exports = { createExecution, MAX_FILE_BYTES };
+diff --git a/services/application/src/service.cjs b/services/application/src/service.cjs
+index efba192..0af81e3 100644
+--- a/services/application/src/service.cjs
++++ b/services/application/src/service.cjs
+@@ -55,6 +55,7 @@ function taskView(task, now) {
+     contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], contextReads: task.contextReads || [],
+     scoping: task.scoping?.version === task.version ? (task.scoping.status === 'pending' && task.scoping.expiresAt <= now ? { status: 'failed', error: 'The local reply was interrupted. Try again; your message is saved.' } : task.scoping) : null,
+     selectedOfferId: offer && offer.expiresAt > now ? offer.id : null,
++    acceptanceCriteria: task.acceptanceCriteria || [],
+     input: input ? { filename: input.filename, size: input.size, sha256: input.sha256, notes: input.notes } : null };
+ }
+ function retryAvailable(task, tenantId = task.tenantId) {
+@@ -86,7 +87,7 @@ function agentView(agent, now) {
+     runtime: { connected, connectedAt: agent.connectedAt || null, kind: agent.runtimeKind || null, transport: agent.runtimeTransport || 'local-csv', expiresAt: agent.credentialExpiresAt || null, name: agent.runtimeName || null, version: agent.runtimeVersion || null } };
+ }
+ 
+-function createApplication({ repository, now = Date.now, localExecution = false, pilotConnections = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour }) {
++function createApplication({ repository, now = Date.now, localExecution = false, pilotConnections = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour, autoAcceptAfterMs = null }) {
+   if (pilotConnections && (localExecution || typeof resolveOperator !== 'function' || typeof resolveActor !== 'function')) {
+     throw new Error('PILOT_CONNECTIONS_REQUIRE_MANAGED_IDENTITY');
+   }
+@@ -372,7 +373,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
+       }
+       const retry = ['owner', 'employee'].includes(membership(actor, task.tenantId).role) && task.assignment?.status === 'failed'
+         ? (retryAvailable(task) ? { available: true } : { available: false, retriedBy: task.retriedBy || null }) : null;
+-      return { retry, actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
++      return { retry, acceptance: require('./acceptance.cjs').acceptanceView(task), actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
+         approval: require('./approvals.cjs').approvalView(task, now()), execution: publicExecution(task), payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), submissions: task.submissions.map(publicSubmission) };
+     });
+   }
+@@ -385,7 +386,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
+       (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) ||
+       actor.memberships.some(member => member.id === task.tenantId) ||
+       task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) return null;
+-    return { id: task.id, title: task.title, brief: task.brief, version: task.version, scopeVersion: task.scopeVersion,
++    return { id: task.id, title: task.title, brief: task.brief, version: task.version, scopeVersion: task.scopeVersion, acceptanceCriteria: task.acceptanceCriteria || [],
+       input: task.input ? { filename: task.input.filename, size: task.input.size, sha256: task.input.sha256, notes: task.input.notes, operation: task.input.operation } : null,
+       context: [], myOffers: task.offers.filter(offer => offer.operatorId === actor.user.id).map(offer => ({ id: offer.id, agentId: offer.agentId, taskVersion: offer.taskVersion, scopeVersion: offer.scopeVersion, expiresAt: offer.expiresAt })) };
+   }
+@@ -454,7 +455,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
+   }
+   // Runtime-specific commands are installed in one place and share task locks,
+   // authorization, receipt replay handling and the same immutable task document.
+-  const context = { supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView };
++  const context = { supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView, autoAcceptAfterMs };
+   context.approvals = require('./approvals.cjs').createApprovals(context);
+   context.credentials = require('./supplier-credentials.cjs').createCredentials(context);
+   const orchestration = require('./orchestration.cjs').createOrchestration(context);
+@@ -468,9 +469,10 @@ function createApplication({ repository, now = Date.now, localExecution = false,
+   const recurring = require('./recurring.cjs').createRecurring(context, execution);
+   const lifecycle = require('./execution-lifecycle.cjs').createLifecycle(context);
+   const { activity } = require('./activity.cjs').createActivity(context);
++  const acceptance = require('./acceptance.cjs').createAcceptance({ ...context, saveTask, assertUnfunded });
+   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
+   context.refreshSourceWithin = refreshSourceWithin;
+-  return { activity, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: localExecution && !!resolveActor, notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
++  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: localExecution && !!resolveActor, notifications: localExecution, driveConnections: localExecution && !!resolveActor, unifiedBackend: true, localExecution, scoping: !!scopingProvider, recurring: localExecution && !!resolveActor, workspaceApps: localExecution && !!resolveActor }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
+     marketplace: {
+       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
+       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),
+diff --git a/services/application/src/supplier-feed.cjs b/services/application/src/supplier-feed.cjs
+index cd2ca3c..ab44b98 100644
+--- a/services/application/src/supplier-feed.cjs
++++ b/services/application/src/supplier-feed.cjs
+@@ -52,7 +52,8 @@ function createSupplierFeed({ repository, credentials, opportunityView }) {
+       const toolGrants = (await repo.list('tool-grant', 'tenant_id', task.tenantId)).filter(grant => grant.subjectKind === 'task' && grant.subjectId === id && grant.assignmentId === assignmentId && grant.agentId === principal.agentId && grant.status === 'active').map(({ id, sourceId, operation, expiresAt }) => ({ id, sourceId, operation, expiresAt }));
+       return { taskId: id, assignmentId, messages: task.messages.map(({authorId,...message})=>message), changeProposals: task.changeProposals || [], contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], toolGrants, taskVersion: task.version, status, waitingForPermission: waitingForPermission(task.assignment), pausedByBuyer: pausedByBuyer(task.assignment), attempt, leaseUntil: leaseUntil || null,
+         deadlineAt: deadlineAt || null, progress, error: error || null,
+-        submissions: task.submissions.map(item => ({ id: item.id, version: item.version, status: item.status })) };
++        acceptanceCriteria: task.assignment.agreement?.acceptanceCriteria || [],
++        submissions: task.submissions.map(item => ({ id: item.id, version: item.version, status: item.status, unmetCriteria: item.unmetCriteria || [] })) };
+     });
+   }
+   async function opportunities(principal, after = '', limit = 50) {
+diff --git a/services/poc-api/src/app.cjs b/services/poc-api/src/app.cjs
+index 50a6dfd..9e83f62 100644
+--- a/services/poc-api/src/app.cjs
++++ b/services/poc-api/src/app.cjs
+@@ -300,6 +300,10 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
+           const run = holdExecution[2] === 'pause' ? store.pauseExecution : store.resumeExecution;
+           return send(200, await run(actor, holdExecution[1], await jsonBody(req), key));
+         }
++        const criteriaPath = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/acceptance-criteria$/);
++        if (criteriaPath && method === 'PUT') return send(200, await store.setCriteria(actor, criteriaPath[1], await jsonBody(req), key));
++        const endUnmet = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/end-unmet$/);
++        if (endUnmet && method === 'POST') return send(200, await store.endUnmet(actor, endUnmet[1], await jsonBody(req), key));
+         const connection = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/(connect-local|disconnect)$/);
+         if (connection && method === 'POST') {
+           const [, id, action] = connection, body = await jsonBody(req);
+diff --git a/services/poc-api/src/unified-store.cjs b/services/poc-api/src/unified-store.cjs
+index 3e30a4b..5b3e4ae 100644
+--- a/services/poc-api/src/unified-store.cjs
++++ b/services/poc-api/src/unified-store.cjs
+@@ -5,7 +5,7 @@ const { createSqliteRepository } = require('../../application/src/repository.cjs
+ const { createApplication } = require('../../application/src/service.cjs');
+ const { fail } = require('../../../packages/contracts/src/input.cjs');
+ 
+-async function createUnifiedLocalStore({ authDb, applicationDb, repository: suppliedRepository, storage = 'sqlite', now = Date.now, localExecution = false, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, paymentRecoveryUserIds = [] }) {
++async function createUnifiedLocalStore({ authDb, applicationDb, repository: suppliedRepository, storage = 'sqlite', now = Date.now, localExecution = false, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, paymentRecoveryUserIds = [], autoAcceptAfterMs = null }) {
+   const identity = createStore(authDb, now, { identityOnly: true });
+   const repository = suppliedRepository || createSqliteRepository(applicationDb);
+   await importLegacyLocalData(authDb, repository);
+@@ -20,7 +20,7 @@ async function createUnifiedLocalStore({ authDb, applicationDb, repository: supp
+   }
+   const { guardLocalAccess, createAccessBoundary } = require('./access-guard.cjs');
+   const boundary = createAccessBoundary(repository);
+-  const application = createApplication({ repository: boundary.repository, objectStore, fileScanner, now, localExecution, scopingProvider, paymentProvider, driveProvider, attioProvider, paymentRecoveryUserIds, resolveOperator, resolveActor: resolveOperator });
++  const application = createApplication({ repository: boundary.repository, objectStore, fileScanner, now, localExecution, scopingProvider, paymentProvider, driveProvider, attioProvider, paymentRecoveryUserIds, resolveOperator, resolveActor: resolveOperator, autoAcceptAfterMs });
+   const guarded = guardLocalAccess({ identity, application, repository, resolveOperator, now, boundary });
+   return {
+     ...guarded, features: application.features, repository, storage,
+diff --git a/services/poc-api/test/helpers/recommendation-flow.cjs b/services/poc-api/test/helpers/recommendation-flow.cjs
+index 5ad7154..0e0fbe1 100644
+--- a/services/poc-api/test/helpers/recommendation-flow.cjs
++++ b/services/poc-api/test/helpers/recommendation-flow.cjs
+@@ -11,10 +11,10 @@ const { normalizeCsv } = require('../../../agent-runtime/src/csv.cjs');
+ 
+ // Disposable localhost application, real commands and supplier HTTP transport.
+ // No seed writes to qualification, offers, reputation or production databases.
+-async function recommendationFlow(port = 4196, { repository } = {}) {
++async function recommendationFlow(port = 4196, { repository, now, autoAcceptAfterMs } = {}) {
+   const authDb = openDatabase(':memory:');
+   const applicationDb = new DatabaseSync(':memory:');
+-  let store = await createUnifiedLocalStore({ authDb, applicationDb, repository, localExecution: true });
++  let store = await createUnifiedLocalStore({ authDb, applicationDb, repository, localExecution: true, ...(now ? { now } : {}), autoAcceptAfterMs });
+   const origin = `http://127.0.0.1:${port}`;
+   let server = createApp({ store, origin });
+   await new Promise((resolve, reject) => {
+diff --git a/services/staging-api/src/application-access.cjs b/services/staging-api/src/application-access.cjs
+index 7065f69..54ab8ef 100644
+--- a/services/staging-api/src/application-access.cjs
++++ b/services/staging-api/src/application-access.cjs
+@@ -26,6 +26,7 @@ const INTERNAL = new Set([
+   'reconcileSchedules',
+   'reconcilePayments',
+   'reconcileExecutions',
++  'reconcileAutoAccept',
+   'receivePaymentEvent',
+   'readAgentTool',
+   'requestToolPermission',
+-- 
+2.43.0
+
