@@ -67,7 +67,8 @@ const RelayExecution = {
     const offer = state.offers.find((item) => item.selected);
     if (
       !this.enabled() ||
-      !offer?.runtimeBid ||
+      // The server says whether a runtime committed to this offer (packages.cjs#runtimeCommitted).
+      !offer?.runtimeCommitted ||
       state.detail.execution ||
       (state.detail.payment &&
         !['expired', 'refunded'].includes(state.detail.payment.status))

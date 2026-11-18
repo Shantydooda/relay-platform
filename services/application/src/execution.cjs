@@ -114,7 +114,7 @@ function createExecution(context) {
     require('./orchestration.cjs').withinBudget(task, offer.amountMinor);
     const agent = offer.agentId ? await repo.get('agent', offer.agentId, true) : null;
     if (task.package?.inputs.includes('csv') && !task.input) fail(409, 'INPUT_REQUIRED', 'This package needs a CSV file. Attach it before starting.');
-    if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !(offer.runtimeBid || offer.packageId)) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
+    if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !require('./packages.cjs').runtimeCommitted(offer)) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
     if (agent.runtimeKind !== 'supplier-hosted' && (agent.runtimeKind !== 'bounded-csv-automation' || !task.input)) fail(409, 'INPUT_REQUIRED', 'The local CSV runtime requires an attached CSV.');
     if ((offer.currency || 'USD') !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'The operator changed quoting currency. Request a fresh offer.');
     if (offer.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'The operator changed its minimum. Request an updated offer.');

@@ -264,3 +264,6 @@ html[data-appearance] body.market-open #app .mk-buy-packages button:hover { back
   .mk-io { grid-template-columns: minmax(0, 1fr); }
   .mk-post-card .mk-primary { width: 100%; text-align: center; }
 }
+
+/* Hired package card on the task page */
+.selected-agreement .package-title { display: block; margin-top: 4px; font-size: 18px; }

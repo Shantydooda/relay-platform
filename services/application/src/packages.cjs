@@ -177,6 +177,12 @@ function rebindPackageOffer(task) {
   task.selectedOfferId = offer.id;
 }
 
+// An offer a runtime has committed to: its own quote, or a package its builder
+// published. The one definition used to start work and shown to the buyer's screen.
+function runtimeCommitted(offer) {
+  return !!(offer?.runtimeBid || offer?.packageId);
+}
+
 function assertNotPackage(task) {
   if (task.package) fail(409, 'PACKAGE_FIXED', 'Package terms are fixed. Propose a change request instead.');
 }
@@ -200,4 +206,4 @@ function editable(pkg) {
 const MAX_PACKAGES = 10;
 
 module.exports = { normalizePackage, checkPurchasable, packageTerms, packageView, publicPackages, createPackages,
-  packageOffer, rebindPackageOffer, assertNotPackage, checkPolishRound, MAX_EXTRA_ROUNDS, MAX_PACKAGES, PACKAGE_INPUTS, PACKAGE_OFFER_DAYS };
+  packageOffer, rebindPackageOffer, assertNotPackage, runtimeCommitted, checkPolishRound, MAX_EXTRA_ROUNDS, MAX_PACKAGES, PACKAGE_INPUTS, PACKAGE_OFFER_DAYS };

@@ -46,3 +46,13 @@ test('the CSV is asked for as required on a package task', () => {
   assert.doesNotMatch(html, /Optional source file|invalidates prior offers/);
   assert.match(html, /id="task-input"/);
 });
+
+test('a hired package with its CSV gets the same start panel as a runtime quote, using the server’s flag', () => {
+  const { state, ctx } = ui(task({ input: { filename: 'a.csv', size: 10, notes: 'n' } }));
+  state.offers = [{ ...offer, runtimeCommitted: true }];
+  state.detail.actions = { execution: { startLocal: { allowed: true } } };
+  const html = vm.runInContext('RelayExecution.start(state.detail.task)', ctx);
+  assert.match(html, /data-action="authorize-local"/);
+  state.offers = [{ ...offer, runtimeCommitted: false }];
+  assert.equal(vm.runInContext('RelayExecution.start(state.detail.task)', ctx), '', 'the screen doesn’t decide this itself');
+});

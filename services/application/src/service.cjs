@@ -475,7 +475,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       const task = await taskFor(repo, actor, id);
       const checkedAt = now();
       const offers = await require('./fair-exposure.cjs').offersWithExposure(repo, task, checkedAt);
-      return require('./offer-recommendation.cjs').recommendOffers(task, offers, checkedAt);
+      return require('./offer-recommendation.cjs').recommendOffers(task, offers, checkedAt)
+        .map(offer => ({ ...offer, runtimeCommitted: require('./packages.cjs').runtimeCommitted(offer) }));
     });
   }
   async function supplierTasks(actor) {

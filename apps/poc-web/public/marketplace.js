@@ -123,7 +123,7 @@ function packageAgreement(task,selected){
   :state.detail.approval&&state.detail.approval.status!=='approved'?'<p class="hint">Company approval is needed. Continue in the approval card below.</p>'
   :state.reviewStart?'':'<button class="primary" data-action="review-start">Review and start</button>';
  return `<article class="thread-message relay offer-section" aria-label="Hired package"><span class="thread-speaker">Relay</span>
- <section class="panel selected-agreement"><span class="eyebrow">Hired package · v${p.packageVersion}</span><strong>${escape(p.title)}</strong>
+ <section class="panel selected-agreement"><span class="eyebrow">Hired package · v${p.packageVersion}</span><strong class="package-title">${escape(p.title)}</strong>
  <p>${escape(selected?.agentName||'')} · ${money(p.priceMinor,p.currency)} package price · ${deliveryDuration(p.deliveryMinutes)} to delivery after work starts</p>
  <p>${escape(p.included)}</p>
  <h3>Checklist agreed when you hired it</h3><ul>${p.criteria.map(c=>`<li>${escape(c.text)}</li>`).join('')}</ul>

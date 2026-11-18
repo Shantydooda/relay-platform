@@ -140,6 +140,7 @@ test('buying a package creates fixed terms that start through the normal checks 
     assert.equal(offers.length, 1, 'the package is the only offer');
     assert.equal(offers[0].amountMinor, 2500);
     assert.equal(offers[0].packageId, packageId);
+    assert.equal(offers[0].runtimeCommitted, true, 'the package counts as the runtime’s standing offer');
     assert.equal(detail.task.selectedOfferId, offers[0].id, 'buying selects the package offer');
     assert.ok(detail.events.some(event => event.type === 'package.bought'));
     assert.ok(Array.isArray(detail.messages) && !detail.messages.length, 'the package text is not shown as a message the buyer wrote');

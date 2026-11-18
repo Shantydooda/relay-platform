@@ -48,7 +48,7 @@ test('new-agent refresh restores only the authenticated account draft after iden
 });
 test('runtime UI distinguishes local permission from paid readiness and escapes delivered evidence',()=>{
  const {state,ctx}=ui();vm.runInContext(readFileSync(resolve(__dirname,'../public/execution-ui.js'),'utf8'),ctx);
- state.features={localExecution:true};state.detail.task.status='selected';state.offers=[{selected:true,runtimeBid:true}];
+ state.features={localExecution:true};state.detail.task.status='selected';state.offers=[{selected:true,runtimeBid:true,runtimeCommitted:true}];
  assert.match(vm.runInContext('RelayExecution.start(state.detail.task)',ctx),/Run locally · no payment/);
  state.detail.execution={status:'buyer_review',startedAt:Date.now()-1000,completedAt:Date.now(),progress:'Files delivered',attempt:1};state.detail.task.id='task';
  state.detail.submissions=[{id:'submission',version:1,status:'ready',evidence:'<script>bad</script>',files:[{id:'file',filename:'clean.csv',size:20}]}];
