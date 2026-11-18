@@ -62,7 +62,7 @@ Seed category: **B2B data & research**, with sales & marketing next (`docs/Seed-
 ## 2. Rules that always apply
 
 These come from the founder's brief and stay in force until he changes them.
-- **`main` is the single source of truth** (decided 18 Nov 2026). Work on one short-lived branch per slice, cut from `main` (e.g. `claude/packages`), and land it through a PR into `main` once tests pass. Don't commit work to any other long-lived branch. `codex/v1-production-foundation` is retired as a working branch: it fell behind `main` because work landed in both places. If the pilot keeps deploying from it, it is only ever fast-forwarded to `main` at deploy time, with no commits of its own. Never merge, rebase onto or overwrite another branch without asking. Commit or push only when asked or when the task clearly includes it.
+- **`main` is the single source of truth** (decided 18 Nov 2026). Work on one short-lived branch per slice, cut from `main` (e.g. `claude/packages`), and land it through a PR into `main` once tests pass. Don't commit work to any other long-lived branch. `codex/v1-production-foundation` is retired: it fell behind `main` because work landed in both places, and the pilot no longer deploys from it. Never merge, rebase onto or overwrite another branch without asking. Commit or push only when asked or when the task clearly includes it.
 - The live app is a **private pilot**. **Payments and supplier execution stay disabled there.**
 - **Don't change hosting, database, authentication, payment or provider credentials** unless explicitly asked. That includes Render environment variables, Supabase settings, `render.yaml` syncs and API keys.
 - Keep the **production pilot separate** from the older public demo and the older staging service.
@@ -76,7 +76,7 @@ These come from the founder's brief and stay in force until he changes them.
 
 | | Where | Notes |
 | --- | --- | --- |
-| Live private pilot | https://relay-pilot-app.onrender.com (Render service `relay-pilot-app`, free plan) | Entry point `services/pilot-api/src/server.cjs`. Deploys **manually** (Render → Manual Deploy → Deploy latest commit), and only the founder clicks. Free plan: a cold start shows Render's 503 "waking up" page for about 30–50 s. |
+| Live private pilot | https://relay-pilot-app.onrender.com (Render service `relay-pilot-app`, free plan) | Entry point `services/pilot-api/src/server.cjs`. Deploys from **`main`** (switched from `codex/v1-production-foundation` on 18 Nov 2026), **manually** (Render → Manual Deploy → Deploy latest commit), and only the founder clicks. Free plan: a cold start shows Render's 503 "waking up" page for about 30–50 s. |
 | Pilot data and auth | Supabase (hosted Postgres plus Supabase Auth) | Invite-only: rows in `public.relay_invites`. The founder's test accounts are invited. Default Supabase email templates send implicit-flow links (`#access_token=…&type=…`); see §8. |
 | Old staging | `relay-staging` from `render.yaml` on `main` | Not the pilot. `render.yaml` doesn't describe `relay-pilot-app`. |
 | Local | `npm run start:local` (poc-api, SQLite) | Local execution, a sandbox payments harness and the local model (Ollama) for scoping. |
@@ -141,7 +141,7 @@ npm run start:local
 
 ## 7. State of the work
 
-Finished work is on `main` (see `git log` for the head). **The live pilot runs `1ad3d8b`** until the founder deploys; which branch the Render service deploys from is still to be confirmed. Pushed but not deployed yet:
+Finished work is on `main` (see `git log` for the head). **The live pilot runs `1ad3d8b`** until the founder deploys; the next manual deploy takes `main`'s head, so everything below goes live together. Pushed but not deployed yet:
 - the auth fix for Supabase's default email links (`01dc6da`);
 - the seed category and its matching vocabulary (`2793988`);
 - the fee rule, at 0% and not wired (`e99c5ce`);
