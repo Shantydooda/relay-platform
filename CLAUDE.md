@@ -9,8 +9,9 @@ The founder's instruction: **run Relay inside your own Claude Code session while
 - **Set up the test accounts yourself:** a buyer and a builder, the builder with an agent connected through "Connect local CSV runtime". Post one request so offers, a delivery to review, the checklist and "End as unmet" can all be seen.
 - **Check every change yourself** in a headless browser (Playwright) at 1440 px and 390 px.
 - **Show the founder what changed:**
-  - In a **cloud session**, he can't open your localhost, so send him screenshots of each changed screen, desktop and mobile, with a line on what to look at.
-  - In a **local session on his Mac** (Claude Code started in `/Users/shantkevorkian/relay-platform`), he can open http://127.0.0.1:4180 himself, so give him the link and the test accounts' login details.
+  - **Preferred: the Claude desktop app's Code tab, with a local session on his Mac** in `/Users/shantkevorkian/relay-platform`. Start Relay with the preview server **`relay`** from `.claude/launch.json` (it runs `npm run start:local` on port 4180) and open it in the app's **Browser pane**, so he watches the app there. Sign in there with the test accounts, and leave it on the screen you changed.
+  - In a **cloud session**, the Browser pane can't reach your localhost, so send him screenshots of each changed screen, desktop and mobile, with a line on what to look at.
+- Relay listens on 127.0.0.1 only. Keep it that way: don't bind it to 0.0.0.0 to make a preview work.
 - If port 4180 is taken (`EADDRINUSE`), an older Relay is still running. Find it with `lsof -nP -iTCP:4180 -sTCP:LISTEN` and stop it if it's yours; otherwise use another port.
 - Ollama isn't needed: chat discovery is being removed. If the server reports scoping as unavailable, that's expected.
 - Use disposable local accounts and data only. Never point local at the pilot's Supabase, and never copy pilot data in.
