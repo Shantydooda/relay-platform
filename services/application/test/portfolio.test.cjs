@@ -15,7 +15,9 @@ async function fixture(t, postgres) {
   const users = [buyer, builder, other, employee];
   const app = createApplication({ repository, resolveActor: async id => users.find(a => a.user.id === id) });
   const { agentId } = await app.marketplace.addAgent(builder, { name: 'Agent', purpose: 'Research', kind: 'general', integration: 'api', capabilities: [{ category: 'Research', task: 'Research' }] }, randomUUID());
-  await app.marketplace.updateListing(builder, agentId, { expectedVersion: 1, status: 'published' }, randomUUID());
+  // Portfolio rules don't depend on how the agent got published, so the fixture marks
+  // it published directly instead of running a Relay test (publishing needs one).
+  await repository.transaction('fixture-published', async repo => { const agent = await repo.get('agent', agentId); agent.listingStatus = 'published'; agent.version++; await repo.save('agent', agent); });
   const { taskId } = await app.createTask(employee, { tenantId: buyer.memberships[0].id, title: 'PRIVATE TITLE', brief: 'PRIVATE BRIEF' }, randomUUID());
   await repository.transaction('seed-accepted', async repo => {
     const task = await repo.get('task', taskId);

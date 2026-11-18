@@ -72,9 +72,18 @@ function retryAvailable(task, tenantId = task.tenantId) {
 }
 function excludedFrom(task, agentId) { return !!task.retryOf?.excludedAgentId && task.retryOf.excludedAgentId === agentId; }
 function listingState(agent) { return agent.listingStatus || 'published'; }
+// The Relay test rule (docs/specs/Marketplace-Model.md, "One marketplace" §2): one
+// definition of "passes its Relay test". It is required to publish, appear in browse
+// and sell packages. Quoting on a posted request stays open; the offer records the
+// capability's test status so buyers see it.
+function passesRelayTest(agent, capability, time) {
+  return capabilityView(agent, capability, time).qualification === 'qualified';
+}
+function hasRelayTest(agent, time) {
+  return agent.capabilities.some(item => passesRelayTest(agent, item, time));
+}
 function requestableAgent(agent, actor, time) {
-  return !!agent && listingState(agent) === 'published' && agent.ownerId !== actor.user.id &&
-    agent.capabilities.some(item => capabilityView(agent, item, time).qualification === 'qualified');
+  return !!agent && listingState(agent) === 'published' && agent.ownerId !== actor.user.id && hasRelayTest(agent, time);
 }
 function listingView(agent, time) {
   const capabilities = agent.capabilities.map(item => capabilityView(agent, item, time));
@@ -314,6 +323,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     if (!['draft', 'published', 'paused'].includes(body.status)) fail(400, 'INVALID_INPUT', 'Choose draft, published or paused.');
     return command(actor.user.id, key, ['listing', id, body], repo => agentFor(repo, actor, id), async repo => {
       const agent = await agentFor(repo, actor, id); expected(agent, body.expectedVersion);
+      if (body.status === 'published' && !hasRelayTest(agent, now())) fail(409, 'RELAY_TEST_REQUIRED', 'Pass a Relay test before publishing this agent.');
       agent.listingStatus = body.status;
       agent.version++;
       await repo.save('agent', agent);

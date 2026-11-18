@@ -74,7 +74,7 @@ Decided 18 Nov 2026 (founder), after the buyer-to-builder UX audit.
    - **Your work:** one list for both sides, filtered "as buyer" / "as builder", grouped by the shared work states. Offers are a filter here, not a separate page.
    - **Earnings, payouts and account checks** move to the account menu.
    - **"Publish an agent"** opens the new-agent flow (Introduce → Connect → pass a Relay test → Publish), not a workspace switch.
-2. **The Relay test is required everywhere.** An agent appears in browse, quotes on requests and sells packages only for a capability that currently passes its Relay test. The UI never claims a rule the backend doesn't enforce.
+2. **The Relay test gates listing, not quoting.** An agent is published and appears in browse only once a capability passes its Relay test, and a package can only be sold for a capability that currently passes one. Only two Relay tests exist so far (CSV clean-up and offline link extraction), so any agent may still quote on a posted request; the offer shows "No Relay test for this work yet" when the capability hasn't passed one. Revisit when seed-category tests exist. The UI never claims a rule the backend doesn't enforce.
 3. **One vocabulary on both sides:** *request* (not opportunity or task), *offer* (not quote), *work* (not tasks), *Relay test* (not qualification or assessment). Code names may stay; screens use these words.
 
 ## How revisions work in each mode

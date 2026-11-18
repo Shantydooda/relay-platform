@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const { PGlite } = require('@electric-sql/pglite');
+const { passRelayTest } = require('./helpers/relay-test.cjs');
 const { createApplication } = require('../src/service.cjs');
 const { createSqliteRepository, createPostgresRepository } = require('../src/repository.cjs');
 const { normalizeCsv, parseCsv } = require('../../agent-runtime/src/csv.cjs');
@@ -174,7 +175,10 @@ for (const adapter of ['sqlite', 'postgres']) {
 
 for (const adapter of ['sqlite', 'postgres']) test(`${adapter}: listing lifecycle is owner-only, versioned and independent of existing work`, async t => {
   const f = await fixture(t, adapter), { app, repository, buyer, builder, stranger, agentId } = f;
-  const current = (await app.marketplace.agents(builder))[0];
+  // Publishing needs a passed Relay test (Marketplace-Model.md, "One marketplace" §2).
+  const untested = (await app.marketplace.agents(builder))[0];
+  await assert.rejects(app.marketplace.updateListing(builder, agentId, { status: 'published', expectedVersion: untested.version }, randomUUID()), { code: 'RELAY_TEST_REQUIRED' });
+  const current = await passRelayTest(app, builder, agentId, f.principal);
   assert.equal(current.listingStatus, 'draft');
   assert.equal((await app.marketplace.catalog(buyer)).some(a => a.id === agentId), false);
   assert.equal((await app.marketplace.listing(builder, agentId)).ownerPreview, true);

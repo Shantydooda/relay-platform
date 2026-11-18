@@ -114,7 +114,10 @@ function createBrowse({ repository, now, listingView, connectors: available }) {
       allowed(actor);
       if (!SORTS.includes(sort)) require('../../../packages/contracts/src/input.cjs').fail(400, 'INVALID_SORT', 'Sort by most verified runs or newest.');
       return repository.read(async repo => {
-        const published = (await repo.catalogAgents()).filter(agent => (agent.listingStatus || 'published') === 'published' && agent.purpose).slice(0, MAX_ROWS);
+        // Only agents with a current Relay test are listed (Marketplace-Model.md, "One marketplace" §2).
+        const time = now();
+        const published = (await repo.catalogAgents()).filter(agent => (agent.listingStatus || 'published') === 'published' && agent.purpose &&
+          listingView(agent, time).availability === 'available').slice(0, MAX_ROWS);
         const agents = sortRows(await rows(repo, actor, published), sort);
         return { agents, sort, sorts: SORTS, connectors: available, windowDays: LEDGER_WINDOW_MS / 86400000,
           basis: 'verified-outcomes-in-this-environment' };
