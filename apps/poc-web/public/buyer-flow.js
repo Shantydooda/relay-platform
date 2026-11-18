@@ -401,7 +401,7 @@ function taskDashboard() {
                   task.status,
                 )
               ? 'Review next step'
-              : 'Open conversation';
+              : 'View work';
   const filter = ['All', ...groups.map(([label]) => label)].includes(
     state.taskFilter,
   )

@@ -3,7 +3,7 @@ const {test}=require('node:test');const assert=require('node:assert/strict');con
 function ui(){const state={authMode:'local',detail:{task:{status:'posted',version:2,scopeVersion:1}},offers:[],agents:[],work:[],quotes:[],opportunities:[],builderTab:'agents'};const ctx=vm.createContext({state,location:{origin:'http://127.0.0.1:4180'},escape:text,date:()=> 'Date',Intl,Date});for(const file of ['supplier-ui.js','marketplace.js','buyer-flow.js'])vm.runInContext(readFileSync(resolve(__dirname,'../public',file),'utf8'),ctx);return {state,ctx};}
 test('offer review escapes supplier content, requires explicit selection and does not authorize work',()=>{
  const {state,ctx}=ui();state.offers=[{id:'offer',agentName:'<img onerror=bad>',agentType:'specialist',operatorName:'A',amountMinor:7500,deliveryMinutes:45,proposal:'</article><script>bad</script>',capability:'Custom task',taskVersion:2,scopeVersion:1,expiresAt:Date.now()+100000}];
- let html=vm.runInContext('offerCards()',ctx);assert.doesNotMatch(html,/<img onerror|<script>/);assert.match(html,/Not currently assessed/);assert.match(html,/Review offer/);assert.doesNotMatch(html,/data-action="accept-offer"/);
+ let html=vm.runInContext('offerCards()',ctx);assert.doesNotMatch(html,/<img onerror|<script>/);assert.match(html,/No Relay test for this work yet/);assert.match(html,/Review offer/);assert.doesNotMatch(html,/data-action="accept-offer"/);
  state.reviewOffer='offer';html=vm.runInContext('offerCards()',ctx);assert.match(html,/Confirm selection/);assert.match(html,/no execution is authorized/);
  state.detail.task.version=3;html=vm.runInContext('offerCards()',ctx);assert.match(html,/Confirm selection/);
  state.detail.task.scopeVersion=2;html=vm.runInContext('offerCards()',ctx);assert.doesNotMatch(html,/data-action="accept-offer"/);assert.match(html,/new offer is required/);
@@ -215,7 +215,7 @@ test('link offers show their own rubric and escaped evidence instead of a CSV qu
   state.offers = [{ id: 'link-offer', agentName: 'Linksmith', agentType: 'specialist', operatorName: 'Builder', amountMinor: 100, deliveryMinutes: 1, proposal: 'Extract links offline', capability: 'Link extraction', scopeVersion: 1, expiresAt: Date.now() + 100000, qualification: 'qualified', qualificationCurrent: true,
     qualificationEvidence: { rubric: 'link-inventory-v1', limitation: 'No websites fetched.', runtimeName: 'Offline reference', runtimeVersion: '1', input: '<script>source</script>', submissions: [{ round: 1, links: ['<script>bad</script>'], report: {}, checks: [], passed: true, sha256: 'hash' }] } }];
   const html = vm.runInContext('offerCards()', ctx);
-  assert.match(html, /Offline link inventory passed/);
+  assert.match(html, /Passed Relay test · Offline link inventory/);
   assert.match(html, /No websites fetched/);
   assert.doesNotMatch(html, /CSV assessment passed|<script>/);
 });

@@ -210,6 +210,39 @@ html[data-appearance] body.market-open #app .mk-link-button:hover { text-decorat
 .mk-prose li, .mk-prose p { line-height: 1.65; }
 .mk-prose .mk-primary { margin-top: 24px; }
 
+/* Your work, Activity and How evidence works: same rail and rows as Agents. */
+.mk-rail-toggle { display: none; }
+.mk-meta .mk-handle { font-size: 13px; font-weight: 500; }
+.mk-list-single { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.mk-work-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'title next' 'meta next'; column-gap: 16px; align-items: center; }
+.mk-work-link .mk-row-title { grid-area: title; }
+.mk-work-link .mk-meta { grid-area: meta; }
+.mk-next { grid-area: next; font-size: 13px; font-weight: 600; color: var(--mk-accent); white-space: nowrap; }
+.mk-work-title { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mk-tone-attention { color: #b54708; background: #fff4e5; }
+.mk-tone-active { color: var(--mk-accent); background: var(--mk-accent-soft); }
+.mk-tone-complete { color: var(--mk-good); background: transparent; border: 1px solid currentColor; }
+.mk-tone-none { color: var(--mk-muted); background: var(--mk-rail); }
+html[data-appearance='dark'] body.market-open .mk-tone-attention { color: #f5b971; background: rgba(245, 185, 113, 0.12); }
+.mk-actor-you { color: var(--mk-text); background: var(--mk-rail); border: 1px solid var(--mk-border); }
+.mk-actor-agent { color: var(--mk-accent); background: var(--mk-accent-soft); }
+.mk-actor-relay, .mk-actor-workspace { color: var(--mk-muted); background: var(--mk-rail); }
+.mk-chip-count { font-size: 12px; color: var(--mk-muted); }
+.mk-day { margin-top: 22px; }
+.mk-day:first-of-type { margin-top: 0; }
+.mk-day h2 { font-size: 13px; font-weight: 600; color: var(--mk-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px; }
+.mk-activity-link .mk-meta time { color: var(--mk-muted); }
+.mk-doc { max-width: 860px; }
+.mk-doc .mk-lead { margin: 0 0 18px; }
+.mk-doc-card { border: 1px solid var(--mk-row-border); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; background: var(--mk-bg); scroll-margin-top: 90px; }
+.mk-doc-card h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: var(--mk-text); }
+.mk-doc-card ul { margin: 0; padding-left: 20px; line-height: 1.6; }
+.mk-doc-card p { margin: 0 0 8px; line-height: 1.6; }
+.mk-format { display: inline-block; font-family: var(--mk-mono); font-size: 13px; color: var(--mk-muted); background: var(--mk-rail); border: 1px solid var(--mk-row-border); border-radius: 8px; padding: 6px 10px; margin: 4px 0 0 !important; }
+.mk-toc { display: grid; gap: 4px; }
+html[data-appearance] body.market-open #app .mk-toc a { color: var(--mk-text); text-decoration: none; padding: 6px 10px; border-radius: 8px; }
+html[data-appearance] body.market-open #app .mk-toc a:hover { background: var(--mk-bg); }
+
 /* Packages ("Hire it"): fixed terms on the agent page and in the buying panel. */
 .mk-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .mk-packages { display: grid; gap: 14px; margin-top: 14px; }
@@ -244,6 +277,10 @@ html[data-appearance] body.market-open #app .mk-buy-packages button:hover { back
 }
 @media (max-width: 760px) {
   .mk-form-row { grid-template-columns: 1fr; }
+  html[data-appearance] body.market-open #app .mk-rail-toggle { display: flex; align-items: center; justify-content: center; margin: 16px 16px 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  .mk-rail:not(.mk-rail-open) { display: none; }
+  .mk-browse { align-content: start; }
+  .mk-work-link { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'title' 'meta' 'next'; row-gap: 6px; }
   .mk-topbar { position: static; flex-wrap: wrap; gap: 12px 16px; padding: 12px 16px; }
   .mk-brand { order: 1; }
   .mk-account { order: 2; }

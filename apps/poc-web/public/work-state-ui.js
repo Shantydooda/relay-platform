@@ -100,6 +100,7 @@ const RelayWorkState = {
   },
   action(task) {
     if (task.work.phase === 'ended' && task.work.waitingOn === 'buyer') return 'Try another agent';
-    return this.ACTIONS[task.work.reason] || 'Open conversation';
+    if (this.ACTIONS[task.work.reason]) return this.ACTIONS[task.work.reason];
+    return ['done', 'closed', 'ended'].includes(task.work.phase) ? 'View work' : 'View progress';
   },
 };

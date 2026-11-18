@@ -63,8 +63,18 @@ function taskView(task, now) {
     scoping: task.scoping?.version === task.version ? (task.scoping.status === 'pending' && task.scoping.expiresAt <= now ? { status: 'failed', error: 'The local reply was interrupted. Try again; your message is saved.' } : task.scoping) : null,
     selectedOfferId: offer && offer.expiresAt > now ? offer.id : null,
     acceptanceCriteria: criteriaFor(task),
+    // For list rows: who the work is with and the agreed or chosen price, and how many current offers exist.
+    chosenOffer: chosenOfferView(task, now),
+    offerCount: task.offers.filter(item => item.scopeVersion === task.scopeVersion && item.expiresAt > now).length,
     package: task.package ? { ...task.package, criteria: task.package.criteria.map(item => ({ ...item })), inputs: [...task.package.inputs] } : null,
     input: input ? { filename: input.filename, size: input.size, sha256: input.sha256, notes: input.notes } : null };
+}
+function chosenOfferView(task, now) {
+  const offer = task.assignment ? task.offers.find(item => item.id === task.assignment.offerId)
+    : task.offers.find(item => item.id === task.selectedOfferId && item.expiresAt > now);
+  if (!offer) return null;
+  return { agentId: offer.agentId, agentName: offer.agentName, operatorName: offer.operatorName, amountMinor: offer.amountMinor,
+    currency: offer.currency || 'USD', packageId: offer.packageId || null };
 }
 function retryAvailable(task, tenantId = task.tenantId) {
   return task.tenantId === tenantId && task.assignment?.status === 'failed' && !task.retriedBy && task.status !== 'cancelled' &&
