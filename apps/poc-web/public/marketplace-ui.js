@@ -18,7 +18,7 @@ const RelayMarketplace = {
   EVIDENCE_FILTERS: [['tested', 'Passed Relay test'], ['runs20', '20+ verified runs'], ['repeat', 'Repeat buyers'], ['hosted', 'Hosted on Relay']],
 
   // ---- Routes ------------------------------------------------------------
-  // Real paths for the pages people share: /, /agents/<id>, /tasks/<id>, /post, /evidence.
+  // Real paths for the pages people share: /, /agents/<id>, /tasks/<id>, /post, /docs/<guide>.
   parse(pathname = globalThis.location?.pathname || '/', hash = globalThis.location?.hash || '') {
     const agent = /^\/agents\/([0-9a-f-]{36})$/.exec(pathname)?.[1] ||
       /^#storefront=([0-9a-f-]{36})(?:\?source=(?:market|builder))?$/.exec(hash)?.[1];
@@ -26,7 +26,9 @@ const RelayMarketplace = {
     const task = /^\/tasks\/([0-9a-f-]{36})$/.exec(pathname)?.[1] || /^#(?:task|chat)=([0-9a-f-]{36})$/.exec(hash)?.[1];
     if (task) return { page: 'task', id: task };
     if (pathname === '/post') return { page: 'post', id: null };
-    if (pathname === '/evidence') return { page: 'evidence', id: null };
+    if (pathname === '/evidence') return { page: 'docs', id: 'evidence' };
+    const doc = /^\/docs\/([a-z-]+)$/.exec(pathname)?.[1];
+    if (doc && this.DOCS.some(item => item.slug === doc)) return { page: 'docs', id: doc };
     return { page: null, id: null };
   },
   // Apply a route to buyer state. Returns the task id to load, if any.
@@ -34,7 +36,7 @@ const RelayMarketplace = {
     target.agentPageId = null;
     if (route.page === 'agent') { target.buyerTab = 'market'; target.agentPageId = route.id; target.agentTab ||= 'card'; target.detail = null; }
     else if (route.page === 'post') { target.buyerTab = 'request'; target.detail = null; }
-    else if (route.page === 'evidence') { target.buyerTab = 'evidence'; target.detail = null; }
+    else if (route.page === 'docs') { target.buyerTab = 'evidence'; target.docPage = route.id; target.detail = null; }
     return route.page === 'task' ? route.id : null;
   },
   // The canonical path for what the buyer is looking at.
@@ -43,7 +45,7 @@ const RelayMarketplace = {
     if (current.detail) return `/tasks/${current.detail.task.id}`;
     if (current.buyerTab === 'market' && current.agentPageId) return `/agents/${current.agentPageId}`;
     if (current.buyerTab === 'request') return '/post';
-    if (current.buyerTab === 'evidence') return '/evidence';
+    if (current.buyerTab === 'evidence') return `/docs/${current.docPage || 'evidence'}`;
     return '/';
   },
   // Keep the address bar in step after each render. A new page is a new history
@@ -162,7 +164,7 @@ const RelayMarketplace = {
     return `<a class="skip-workspace" href="#workspace-main">Skip to content</a><header class="mk-topbar">
       <a class="mk-brand" href="/" data-route aria-label="Relay home">relay</a>
       <form class="mk-search" id="market-search" role="search"><label class="sr-only" for="market-search-input">Search agents</label><span aria-hidden="true">⌕</span><input id="market-search-input" name="q" type="search" placeholder="Search agents, builders, outcomes" value="${escape(state.marketFilters?.q || '')}" autocomplete="off"></form>
-      <nav class="mk-nav" aria-label="Main">${link('agents', '/', 'Agents', 'data-route')}${link('work', '/#tasks', 'Your work', 'data-route data-tab="tasks"')}${link('activity', '/#activity', 'Activity', 'data-route data-tab="activity"')}${link('evidence', '/evidence', 'How evidence works', 'data-route')}</nav>
+      <nav class="mk-nav" aria-label="Main">${link('agents', '/', 'Agents', 'data-route')}${link('work', '/#tasks', 'Your work', 'data-route data-tab="tasks"')}${link('activity', '/#activity', 'Activity', 'data-route data-tab="activity"')}${link('evidence', '/docs/evidence', 'Docs', 'data-route')}</nav>
       <div class="mk-account">
         <div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>
         <details class="mk-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span class="sr-only">Account and workspace for ${escape(user.name)}</span></summary>
@@ -263,7 +265,7 @@ const RelayMarketplace = {
       </header>
       <p class="mk-sr-status sr-only" role="status" aria-live="polite">${agents.length} agents shown</p>
       ${list}${this.postCard()}
-      <p class="mk-basis">Evidence is recorded by Relay from finished work in this environment, over the last ${state.market.windowDays} days. Local and pilot runs aren’t paid-customer proof. <a href="/evidence" data-route>How evidence works</a></p>
+      <p class="mk-basis">Evidence is recorded by Relay from finished work in this environment, over the last ${state.market.windowDays} days. Local and pilot runs aren’t paid-customer proof. <a href="/docs/evidence" data-route>How evidence works</a></p>
     </section></div>`;
   },
   // Update the list in place so typing keeps focus.
@@ -295,7 +297,7 @@ const RelayMarketplace = {
       ${this.stat('First time / after fixes', e.runs ? `${e.accepted_first_time} / ${e.accepted_after_revision}` : '—', e.runs ? `${ended} failed, ended unmet or refunded` : 'No decided runs yet')}
       ${this.stat('Repeat buyers', m.buyers.total ? String(m.buyers.repeat) : '—', m.buyers.total ? `of ${this.plural(m.buyers.total, 'buyer')}` : 'No buyers yet')}
       ${this.stat('Relay test', m.relayTest.passed ? 'Passed' : 'Not passed', m.relayTest.passed ? `${escape(m.relayTest.rubric)} · ${escape(this.version(m.relayTest.runtimeVersion))}` : 'Not currently qualified')}
-    </div><p class="mk-caption">Recorded by Relay from finished work in this environment, including failures. Not reported by the builder. Local and pilot runs aren’t paid-customer proof. <a href="/evidence" data-route>How evidence works</a></p>`;
+    </div><p class="mk-caption">Recorded by Relay from finished work in this environment, including failures. Not reported by the builder. Local and pilot runs aren’t paid-customer proof. <a href="/docs/evidence" data-route>How evidence works</a></p>`;
   },
   versionsTable(record) {
     const rows = record?.versions || [];
@@ -505,77 +507,100 @@ const RelayMarketplace = {
     } finally { state.postingRequest = false; if (root.querySelector('#post-request')) render(); }
   },
 
-  // ---- How evidence works ----------------------------------------------
   // ---- Your work -------------------------------------------------------
-  // The same rail-and-rows layout as the Agents page. Phase, whose move it is and
-  // the status words come from the server's work state via RelayWorkState.
+  // Hugging Face's community-list pattern: actions and resources on the side, type
+  // tabs, a name filter, "show completed" and a sort above dense rows. Phase, whose
+  // move it is and the status words come from the server's work state.
   WORK_GROUPS: ['Needs you', 'Under way', 'Completed'],
+  WORK_TYPES: [['all', 'All'], ['package', 'Packages'], ['request', 'Requests']],
+  WORK_SORTS: [['needs', 'Needs you first'], ['updated', 'Recently updated'], ['newest', 'Newest']],
   workFilters() {
-    state.workFilters ||= { q: '', status: [], ways: [] };
+    state.workFilters ||= { q: '', type: 'all', completed: false, sort: 'needs' };
     return state.workFilters;
   },
   workGroup(task) {
     if (typeof RelayWorkState === 'object' && RelayWorkState.known(task)) return RelayWorkState.group(task);
     return ['accepted', 'cancelled', 'failed'].includes(task.status) ? 'Completed' : ['queued', 'running'].includes(task.status) ? 'Under way' : 'Needs you';
   },
+  workType(task) { return task.package ? 'package' : 'request'; },
   listedWork() {
     return (state.tasks || []).filter(task => task.status !== 'draft' && !task.orchestrationStep?.supersededBy)
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   },
   visibleWork() {
     const f = this.workFilters(), q = f.q.trim().toLowerCase();
-    return this.listedWork().filter(task => {
+    const rows = this.listedWork().filter(task => {
       if (q && !q.split(/\s+/).every(word => [task.title, task.chosenOffer?.agentName, task.chosenOffer?.operatorName].join(' ').toLowerCase().includes(word))) return false;
-      if (f.status.length && !f.status.includes(this.workGroup(task))) return false;
-      if (f.ways.length && !f.ways.includes(task.package ? 'package' : 'request')) return false;
-      return true;
+      if (f.type !== 'all' && this.workType(task) !== f.type) return false;
+      return f.completed || this.workGroup(task) !== 'Completed';
     });
+    if (f.sort === 'newest') return rows.sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
+    if (f.sort === 'needs') return rows.sort((a, b) => Number(this.workGroup(b) === 'Needs you') - Number(this.workGroup(a) === 'Needs you'));
+    return rows;
   },
-  // Phones: the rail folds behind one Filters button so results come first.
+  // Phones: the browse rail folds behind one Filters button so results come first.
   railToggle(label = 'Filters') {
     return `<button type="button" class="mk-rail-toggle" data-action="page-rail-toggle" aria-expanded="${!!state.railOpen}">${label}${state.railOpen ? ' ▴' : ' ▾'}</button>`;
   },
   railClass() { return `mk-rail${state.railOpen ? ' mk-rail-open' : ''}`; },
-  pageChip(page, group, value, label, selected, count) {
-    return `<button type="button" class="mk-chip" data-action="page-filter" data-page="${page}" data-group="${group}" data-value="${escape(value)}" aria-pressed="${selected}" ${count === 0 && !selected ? 'disabled' : ''} title="${count} ${count === 1 ? 'item' : 'items'}">${label}<span class="mk-chip-count">${count}</span></button>`;
+  // One segmented control: All · Packages · Requests, or who did it.
+  segments(page, group, options, current, counts) {
+    return `<div class="mk-segments" role="group" aria-label="${group === 'who' ? 'Who' : 'Type'}">${options.map(([value, label]) => `<button type="button" data-action="page-set" data-page="${page}" data-group="${group}" data-value="${escape(value)}" aria-pressed="${current === value}">${escape(label)}${counts ? `<span class="mk-chip-count">${counts[value] ?? 0}</span>` : ''}</button>`).join('')}</div>`;
+  },
+  ICONS: {
+    package: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Zm0 2.2L17.6 8 12 10.8 6.4 8 12 5.2ZM6 9.6l5 2.5v6.7l-5-2.5V9.6Zm7 9.2v-6.7l5-2.5v6.7l-5 2.5Z" fill="currentColor"/></svg>',
+    request: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-7l-4.5 3.5V17H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm1 2v9h3.5v1.4L11.3 15H18V6H6Zm2 2h8v1.6H8V8Zm0 3h5v1.6H8V11Z" fill="currentColor"/></svg>',
   },
   workRow(task) {
-    const offer = task.chosenOffer;
-    const status = typeof RelayWorkState === 'object' && RelayWorkState.known(task) ? RelayWorkState.label(task) : task.status;
-    const tone = typeof RelayWorkState === 'object' && RelayWorkState.known(task) ? RelayWorkState.tone(task) : '';
-    const next = typeof RelayWorkState === 'object' && RelayWorkState.known(task) ? RelayWorkState.action(task) : 'Open';
-    const meta = [task.package ? 'Package' : 'Request',
+    const offer = task.chosenOffer, served = typeof RelayWorkState === 'object' && RelayWorkState.known(task);
+    const status = served ? RelayWorkState.label(task) : task.status;
+    const tone = served ? RelayWorkState.tone(task) : '';
+    const next = served ? RelayWorkState.action(task) : 'Open';
+    const type = this.workType(task);
+    const meta = [type === 'package' ? 'Hired package' : 'Posted request',
       offer ? `<span class="mk-handle">${escape(this.slug(offer.operatorName))}/${escape(this.slug(offer.agentName))}</span>` : escape(task.offerCount ? this.plural(task.offerCount, 'offer') : 'No offers yet'),
       ...(offer ? [escape(this.money(offer.amountMinor, offer.currency))] : []),
       `updated ${escape(this.ago(task.updatedAt))}`];
-    return `<li class="mk-row"><a href="/tasks/${escape(task.id)}" data-route class="mk-row-link mk-work-link">
-      <span class="mk-row-title"><span class="mk-work-title">${escape(task.title)}</span><span class="mk-tag mk-tone-${escape(tone || 'none')}">${escape(status)}</span></span>
-      <span class="mk-meta">${meta.join('<span class="mk-sep" aria-hidden="true">·</span>')}</span>
+    return `<li><a href="/tasks/${escape(task.id)}" data-route class="mk-thread mk-thread-${escape(tone || 'none')}">
+      <span class="mk-thread-icon" title="${type === 'package' ? 'Package' : 'Request'}">${this.ICONS[type]}</span>
+      <span class="mk-thread-body"><span class="mk-row-title"><span class="mk-work-title">${escape(task.title)}</span><span class="mk-tag mk-tone-${escape(tone || 'none')}">${escape(status)}</span></span>
+      <span class="mk-meta">${meta.join('<span class="mk-sep" aria-hidden="true">·</span>')}</span></span>
       <span class="mk-next">${escape(next)} →</span></a></li>`;
+  },
+  // Side column shared by Your work and Activity: what you can do next, and the guides.
+  side(primary) {
+    return `<aside class="mk-side" aria-label="Actions and resources">
+      ${primary}
+      <h2>Resources</h2><ul class="mk-side-links">${this.DOCS.map(doc => `<li><a href="/docs/${doc.slug}" data-route>${escape(doc.title)}</a></li>`).join('')}</ul></aside>`;
   },
   work() {
     const f = this.workFilters(), all = this.listedWork(), shown = this.visibleWork();
-    const count = predicate => all.filter(predicate).length;
-    const rail = `${this.railToggle()}<aside class="${this.railClass()}" aria-label="Filter your work">
-      <section><h2>Status</h2><div class="mk-chips">${this.WORK_GROUPS.map(group => this.pageChip('work', 'status', group, escape(group), f.status.includes(group), count(task => this.workGroup(task) === group))).join('')}</div></section>
-      <section><h2>How you bought it</h2><div class="mk-chips">${this.pageChip('work', 'ways', 'package', '<strong>Hire it</strong>&nbsp;· package', f.ways.includes('package'), count(task => !!task.package))}${this.pageChip('work', 'ways', 'request', '<strong>Commission</strong>&nbsp;· request', f.ways.includes('request'), count(task => !task.package))}</div></section>
-      <p class="mk-rail-note">“Needs you” means it’s your move: compare offers, start, approve or review a delivery.</p></aside>`;
-    const filtered = f.q || f.status.length || f.ways.length;
+    const open = all.filter(task => this.workGroup(task) !== 'Completed' || f.completed);
+    const counts = { all: open.length, package: open.filter(task => task.package).length, request: open.filter(task => !task.package).length };
+    const completed = all.filter(task => this.workGroup(task) === 'Completed').length;
+    const needs = all.filter(task => this.workGroup(task) === 'Needs you').length;
+    const side = this.side(`<a class="mk-side-button mk-side-primary" href="/post" data-route>+ Post a request</a><a class="mk-side-button" href="/" data-route>Browse agents</a>
+      ${needs ? `<p class="mk-side-note"><strong>${this.plural(needs, 'item')}</strong> need${needs === 1 ? 's' : ''} you: compare offers, start, or review a delivery.</p>` : ''}`);
+    const filtered = f.q || f.type !== 'all';
     const list = !all.length
       ? '<div class="mk-empty"><h2>No work yet</h2><p>Hire a package from an agent page, or post a request and let agents quote.</p><a class="mk-primary" href="/" data-route>Browse agents</a></div>'
-      : shown.length ? `<ul class="mk-list mk-list-single">${shown.map(task => this.workRow(task)).join('')}</ul>`
-      : '<div class="mk-empty"><h2>Nothing matches these filters</h2><button type="button" data-action="page-filter-clear" data-page="work">Clear filters</button></div>';
-    return `<div class="mk-browse">${rail}<section class="mk-results" aria-labelledby="mk-work-title">
-      <header class="mk-results-head"><h1 id="mk-work-title">Your work <span class="mk-total">${filtered ? `${shown.length} of ${all.length}` : all.length}</span></h1>
+      : shown.length ? `<ul class="mk-threads">${shown.map(task => this.workRow(task)).join('')}</ul>`
+      : `<div class="mk-empty"><h2>${filtered ? 'Nothing matches these filters' : 'Nothing open'}</h2>${filtered ? '<button type="button" data-action="page-filter-clear" data-page="work">Clear filters</button>' : completed ? '<p>Everything here is completed. Show completed work to see it.</p>' : ''}</div>`;
+    return `<div class="mk-cols">${side}<section class="mk-results" aria-labelledby="mk-work-title">
+      <header class="mk-page-head"><h1 id="mk-work-title">Your work <span class="mk-total">${shown.length}</span></h1></header>
+      <div class="mk-listbar">${this.segments('work', 'type', this.WORK_TYPES, f.type, counts)}
         <label class="mk-filter-name"><span class="sr-only">Filter your work by name</span><input type="search" data-page-name="work" placeholder="Filter by name or agent" value="${escape(f.q)}"></label>
-        <div class="mk-toggles"><a class="mk-primary" href="/post" data-route>Post a request</a></div></header>
+        <span class="mk-listbar-end"><label class="mk-check"><input type="checkbox" data-page-check="work" data-group="completed" ${f.completed ? 'checked' : ''}> Show completed (${completed})</label>
+        <label class="mk-sort"><span>Sort:</span><select data-page-sort="work">${this.WORK_SORTS.map(([id, label]) => `<option value="${id}" ${f.sort === id ? 'selected' : ''}>${label}</option>`).join('')}</select></label></span></div>
       <p class="mk-sr-status sr-only" role="status" aria-live="polite">${shown.length} items shown</p>${list}</section></div>`;
   },
 
   // ---- Activity --------------------------------------------------------
-  ACTIVITY_WHO: [['you', 'You'], ['agent', 'Agent'], ['relay', 'Relay'], ['workspace', 'Workspace member']],
+  // Hugging Face's profile activity: a compact timeline, one line per event.
+  ACTIVITY_WHO: [['', 'All'], ['you', 'You'], ['agent', 'Agents'], ['relay', 'Relay'], ['workspace', 'Workspace members']],
+  ACTOR_NAMES: { you: 'You', agent: 'Agent', relay: 'Relay', workspace: 'Workspace member' },
   activityFilters() {
-    state.activityFilters ||= { who: [] };
+    state.activityFilters ||= { who: '' };
     return state.activityFilters;
   },
   listedActivity() {
@@ -583,16 +608,20 @@ const RelayMarketplace = {
   },
   visibleActivity() {
     const f = this.activityFilters();
-    return this.listedActivity().filter(item => !f.who.length || f.who.includes(item.actor));
+    return this.listedActivity().filter(item => !f.who || f.who === item.actor);
   },
   day(time, now = Date.now()) {
     const start = value => new Date(new Date(value).toDateString()).getTime();
     const days = Math.round((start(now) - start(time)) / 86400000);
     return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: days > 300 ? 'numeric' : undefined }).format(time);
   },
+  // "Agent" + "Agent started work" reads as "Agent started work", not twice.
+  activityVerb(item) {
+    const who = this.ACTOR_NAMES[item.actor];
+    return who && item.label.startsWith(who + ' ') ? item.label.slice(who.length + 1) : item.label;
+  },
   activity() {
     const f = this.activityFilters(), all = this.listedActivity(), shown = this.visibleActivity();
-    const labels = Object.fromEntries(this.ACTIVITY_WHO);
     // Consecutive identical updates on one task (e.g. a safety scan per file) read as one row.
     const collapsed = [];
     for (const item of shown) {
@@ -607,34 +636,60 @@ const RelayMarketplace = {
       days.at(-1).items.push(item);
     }
     const time = value => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(value);
-    const rail = `${this.railToggle()}<aside class="${this.railClass()}" aria-label="Filter activity"><section><h2>Who</h2><div class="mk-chips">${this.ACTIVITY_WHO.map(([id, label]) => this.pageChip('activity', 'who', id, escape(label), f.who.includes(id), all.filter(item => item.actor === id).length)).join('')}</div></section>
-      <p class="mk-rail-note">Everything that happened across your work in this workspace: what each agent did, what you approved, and when.</p></aside>`;
+    const counts = Object.fromEntries(this.ACTIVITY_WHO.map(([id]) => [id, id ? all.filter(item => item.actor === id).length : all.length]));
+    const who = this.ACTIVITY_WHO.filter(([id]) => !id || counts[id] || f.who === id);
+    const side = this.side('<a class="mk-side-button mk-side-primary" href="/#tasks" data-route data-tab="tasks">Your work</a><p class="mk-side-note">Everything that happened across your work in this workspace: what each agent did, what you approved, and when.</p>');
     const list = !all.length ? '<div class="mk-empty"><h2>No activity yet</h2><p>Updates appear here as your work moves along.</p></div>'
-      : !shown.length ? '<div class="mk-empty"><h2>Nothing matches these filters</h2><button type="button" data-action="page-filter-clear" data-page="activity">Clear filters</button></div>'
-      : days.map(group => `<section class="mk-day"><h2>${escape(group.label)}</h2><ul class="mk-list mk-list-single">${group.items.map(item => `<li class="mk-row"><a href="/tasks/${escape(item.taskId)}" data-route class="mk-row-link mk-activity-link">
-          <span class="mk-row-title"><span class="mk-tag mk-actor-${escape(item.actor)}">${escape(labels[item.actor] || 'Update')}</span><span class="mk-work-title">${escape(item.label)}</span>${item.repeat > 1 ? `<span class="mk-chip-count">×${item.repeat}</span>` : ''}</span>
-          <span class="mk-meta">${escape(item.taskTitle)}<span class="mk-sep" aria-hidden="true">·</span><time datetime="${new Date(item.createdAt).toISOString()}">${escape(time(item.createdAt))}</time></span></a></li>`).join('')}</ul></section>`).join('');
-    return `<div class="mk-browse">${rail}<section class="mk-results" aria-labelledby="mk-activity-title">
-      <header class="mk-results-head"><h1 id="mk-activity-title">Activity <span class="mk-total">${f.who.length ? `${shown.length} of ${all.length}` : all.length}</span></h1></header>
+      : !shown.length ? '<div class="mk-empty"><h2>Nothing matches this filter</h2><button type="button" data-action="page-filter-clear" data-page="activity">Show all activity</button></div>'
+      : days.map(group => `<section class="mk-day"><h2>${escape(group.label)}</h2><ol class="mk-timeline">${group.items.map(item => `<li class="mk-tl-item">
+          <span class="mk-tl-dot mk-actor-${escape(item.actor)}" aria-hidden="true">${escape((this.ACTOR_NAMES[item.actor] || 'U')[0])}</span>
+          <p class="mk-tl-text"><span class="mk-tl-who">${escape(this.ACTOR_NAMES[item.actor] || 'Update')}</span> <span>${escape(this.activityVerb(item))}</span>${item.repeat > 1 ? ` <span class="mk-chip-count">×${item.repeat}</span>` : ''}
+            <span class="mk-tl-on">on <a href="/tasks/${escape(item.taskId)}" data-route>${escape(item.taskTitle)}</a></span>
+            <time datetime="${new Date(item.createdAt).toISOString()}">${escape(time(item.createdAt))}</time></p></li>`).join('')}</ol></section>`).join('');
+    return `<div class="mk-cols">${side}<section class="mk-results" aria-labelledby="mk-activity-title">
+      <header class="mk-page-head"><h1 id="mk-activity-title">Activity <span class="mk-total">${shown.length}</span></h1></header>
+      <div class="mk-listbar">${this.segments('activity', 'who', who, f.who, counts)}</div>
       ${list}${state.activity?.truncated ? '<p class="mk-basis">Showing the latest 100 updates. Open a task to see its full history.</p>' : ''}</section></div>`;
   },
 
-  // ---- How evidence works ----------------------------------------------
-  EVIDENCE_SECTIONS: [['what-counts', 'What counts'], ['percentages', 'When a percentage appears'], ['relay-test', 'The Relay test'], ['not-evidence', 'What isn’t evidence']],
-  evidencePage() {
-    const card = (id, title, body) => `<section class="mk-doc-card" id="${id}" aria-labelledby="${id}-title"><h2 id="${id}-title">${title}</h2>${body}</section>`;
-    return `<div class="mk-browse">${this.railToggle('On this page')}<aside class="${this.railClass()}" aria-label="On this page"><section><h2>On this page</h2><nav class="mk-toc">${this.EVIDENCE_SECTIONS.map(([id, label]) => `<a href="#${id}">${label}</a>`).join('')}</nav></section>
-      <p class="mk-rail-note">Rankings can’t be bought. The order comes from the sort you choose and results Relay verified, including failures.</p></aside>
-      <section class="mk-results mk-doc" aria-labelledby="mk-evidence-title">
-      <header class="mk-results-head"><h1 id="mk-evidence-title">How evidence works</h1></header>
-      <p class="mk-lead">Agent pages lead with what Relay recorded, not what builders say about themselves.</p>
-      ${card('what-counts', 'What counts', `<ul><li>A <strong>decided run</strong> is work a buyer accepted, or that failed, ended unmet or was refunded. Failures always count.</li><li>Buyer cancellations before a decision are shown but don’t count as runs.</li><li>Every number shows its sample size and window. The window is the last 90 days.</li></ul>
-        <p class="mk-caption">How a row reads below 20 runs:</p><p class="mk-format">X runs · Y accepted · Z failed · 90d</p>`)}
-      ${card('percentages', 'When a percentage appears', `<p>Only after ${this.MIN_RATE_SAMPLE} decided runs. Below that you see the counts, because a rate over a handful of runs is noise.</p><p class="mk-format mk-good">N% accepted · M runs · 90d</p>`)}
-      ${card('relay-test', 'The Relay test', `<p>An agent is listed in browse, and can sell a package, only for a capability whose runtime passed a bounded Relay test. A new runtime version has to pass again. A test isn’t a guarantee that every request will succeed.</p>
-        <p>Relay has tests for only a few kinds of work so far, so an agent without one can still quote on a request you post. Its offer says “No Relay test for this work yet”.</p><p class="mk-format">Passed Relay test · no runs yet</p>`)}
-      ${card('not-evidence', 'What isn’t evidence', '<ul><li>Saves aren’t a trust signal.</li><li>Builder-declared details (outputs, regions, tools) are labelled as declared.</li><li>Placement can’t be bought.</li><li>Runs in local development or the private pilot aren’t paid-customer proof.</li></ul>')}
-      <a class="mk-primary" href="/" data-route>Browse agents</a></section></div>`;
+  // ---- Docs ------------------------------------------------------------
+  // Hugging Face's docs layout: guides on the left, prose in the middle, "On this
+  // page" on the right. Every rule here is one the backend enforces; numbers come
+  // from the same constants (acceptance.cjs, packages.cjs, outcome-ledger.cjs).
+  DOCS: [
+    { slug: 'evidence', title: 'How evidence works', lead: 'Agent pages lead with what Relay recorded, not what builders say about themselves.', sections: [
+      ['what-counts', 'What counts', () => `<ul><li>A <strong>decided run</strong> is work a buyer accepted, or that failed, ended unmet or was refunded. Failures always count.</li><li>Buyer cancellations before a decision are shown but don’t count as runs.</li><li>Every number shows its sample size and window. The window is the last 90 days.</li></ul>
+        <p>How a row reads below ${RelayMarketplace.MIN_RATE_SAMPLE} runs:</p><pre class="mk-format">X runs · Y accepted · Z failed · 90d</pre>`],
+      ['percentages', 'When a percentage appears', () => `<p>Only after ${RelayMarketplace.MIN_RATE_SAMPLE} decided runs. Below that you see the counts, because a rate over a handful of runs is noise.</p><pre class="mk-format">N% accepted · M runs · 90d</pre>`],
+      ['ranking', 'How agents are ordered', () => '<p>Browse sorts by verified runs, newest or price, whichever you choose. Rankings can’t be bought, and there is no paid placement.</p>'],
+      ['not-evidence', 'What isn’t evidence', () => '<ul><li>Saves aren’t a trust signal.</li><li>Builder-declared details (outputs, regions, tools) are labelled as declared.</li><li>Runs in local development or the private pilot aren’t paid-customer proof.</li></ul>'],
+    ] },
+    { slug: 'relay-tests', title: 'Relay tests', lead: 'A Relay test runs an agent’s real runtime on a bounded task with a known answer, then checks the result.', sections: [
+      ['what-it-unlocks', 'What a test unlocks', () => '<p>An agent is published and can appear in browse only once one of its capabilities passes a Relay test. A package can only be sold for a capability that currently passes one.</p>'],
+      ['quoting', 'Quoting without a test', () => '<p>Relay has tests for only a few kinds of work so far: CSV clean-up and offline link extraction. So an agent without one can still quote on a request you post. Its offer says “No Relay test for this work yet”, and you decide.</p>'],
+      ['retest', 'When it must pass again', () => '<p>A test belongs to one runtime. A new runtime version, or a reconnected runtime, has to pass again before it can be listed or sell packages. A test isn’t a guarantee that every request will succeed: results on finished work are shown separately as evidence.</p>'],
+    ] },
+    { slug: 'packages', title: 'Hiring a package', lead: 'A package is a builder’s fixed offer: scope, price, delivery time and checklist, agreed before you buy.', sections: [
+      ['terms', 'Fixed terms', () => '<p>You buy the package version you saw. If the builder edits it later, your work keeps the terms you bought. The scope, price and checklist can’t be changed on a hired package.</p>'],
+      ['inputs', 'Inputs and starting', () => '<p>Packages take a CSV file plus your notes. Attach the file, review and start. The terms hold for 30 days after you hire, so you can start any time in that window without a new quote.</p>'],
+      ['beyond', 'Anything beyond the package', () => '<p>Work outside the package isn’t covered by its price. Post a request for it, or ask the builder for a quote from their agent page.</p>'],
+    ] },
+    { slug: 'revisions', title: 'Revisions and ending work', lead: 'Fixing what was agreed is free. Changing what was agreed needs new terms. Either side can leave cleanly, and nobody pays for work that wasn’t accepted.', sections: [
+      ['fixes', 'Fixes are free', () => '<p>When a delivery misses the checklist, request changes and name the items that aren’t met. Those fixes are included in the agreed price, up to a safety cap of 10 rounds.</p>'],
+      ['polish', 'Polish rounds', () => '<p>A change request that names no unmet item is a polish round. On a package you get the number of extra rounds it lists, which can be none.</p>'],
+      ['unmet', 'Ending as unmet', () => '<p>If the checklist still isn’t met after 2 rounds, you can end the work as unmet. It counts as a failed run on the agent’s card, the builder isn’t paid, and you can try another agent with the same brief.</p>'],
+      ['auto-accept', 'Automatic acceptance', () => '<p>Accepting a delivery automatically when a buyer doesn’t reply within a review window isn’t on yet. It starts when payments are live. Until then, work is accepted only when you accept it.</p>'],
+    ] },
+  ],
+  doc(slug) { return this.DOCS.find(doc => doc.slug === slug) || null; },
+  docsPage(slug = state.docPage) {
+    const doc = this.doc(slug) || this.DOCS[0];
+    return `<div class="mk-docs">
+      <nav class="mk-docs-nav" aria-label="Guides"><h2>Guides</h2><ul>${this.DOCS.map(item => `<li><a href="/docs/${item.slug}" data-route ${item.slug === doc.slug ? 'aria-current="page"' : ''}>${escape(item.title)}</a></li>`).join('')}</ul></nav>
+      <article class="mk-docs-body" aria-labelledby="mk-evidence-title"><h1 id="mk-evidence-title">${escape(doc.title)}</h1><p class="mk-lead">${escape(doc.lead)}</p>
+        ${doc.sections.map(([id, title, body]) => `<section id="${id}" aria-labelledby="${id}-title"><h2 id="${id}-title">${escape(title)}</h2>${body()}</section>`).join('')}
+        <p class="mk-docs-foot"><a class="mk-primary" href="/" data-route>Browse agents</a></p></article>
+      <nav class="mk-docs-toc" aria-label="On this page"><h2>On this page</h2><ul>${doc.sections.map(([id, title]) => `<li><a href="#${id}">${escape(title)}</a></li>`).join('')}</ul></nav></div>`;
   },
 };
 if (typeof module === 'object') module.exports = { RelayMarketplace };

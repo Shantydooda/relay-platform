@@ -167,7 +167,7 @@ function newTask() {
 }
 
 function taskList() { return taskDashboard(); }
-function buyerPage(){if(typeof RelayMarketplace==='object'&&!state.detail){if(state.buyerTab==='tasks')return RelayMarketplace.work();if(state.buyerTab==='activity')return RelayMarketplace.activity();if(state.buyerTab==='market')return state.agentPageId?RelayMarketplace.agent():RelayMarketplace.browse();if(state.buyerTab==='request')return RelayMarketplace.post();if(state.buyerTab==='evidence')return RelayMarketplace.evidencePage();}if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
+function buyerPage(){if(typeof RelayMarketplace==='object'&&!state.detail){if(state.buyerTab==='tasks')return RelayMarketplace.work();if(state.buyerTab==='activity')return RelayMarketplace.activity();if(state.buyerTab==='market')return state.agentPageId?RelayMarketplace.agent():RelayMarketplace.browse();if(state.buyerTab==='request')return RelayMarketplace.post();if(state.buyerTab==='evidence')return RelayMarketplace.docsPage();}if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
 function focusOfferReview(offerId, reviewing) {
  const action = reviewing ? 'accept-offer' : 'review-offer';
  const target = [...root.querySelectorAll('[data-action]')].find(button =>
@@ -892,16 +892,25 @@ if (typeof RelayMarketplace === 'object') {
       run(() => RelayMarketplace.go('/post'));
     } else if (action === 'market-post-open') { state.preferredAgent = null; state.postTaskId = null; render(); }
   });
-  // Rail filters on Your work and Activity (marketplace-ui.js).
+  // List controls on Your work and Activity (marketplace-ui.js).
+  const pageFilters = page => page === 'work' ? RelayMarketplace.workFilters() : RelayMarketplace.activityFilters();
   root.addEventListener('click', event => {
     if (event.target.closest('[data-action="page-rail-toggle"]')) { state.railOpen = !state.railOpen; render(); root.querySelector('[data-action="page-rail-toggle"]')?.focus(); return; }
-    const button = event.target.closest('[data-action="page-filter"], [data-action="page-filter-clear"]');
+    const button = event.target.closest('[data-action="page-set"], [data-action="page-filter-clear"]');
     if (!button) return;
-    const page = button.dataset.page, f = page === 'work' ? RelayMarketplace.workFilters() : RelayMarketplace.activityFilters();
-    if (button.dataset.action === 'page-filter-clear') Object.keys(f).forEach(key => { f[key] = Array.isArray(f[key]) ? [] : ''; });
-    else { const list = f[button.dataset.group], value = button.dataset.value; f[button.dataset.group] = list.includes(value) ? list.filter(item => item !== value) : [...list, value]; }
+    const page = button.dataset.page, f = pageFilters(page);
+    if (button.dataset.action === 'page-filter-clear') page === 'work' ? Object.assign(f, { q: '', type: 'all' }) : Object.assign(f, { who: '' });
+    else f[button.dataset.group] = button.dataset.value;
     render();
-    root.querySelector(`[data-action="page-filter"][data-group="${button.dataset.group}"][data-value="${CSS.escape(button.dataset.value || '')}"]`)?.focus();
+    root.querySelector(`[data-action="page-set"][data-group="${button.dataset.group}"][data-value="${CSS.escape(button.dataset.value || '')}"]`)?.focus();
+  });
+  root.addEventListener('change', event => {
+    const check = event.target.closest('[data-page-check], [data-page-sort]');
+    if (!check) return;
+    const page = check.dataset.pageCheck || check.dataset.pageSort, f = pageFilters(page);
+    if (check.dataset.pageCheck) f[check.dataset.group] = check.checked; else f.sort = check.value;
+    render();
+    root.querySelector(check.dataset.pageCheck ? `[data-page-check="${page}"]` : `[data-page-sort="${page}"]`)?.focus();
   });
   root.addEventListener('input', event => {
     if (event.target.dataset.pageName !== 'work') return;

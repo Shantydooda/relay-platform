@@ -78,6 +78,7 @@ test('the marketplace lists real agents with the evidence Relay recorded, and pa
       assert.match(await response.text(), /marketplace-ui\.js/);
     }
     assert.equal((await fetch(`${f.origin}/agents/not-an-id`)).status, 404);
+    assert.equal((await fetch(`${f.origin}/docs/not-a-guide`)).status, 404);
     assert.equal((await fetch(`${f.origin}/marketplace-ui.css`)).status, 200);
   } finally {
     await f.close();

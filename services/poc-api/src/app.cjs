@@ -134,7 +134,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed,features:store.features||{}});
       if (!managed && method === 'GET' && ['/drive/callback','/drive/picker'].includes(path)) res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
       // Real links into the app: the page loads, then the browser reads the path.
-      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||['/post','/evidence'].includes(path);
+      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||/^\/docs\/(?:evidence|relay-tests|packages|revisions)$/.test(path)||['/post','/evidence'].includes(path);
       if(method==='GET'&&(Object.hasOwn(assets,path)||appRoute||(managed&&path==='/auth/confirm'))) {
         const [file,type]=assets[path==='/auth/confirm'||appRoute?'/':path];
         const content=await readFile(resolve(PUBLIC,file));
