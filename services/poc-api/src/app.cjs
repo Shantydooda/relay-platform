@@ -350,6 +350,13 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if(path==='/api/agent-market'&&method==='GET')return send(200,await market.discover(actor,{savedOnly:url.searchParams.has('saved') ? ({true:true,false:false}[url.searchParams.get('saved')] ?? null) : false,q:url.searchParams.get('q')||'',category:url.searchParams.get('category')||'All agents',type:url.searchParams.get('type')||'All types',after:url.searchParams.get('after')||'',limit:Number(url.searchParams.get('limit')||25)}));
         const savedAgentPath = path.match(/^\/api\/agent-market\/([0-9a-f-]{36})\/saved$/);
         if (savedAgentPath && method === 'PATCH') return send(200, await market.saveAgent(actor, savedAgentPath[1], await jsonBody(req), key));
+        const packagePath = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/packages(?:\/([0-9a-f-]{36}))?$/);
+        if (packagePath && market.savePackage) {
+          const [, agentId, packageId] = packagePath;
+          if (!packageId && method === 'POST') return send(201, await market.savePackage(actor, agentId, null, await jsonBody(req), key));
+          if (packageId && method === 'PUT') return send(200, await market.savePackage(actor, agentId, packageId, await jsonBody(req), key));
+          if (packageId && method === 'PATCH') return send(200, await market.setPackageStatus(actor, agentId, packageId, await jsonBody(req), key));
+        }
         const listingPath=path.match(/^\/api\/agent-market\/([0-9a-f-]{36})$/);
         if(listingPath&&method==='GET')return send(200,{agent:await market.listing(actor,listingPath[1])});
         const acquisitionPath = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/acquisition$/);

@@ -7,6 +7,7 @@ const { assertUnfunded, paymentView } = require('./payments.cjs');
 const { capabilityView } = require('./qualification.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
 const { criteriaFor, acceptanceView, createAcceptance } = require('./acceptance.cjs');
+const { packageView, publicPackages, createPackages } = require('./packages.cjs');
 const { environmentCapabilities } = require('./capabilities.cjs');
 const { workState } = require('../../../packages/domain/src/work-state.cjs');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
@@ -80,7 +81,8 @@ function listingView(agent, time) {
     domain: agent.domain, operatorName: agent.operatorName, listingStatus: listingState(agent),
     availability: capabilities.some(item => item.qualification === 'qualified') ? 'available' : 'qualification_pending',
     capabilities: capabilities.map(({ id, category, task, qualification, assessment, metadata }) =>
-      ({ id, category, task, qualification, metadata, evidence: assessment?.evidence || null })) };
+      ({ id, category, task, qualification, metadata, evidence: assessment?.evidence || null })),
+    packages: publicPackages(agent, (item, capability) => capabilityView(item, capability, time).qualification) };
 }
 function agentView(agent, now) {
   const connected = !!agent.credentialHash && (!agent.credentialExpiresAt || agent.credentialExpiresAt > now) && agent.connectedAt > now - 120000;
@@ -90,6 +92,7 @@ function agentView(agent, now) {
     rules: { ...agent.rules, version, automaticEnabled: connected && agent.rules.automaticRequested },
     readiness: { profile: !!purpose, connection: connected, capability: capabilities.some(item => capabilityView(agent, item, now).qualification === 'qualified'), operator: false, payout: false,
       canQuoteCommercially: false, canReceivePaidWork: false },
+    packages: (agent.packages || []).map(packageView),
     runtime: { connected, connectedAt: agent.connectedAt || null, kind: agent.runtimeKind || null, transport: agent.runtimeTransport || 'local-csv', expiresAt: agent.credentialExpiresAt || null, name: agent.runtimeName || null, version: agent.runtimeVersion || null } };
 }
 
@@ -477,6 +480,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const lifecycle = require('./execution-lifecycle.cjs').createLifecycle(context);
   const { activity } = require('./activity.cjs').createActivity(context);
   const acceptance = createAcceptance({ ...context, saveTask, assertUnfunded });
+  const packages = createPackages({ ...context, qualificationOf: (agent, capability) => capabilityView(agent, capability, now()).qualification });
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
   const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView,
@@ -508,7 +512,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       acquisition: require('./acquisition.cjs').createAcquisition(context),
       recordExposure: require('./fair-exposure.cjs').createExposure(context).record,
       addPortfolio: portfolio.add, decidePortfolio: portfolio.decide,
-      updateListing,
+      updateListing, savePackage: packages.savePackage, setPackageStatus: packages.setPackageStatus,
       addAgent, configure, opportunities, offers, accept: select, work: supplierTasks, quotes,
       quote
     }
