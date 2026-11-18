@@ -14,6 +14,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
   async function checkRetry(repo, actor, task) {
     if (!localExecution) fail(403, 'LOCAL_ONLY', 'Recovery is local only.');
     const job = task.assignment;
+    if (job?.error === 'BUYER_ENDED_UNMET') fail(409, 'RECOVERY_BLOCKED', 'You ended this work as unmet. Try another agent instead.');
     if (!job || job.status !== 'failed' || job.mode !== 'local-unpaid' || task.submissions.length || (job.manualRetries || 0) >= 2 || task.scheduleId) fail(409, 'RECOVERY_BLOCKED', 'This execution cannot be safely retried here. Create a reviewed request instead.');
     const agent = await repo.get('agent', job.agentId, true);
     if (!agent?.credentialHash || agent.credentialExpiresAt <= now() || agent.connectedAt <= now() - 120000) fail(409, 'RUNTIME_REQUIRED', 'Reconnect the assigned runtime before retrying.');
@@ -27,6 +28,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       if (action === 'cancel') checkCancel(task);
       else if (action === 'pause') pauseByBuyer(structuredClone(task), now(), actor.user.id);
       else if (action === 'resume') resumeByBuyer(structuredClone(task), now());
+      else if (action === 'end') require('./acceptance.cjs').checkEnd(task);
       else await checkRetry(repo, actor, structuredClone(task));
     };
     return {
@@ -34,6 +36,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       retry: await availability(() => check('retry')),
       pause: await availability(() => check('pause')),
       resume: await availability(() => check('resume')),
+      end: await availability(() => check('end')),
     };
   }
   async function cancelExecution(actor, id, body, key) {
@@ -84,6 +87,8 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       for (const id of ids) {
         const task = await repo.get('task', id), job = task?.assignment;
         if (!job || !['queued', 'running', 'failed', 'buyer_review'].includes(job.status)) continue;
+        // Ending as unmet is a decision, not a failure that needs recovery.
+        if (job.error === 'BUYER_ENDED_UNMET') continue;
         // Removed employees cannot retain access via task ownership.
         const buyerAccess = task.ownerId === actor.user.id && actor.memberships.some(m => m.id === task.tenantId);
         if (!buyerAccess && job.operatorId !== actor.user.id) continue;

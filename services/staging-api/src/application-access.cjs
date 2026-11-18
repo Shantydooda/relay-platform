@@ -26,6 +26,7 @@ const INTERNAL = new Set([
   'reconcileSchedules',
   'reconcilePayments',
   'reconcileExecutions',
+  'reconcileAutoAccept',
   'receivePaymentEvent',
   'readAgentTool',
   'requestToolPermission',

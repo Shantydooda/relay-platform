@@ -479,7 +479,11 @@ root.addEventListener('submit',event=>{
       await command(`/api/tasks/${state.detail.task.id}/cancel-execution`,'POST',{expectedVersion:state.detail.task.version,reason:data.get('reason')});
       await refresh();render();
     }else if(form.id==='delivery-revision'){
-      await RelayExecution.requestRevision(form, data.get('notes'));
+      await RelayExecution.requestRevision(form, data.get('notes'), data.getAll('unmet'));
+    }else if(form.id==='acceptance-criteria'){
+      await RelayAcceptance.save(form, data.get('criteria'));
+    }else if(form.id==='end-unmet'){
+      await RelayAcceptance.endUnmet(form, data);
     }else if(form.id==='agent'){
       if(state.agentIntroPart!=='capabilities'){captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();return;}
       const rows=[...form.querySelectorAll('.capability-row')];

@@ -11,10 +11,10 @@ const { normalizeCsv } = require('../../../agent-runtime/src/csv.cjs');
 
 // Disposable localhost application, real commands and supplier HTTP transport.
 // No seed writes to qualification, offers, reputation or production databases.
-async function recommendationFlow(port = 4196, { repository } = {}) {
+async function recommendationFlow(port = 4196, { repository, now, autoAcceptAfterMs } = {}) {
   const authDb = openDatabase(':memory:');
   const applicationDb = new DatabaseSync(':memory:');
-  let store = await createUnifiedLocalStore({ authDb, applicationDb, repository, localExecution: true });
+  let store = await createUnifiedLocalStore({ authDb, applicationDb, repository, localExecution: true, ...(now ? { now } : {}), autoAcceptAfterMs });
   const origin = `http://127.0.0.1:${port}`;
   let server = createApp({ store, origin });
   await new Promise((resolve, reject) => {

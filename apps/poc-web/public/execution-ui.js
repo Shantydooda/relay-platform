@@ -72,12 +72,13 @@ const RelayExecution = {
       <p>Only this task’s agreed brief and attached input are shared with the selected runtime. No Drive, CRM or external destinations are connected.</p>
       ${this.control(task, 'startLocal', 'Run locally · no payment', 'class="primary" data-action="authorize-local"')}<button class="quiet" data-action="hide-start">Keep reviewing</button></section>`;
   },
-  async requestRevision(form, notes) {
+  async requestRevision(form, notes, unmetCriteria = []) {
     const task = state.detail.task;
     const submissionId = form.dataset.id;
     try {
       await command(`/api/tasks/${task.id}/request-revision`, 'POST', {
         expectedVersion: task.version, submissionId, notes,
+        ...(unmetCriteria.length ? { unmetCriteria } : {}),
       });
     } catch (error) {
       if (error.code !== 'VERSION_CONFLICT') throw error;
@@ -86,6 +87,7 @@ const RelayExecution = {
       const currentForm = root.querySelector('#delivery-revision');
       if (currentForm?.dataset.id === submissionId) {
         currentForm.querySelector('[name=notes]').value = notes;
+        currentForm.querySelectorAll('[name=unmet]').forEach((box) => { box.checked = unmetCriteria.includes(box.value); });
         currentForm.closest('details').open = true;
         showError({message:'Delivery status updated. Your notes are saved here. Review the latest files, then submit your revision again.'}, currentForm);
       } else {
@@ -138,19 +140,20 @@ const RelayExecution = {
     );
     return `<article class="thread-message relay execution-update"><span class="thread-speaker">${relayCharacter()}Relay</span>
       <div class="execution-progress-card"><p class="activity-heading"><strong>${escape(checking && execution.status === 'buyer_review' ? 'Files received · safety checks pending' : taskLabel(task))}</strong>${execution.startedAt ? ` · <span data-execution-clock data-started="${execution.startedAt}" data-completed="${execution.completedAt || execution.endedAt || ''}" data-end-label="${execution.completedAt ? 'delivered' : 'ended'}">${this.clock(execution.startedAt, execution.completedAt || execution.endedAt, execution.completedAt ? 'delivered' : 'ended')}</span>` : ''}</p>
-      ${['queued', 'running'].includes(execution.status) && !taskWaitingForPermission(task) && !execution.pausedByBuyer ? '<span class="activity-spinner" aria-hidden="true"></span>' : ''}<p>${escape(execution.status === 'accepted' ? 'The buyer accepted this delivery.' : execution.progress || 'Waiting for the runtime')}</p></div><details class="quiet-details"><summary>Execution details</summary><p class="hint">Actual local execution · ${execution.paymentStatus === 'not_applicable_local_unpaid' ? 'unpaid' : 'sandbox funded'} · attempt ${execution.attempt || 0}</p></details>
+      ${['queued', 'running'].includes(execution.status) && !taskWaitingForPermission(task) && !execution.pausedByBuyer ? '<span class="activity-spinner" aria-hidden="true"></span>' : ''}${typeof RelayAcceptance === 'object' && execution.error === 'BUYER_ENDED_UNMET' ? RelayAcceptance.ended(execution) : `<p>${escape(execution.status === 'accepted' ? 'The buyer accepted this delivery.' : execution.progress || 'Waiting for the runtime')}</p>`}</div><details class="quiet-details"><summary>Execution details</summary><p class="hint">Actual local execution · ${execution.paymentStatus === 'not_applicable_local_unpaid' ? 'unpaid' : 'sandbox funded'} · attempt ${execution.attempt || 0}</p></details>
       <ol class="execution-milestones" aria-label="Task progress"><li class="done">Authorized</li><li class="${execution.startedAt ? 'done' : ''}">${execution.startedAt ? 'Started' : 'Waiting to start'}</li><li class="${current ? 'done' : ''}">${current ? 'Files received' : 'Delivery pending'}</li><li class="${execution.status === 'accepted' ? 'done' : ''}">${execution.status === 'accepted' ? 'Accepted' : 'Your review'}</li></ol>
       ${current ? this.files(task.id, [current]) : ''}
       ${submissions.length > 1 ? `<details class="delivery-history"><summary>Earlier deliveries (${submissions.length - 1})</summary>${this.files(task.id, submissions.slice(0, -1))}</details>` : ''}
       ${
         execution.status === 'buyer_review' && current
-          ? `<div class="delivery-review"><p>Preview or download the files before accepting this exact delivery. Quarantined files must pass scanning first. No payout is triggered.</p>${this.control(task, 'accept', `Accept delivery ${current.version}`, `class="primary" data-action="accept-delivery" data-id="${current.id}"`)}
-      <details class="revision-request"><summary>Request changes</summary><form id="delivery-revision" class="market-form" data-id="${current.id}">${execution.runtimeKind === 'supplier-hosted' ? '<label>Describe the revision<textarea name="notes" maxlength="2000" required></textarea></label>' : '<label>Request a supported CSV revision<select name="notes"><option>Sort rows descending</option><option>Keep duplicate rows</option><option>Sort rows ascending</option></select></label>'}<div class="form-error" role="alert"></div>${this.control(task, 'revise', 'Request revision', 'type="submit"')}</form></details></div>`
+          ? `<div class="delivery-review"><p>Preview or download the files before accepting this exact delivery. Quarantined files must pass scanning first. No payout is triggered.</p>${typeof RelayAcceptance === 'object' ? RelayAcceptance.summary(RelayAcceptance.criteria(), [], 'Check it against your checklist') : ''}${this.control(task, 'accept', `Accept delivery ${current.version}`, `class="primary" data-action="accept-delivery" data-id="${current.id}"`)}
+      <details class="revision-request"><summary>Request changes</summary><form id="delivery-revision" class="market-form" data-id="${current.id}">${execution.runtimeKind === 'supplier-hosted' ? '<label>Describe the revision<textarea name="notes" maxlength="2000" required></textarea></label>' : '<label>Request a supported CSV revision<select name="notes"><option>Sort rows descending</option><option>Keep duplicate rows</option><option>Sort rows ascending</option></select></label>'}${typeof RelayAcceptance === 'object' ? RelayAcceptance.revisionFields() : ''}<div class="form-error" role="alert"></div>${this.control(task, 'revise', 'Request revision', 'type="submit"')}</form></details></div>`
           : ''
       }
       ${['queued', 'running'].includes(execution.status) ? `<div class="execution-hold">${execution.pausedByBuyer
         ? this.control(task, 'resume', 'Resume work', 'class="primary" data-action="resume-execution"')
         : this.control(task, 'pause', 'Pause work', 'data-action="pause-execution"')}<p class="hint">Pausing tells the agent to stop and freezes its remaining time. Actions it already took are not undone.</p></div>` : ''}
+      ${typeof RelayAcceptance === 'object' ? RelayAcceptance.end(task) : ''}
       ${['queued', 'running', 'buyer_review'].includes(execution.status) ? `<details><summary>Cancel execution</summary><form id=\"execution-cancel\" class=\"market-form\"><label>Reason<textarea name=\"reason\" maxlength=\"1000\" required></textarea></label><p>Relay will reject further submissions. A supplier must stop its own tools; actions already taken cannot be undone here.</p><div class=\"form-error\" role=\"alert\"></div>${this.control(task, 'cancel', 'Cancel execution', 'type="submit"')}</form></details>` : ''}
       ${typeof RelayApps === 'object' ? RelayApps.taskControls(task) : ''}
       ${typeof RelayRecurring === 'object' ? RelayRecurring.recovery(task) : ''}
@@ -161,6 +164,7 @@ const RelayExecution = {
     if (!task.execution) return '';
     return `<article class="panel" data-notification-task="${escape(task.id)}"><span class="tag">${escape(taskLabel(task))}</span><h2>${escape(task.title)}</h2><p>${escape(task.agentName)} · actual local execution · ${task.execution.paymentStatus === 'not_applicable_local_unpaid' ? 'unpaid' : 'sandbox funded'}</p><p>${escape(task.execution.status === 'accepted' ? 'The buyer accepted this delivery.' : task.execution.progress || '')}</p>
       <details><summary>Agreed brief</summary><p>${escape(task.brief)}</p></details>
+      ${typeof RelayAcceptance === 'object' ? RelayAcceptance.summary(task.acceptanceCriteria, (task.submissions || []).findLast(item => item.status === 'revision_requested')?.unmetCriteria || [], 'Buyer’s checklist') : ''}
       ${builderConversation(task)}${this.files(task.id, task.submissions || [])}<p class="hint">The buyer accepts or requests revisions from their conversation. ${task.payment ? 'Accepted delivery becomes eligible for sandbox settlement in Earnings.' : 'No earnings or payout is created by this unpaid local run.'}</p></article>`;
   },
 };

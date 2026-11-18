@@ -184,3 +184,36 @@
     font-size: 12px;
   }
 }
+/* Acceptance checklist (acceptance-ui.js) */
+.acceptance-scope,
+.acceptance-summary,
+.acceptance-end {
+  margin: 14px 0;
+}
+.acceptance-summary h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.acceptance-list {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.acceptance-list li {
+  margin: 4px 0;
+}
+.acceptance-list li.unmet {
+  color: var(--relay-text);
+  font-weight: 600;
+}
+.acceptance-checks {
+  border: 1px solid var(--relay-border);
+  border-radius: 10px;
+  margin: 12px 0;
+  padding: 8px 12px;
+}
+.acceptance-checks label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 6px 0;
+}

@@ -44,6 +44,15 @@ Before live money, get legal and Stripe review of how long funds may be held and
 
 **Open:** when a buyer tries another agent, the first payment stays held on the failed task. Recommended: refund the failed task first, then fund the new one, rather than carrying a credit across. Today nothing moves automatically.
 
+### Acceptance and exits (answered 16 Nov 2026)
+
+1. **Acceptance criteria.** The buyer can add a checklist of up to 12 items to the scope. Changing it is a scope change: the scope version goes up, existing offers stop being valid, and authorized work keeps the copy frozen in its agreement.
+2. **Free fixes until the criteria are met.** A change request can name the unmet items. Supplier-hosted runtimes get up to 10 rounds as a safety cap; the local CSV runtime keeps its 2.
+3. **Exit.** After 2 rounds of changes the buyer can end the work as unmet (`BUYER_ENDED_UNMET`). The outcome ledger counts it as a failed run, and "try another agent" becomes available; restarting the same agent does not. It is refused while a payment is held, because refunds aren't connected to it yet.
+4. **Auto-accept on buyer silence.** Off unless a deployment sets `autoAcceptAfterMs`. No deployment sets it and no worker calls `reconcileAutoAccept` yet. It never touches work with a payment.
+
+**Open:** connect the exit to refunds before live money, and decide the review window before turning auto-accept on.
+
 ## 3. Seed category: decided
 
 **B2B data & research**, with sales & marketing as the adjacent expansion (founder, 16 Nov 2026). Evidence and product changes: `docs/Seed-Category.md`.

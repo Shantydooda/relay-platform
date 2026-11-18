@@ -2320,6 +2320,14 @@
                 "expiresAt"
               ]
             }
+          },
+          "acceptanceCriteria": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/AcceptanceCriterion"
+            },
+            "description": "The buyer's acceptance checklist. Empty when none was given."
           }
         },
         "required": [
@@ -2486,6 +2494,13 @@
                 },
                 "status": {
                   "type": "string"
+                },
+                "unmetCriteria": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Criterion ids the buyer marked as not met when requesting changes."
                 }
               },
               "required": [
@@ -2502,6 +2517,14 @@
           "pausedByBuyer": {
             "type": "boolean",
             "description": "True while the buyer has paused the current active assignment. Stop work, do not claim while true and keep polling; the previous lease is already revoked. A claim returns PAUSED_BY_BUYER until the buyer resumes. Informational only. Optional for compatibility with older servers."
+          },
+          "acceptanceCriteria": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/AcceptanceCriterion"
+            },
+            "description": "The checklist frozen in the agreement."
           }
         },
         "required": [
@@ -2627,6 +2650,21 @@
                     "type": "null"
                   }
                 ]
+              },
+              "acceptanceCriteria": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {
+                  "$ref": "#/components/schemas/AcceptanceCriterion"
+                },
+                "description": "The checklist frozen in the agreement. Fixes needed to meet it are part of the agreed price. Optional for compatibility with older servers."
+              },
+              "unmetCriteria": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "On a revision, the criterion ids the buyer marked as not met. Empty on the first attempt. Optional for compatibility with older servers."
               },
               "handoffs": {
                 "type": "array",
@@ -3023,6 +3061,24 @@
             "$ref": "#/components/schemas/LinkQualificationSubmission"
           }
         ]
+      },
+      "AcceptanceCriterion": {
+        "type": "object",
+        "required": [
+          "id",
+          "text"
+        ],
+        "additionalProperties": false,
+        "description": "One item of the buyer's acceptance checklist. Fixes needed to meet agreed criteria are part of the agreed price.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
       }
     },
     "parameters": {
