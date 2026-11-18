@@ -1,0 +1,35 @@
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
+const { readConfig, adminPool, migrateLocal } = require('../../scripts/local-postgres.cjs');
+const { openLocalPostgres } = require('../../src/postgres.cjs');
+const { createApplication } = require('../../src/service.cjs');
+
+test('native PostgreSQL serializes competing branch recovery and persists current graph after reconnect', async t => {
+  const config = readConfig(), database = 'relay_plan_recovery_' + Date.now(), admin = adminPool(config);
+  let first, second;
+  await admin.query(`CREATE DATABASE ${database} OWNER relay_migrator`);
+  t.after(async () => { await first?.close(); await second?.close(); await admin.query(`DROP DATABASE ${database}`); await admin.end(); });
+  await admin.query(`REVOKE ALL ON DATABASE ${database} FROM PUBLIC`);
+  await admin.query(`GRANT CONNECT ON DATABASE ${database} TO relay_app`);
+  const qa = { ...config, runtime: { ...config.runtime, database }, migrator: { ...config.migrator, database } };
+  await migrateLocal(qa); first = await openLocalPostgres(qa.runtime); second = await openLocalPostgres(qa.runtime);
+  const actor = { user: { id: randomUUID(), name: 'Buyer' }, memberships: [{ id: randomUUID(), role: 'owner' }] };
+  const app = connection => createApplication({ repository: connection.repository, localExecution: true });
+  const a = app(first), b = app(second);
+  const parent = await a.createTask(actor, { tenantId: actor.memberships[0].id, title: 'Concurrent recovery', brief: 'Review evidence' }, randomUUID());
+  const step = { title: 'Step', brief: 'Work', criteria: 'Reviewed', budgetMinor: 100, dependencies: [] };
+  const plan = await a.createOrchestration(actor, parent.taskId, { expectedVersion: 1, budgetMinor: 200, steps: [step, { ...step, dependencies: [0] }] }, randomUUID());
+  const body = { expectedVersion: 2, stepId: plan.stepIds[0], expectedStepVersion: 1, reason: 'Replace unavailable supplier', confirm: 'reset-affected-steps' };
+  const results = await Promise.allSettled([a,b].map(service => service.recoverOrchestration(actor, parent.taskId, body, randomUUID())));
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(results.find(r => r.status === 'rejected').reason.code, 'VERSION_CONFLICT');
+  const result = results.find(r => r.status === 'fulfilled').value;
+  await second.close(); second = await openLocalPostgres(qa.runtime);
+  const restored = await app(second).detail(actor, parent.taskId);
+  assert.equal(restored.orchestration.version, 2);
+  assert.equal(restored.orchestration.history.length, 1);
+  assert.deepEqual(restored.orchestration.steps.map(s => s.id), plan.stepIds.map(id => result.replacements[id]));
+  assert.deepEqual(restored.orchestration.steps[1].dependencies, [result.replacements[plan.stepIds[0]]]);
+});

@@ -1,3 +1,5 @@
+**Current localhost launcher:** uses `src/unified-store.cjs` and the shared application package. The original synchronous business stores below remain compatibility/import fixtures. See [the current backend/runtime guide](../../docs/Unified-Backend.md). Hosted staging remains separate.
+
 # Relay account + task API — local technical POC
 
 This is a **real local account/session/task service**, not a replacement for the published browser demo. It binds only to `127.0.0.1`, refuses `NODE_ENV=production`, and does not provision hosting. Do not tunnel it or expose it to external users before the gates in [the implementation record](../../docs/poc/Accounts-and-Tasks.md) are met.
@@ -22,7 +24,7 @@ No CORS is enabled. Host and mutation Origin must match the configured origin; a
 ```sh
 npm test --workspace @relay/poc-api
 npm test --workspace @relay/poc-web
-npm run test:poc
+npm run test:api
 ```
 
 Network tests open ephemeral loopback ports and use disposable databases. They do not touch the running workspace database or send email. Pin Node 24 LTS for the next CI environment; this machine currently runs Node 25.2.1. `node:sqlite` is experimental on that runtime, which is a deployment-review issue. No external npm runtime packages were added.
@@ -51,7 +53,7 @@ Task writes require `Idempotency-Key` (16–128 URL-safe characters) and authent
 
 Create response: `{ "taskId": "UUID", "version": 1 }`. Mutation response has the same shape with the resulting version. GET then reads current authoritative state. No plaintext passwords, cookies, email addresses or request bodies are logged. Internal failures log only a random request ID and generic code.
 
-This `/api` is the deliberately small **implemented POC surface**, not a claim that the broader proposed `/v1` marketplace contract is deployed. Align/version the production contract before adding a supplier integration. No pricing, approval, file-upload or payout endpoint is reachable here.
+This `/api` is the deliberately small **implemented POC surface**, not a claim that the broader proposed `/v1` marketplace contract is deployed. Align/version the production contract before adding a supplier integration. Supplier quote and pre-funding selection endpoints are now available locally; see [the connected marketplace contract](../../docs/Local-Marketplace.md). No funding, approval, file-upload or payout endpoint is reachable here.
 
 ## Backup / restart
 

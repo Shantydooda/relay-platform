@@ -1,0 +1,71 @@
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
+const { DatabaseSync } = require('node:sqlite');
+const { PGlite } = require('@electric-sql/pglite');
+const { createApplication } = require('../src/service.cjs');
+const { createSqliteRepository, createPostgresRepository } = require('../src/repository.cjs');
+
+for (const postgres of [false, true]) test(`${postgres ? 'postgres' : 'sqlite'} repeat hire creates only a fresh authorized draft and revalidates its source`, async t => {
+  const db = postgres ? await PGlite.create() : new DatabaseSync(':memory:');
+  t.after(() => db.close());
+  const repository = postgres ? await createPostgresRepository(db, { initialize: true }) : createSqliteRepository(db);
+  const buyer = { user: { id: randomUUID(), name: 'Employee' }, memberships: [{ id: randomUUID(), role: 'employee', company: true }] };
+  const builder = { user: { id: randomUUID(), name: 'Builder' }, memberships: [{ id: randomUUID(), role: 'owner' }] };
+  let currentBuyer = buyer;
+  const app = createApplication({ repository, localExecution: true, resolveActor: async id => id === buyer.user.id ? currentBuyer : builder });
+  const { agentId } = await app.marketplace.addAgent(builder, { name: 'Research', purpose: 'Reports', kind: 'general', integration: 'api', capabilities: [{ category: 'Research', task: 'Reports' }] }, randomUUID());
+  const original = await app.createTask(buyer, { tenantId: buyer.memberships[0].id, title: 'Previous job', brief: 'PRIVATE old brief' }, randomUUID());
+  await repository.transaction('seed-completion', async repo => {
+    const agent = await repo.get('agent', agentId);
+    agent.listingStatus = 'published'; agent.credentialExpiresAt = Date.now()+100000; agent.capabilities[0].assessmentId = 'assessment';
+    agent.assessments = [{ id: 'assessment', status: 'passed', expiresAt: Date.now() + 100000 }];
+    await repo.save('agent', agent);
+    const task = await repo.get('task', original.taskId);
+    task.status = 'posted'; task.assignment = { id: randomUUID(), status: 'accepted', agentId, operatorId: builder.user.id };
+    task.input = { filename: 'PRIVATE.csv', base64: 'cHJpdmF0ZQ==' };
+    task.contextReferences = [{ content: 'PRIVATE SOURCE' }]; task.toolGrants = [{ secret: 'PRIVATE GRANT' }];
+    task.approval = { status: 'approved', agreement: { fingerprint: 'old', expiresAt: Date.now()+100000 } }; task.settlement = { status: 'paid' };
+    task.selectedOfferId = randomUUID(); task.offers = [{ id: task.selectedOfferId, operatorId: builder.user.id }];
+    task.submissions = []; await repo.save('task', task);
+  });
+  const detail = await app.detail(buyer, original.taskId);
+  assert.equal(detail.repeatHire.agentId, agentId);
+  const body = { tenantId: buyer.memberships[0].id, title: 'Fresh work', brief: 'New brief', preferredAgentId: agentId,
+    preferenceMode: 'agent', discoverySource: 'repeat-hire', repeatFromTaskId: original.taskId, expectedSourceVersion: 1 };
+  const key = randomUUID();
+  const [first, duplicate] = await Promise.all([app.createTask(buyer, body, key), app.createTask(buyer, body, key)]);
+  assert.deepEqual(first, duplicate);
+  assert.notEqual(first.taskId, original.taskId);
+  const fresh = await repository.read(repo => repo.get('task', first.taskId));
+  assert.equal((await app.detail(buyer, first.taskId)).approval.status, 'required');
+  assert.equal(fresh.status, 'draft'); assert.equal(fresh.companyApprovalRequired, true);
+  assert.equal(fresh.preferredAgentId, agentId); assert.equal(fresh.scopeVersion, 1);
+  assert.deepEqual(fresh.offers, []); assert.deepEqual(fresh.submissions, []);
+  assert.equal(fresh.selectedOfferId, null); assert.equal(fresh.assignment, null);
+  for (const field of ['approval', 'settlement', 'input', 'toolGrants', 'contextReferences', 'handoffs', 'scheduleId']) assert.equal(fresh[field], undefined);
+  assert.doesNotMatch(JSON.stringify(fresh), /PRIVATE/);
+  assert.equal(fresh.acquisition.source, 'repeat-hire');
+  assert.deepEqual(fresh.repeatHireOf, { taskId: original.taskId, version: 1 });
+  await assert.rejects(app.createTask(buyer, { ...body, expectedSourceVersion: 2 }, randomUUID()), { code: 'VERSION_CONFLICT' });
+  await assert.rejects(app.createTask(buyer, { ...body, preferredAgentId: randomUUID() }, randomUUID()), { code: 'REPEAT_HIRE_UNAVAILABLE' });
+  await assert.rejects(app.createTask(buyer, { ...body, preferenceMode: 'builder' }, randomUUID()), { code: 'REPEAT_HIRE_UNAVAILABLE' });
+  await assert.rejects(app.createTask(buyer, { ...body, repeatFromTaskId: first.taskId }, randomUUID()), { code: 'REPEAT_HIRE_UNAVAILABLE' });
+  await assert.rejects(app.createTask(buyer, { ...body, repeatFromTaskId: undefined }, randomUUID()), { code: 'INVALID_INPUT' });
+  const otherWorkspace = { id: randomUUID(), role: 'owner' };
+  buyer.memberships.push(otherWorkspace);
+  await assert.rejects(app.createTask(buyer, { ...body, tenantId: otherWorkspace.id }, randomUUID()), { code: 'REPEAT_HIRE_UNAVAILABLE' });
+  currentBuyer = { ...buyer, memberships: [otherWorkspace] };
+  await assert.rejects(app.createTask(buyer, body, key), { code: 'NOT_FOUND' }, 'revocation blocks receipt replay');
+  currentBuyer = buyer;
+  await repository.transaction('pause', async repo => {
+    const agent = await repo.get('agent', agentId); agent.listingStatus = 'paused'; await repo.save('agent', agent);
+  });
+  assert.deepEqual((await app.detail(buyer, original.taskId)).repeatHire, { available: false });
+  await assert.rejects(app.createTask(buyer, body, randomUUID()), { code: 'NOT_FOUND' });
+  await repository.transaction('expire', async repo => {
+    const agent = await repo.get('agent', agentId); agent.listingStatus = 'published'; agent.assessments[0].expiresAt = 1; await repo.save('agent', agent);
+  });
+  await assert.rejects(app.createTask(buyer, body, randomUUID()), { code: 'NOT_FOUND' });
+});
