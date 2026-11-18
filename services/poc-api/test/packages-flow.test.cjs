@@ -142,6 +142,7 @@ test('buying a package creates fixed terms that start through the normal checks 
     assert.equal(offers[0].packageId, packageId);
     assert.equal(detail.task.selectedOfferId, offers[0].id, 'buying selects the package offer');
     assert.ok(detail.events.some(event => event.type === 'package.bought'));
+    assert.ok(Array.isArray(detail.messages) && !detail.messages.length, 'the package text is not shown as a message the buyer wrote');
 
     // The builder's later edits never reach a bought task.
     let agent = await ownAgent(f, builder);

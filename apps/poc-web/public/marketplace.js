@@ -106,12 +106,29 @@ function offerCards(){
  if(task.recurringScheduleId)return '<article class="panel"><h3>Your schedule is enabled</h3><p>Each run has its own conversation, offer checks and delivery.</p><button data-action="buyer-nav" data-tab="scheduled">Manage schedule</button></article>';
  if(state.detail.execution&&selected)return `<article class="thread-message relay"><span class="thread-speaker">Relay</span><details><summary>Agreed offer · ${escape(selected.agentName)}</summary><p>${escape(selected.proposal)}</p>${typeof RelayAcceptance==='object'?RelayAcceptance.summary(RelayAcceptance.criteria()):''}<p>${typeof RelayExecution==='object'?RelayExecution.where():'Actual local execution'} · no payment collected.</p>${RelaySupplier.evidence(selected.qualificationEvidence)}</details></article>`;
  if(task.scheduleId)return `<article class="thread-message relay"><span class="thread-speaker">Relay</span><h3>${selected?'Offer selected within your saved rules':'Waiting for your chosen agent'}</h3>${selected?`<p>${escape(selected.agentName)} · ${money(selected.amountMinor, selected.currency)} test quote · ${deliveryDuration(selected.deliveryMinutes)} after starting</p><details><summary>Offer & capability evidence</summary><p>${escape(selected.proposal)}</p>${RelaySupplier.evidence(selected.qualificationEvidence)}</details>`:'<p>Only the agent chosen for this recurring task can bid. Relay checks each fresh offer against the saved limits.</p>'}<p>${task.workPlan&&task.workPlan.cadence!=='once'?RelayRecurring.setup(task):state.detail.approval&&state.detail.approval.status!=='approved'?'Request company approval below before this run can start.':'The schedule handles authorization. No additional start button is needed.'}</p><button data-action="buyer-nav" data-tab="scheduled">View schedule & context</button></article>`;
+ if(task.package)return packageAgreement(task,selected);
  if(!state.offers.length)return waitingForQuotes();
  const others=state.offers.filter(o=>!o.selected);
  return `<article class="thread-message relay offer-section" aria-label="Agent offers"><span class="thread-speaker">Relay</span>
  ${selected?`<section class="panel selected-agreement"><strong>Selected: ${escape(selected.agentName)}</strong><p>${money(selected.amountMinor, selected.currency)} supplier quote · ${deliveryDuration(selected.deliveryMinutes)} to first delivery after work starts</p><p class="hint">${selected.runtimeBid?'This is a local test offer. No real money moves. Explicit task permission is required before the runtime starts.':'This agent is selected. Work starts only after confirmed funding, readiness and required inputs.'}</p>${task.workPlan&&task.workPlan.cadence!=='once'?RelayRecurring.setup(task):state.detail.approval&&state.detail.approval.status!=='approved'?'<p class="hint">Company approval is needed. Continue in the approval card below.</p>':state.reviewStart?'':'<button class="primary" data-action="review-start">Review start requirements</button>'}</section><details class="thread-alternatives" ${state.reviewOffer?'open':''}><summary>Compare other offers</summary><div class="thread-offers">${[selected,...others].map(o=>offerCard(o,task)).join('')}</div></details>`:`${currentRecommendation(task, others) ? '<p>Here’s the execution option I’d recommend for your request.</p>' : ''}${recommendedOffers(task,others)}`}
  ${state.offers.length?'<details class="quiet-details"><summary>Recommendation policy</summary><p>One of the first four positions may rotate among currently qualified newcomers. Placement is an opportunity to compare, not a quality recommendation or guaranteed hire. All other offers remain available. Compare the scope of test evidence alongside price and delivery estimates. Paid-work reliability has not been assessed. Agent type alone is not a qualification.</p></details>':'<p class="hint">Connected runtimes can bid automatically when their operator enables it. Manual local offers can also appear here.</p>'}
  </article>`;
+}
+// A task hired as a package: the terms were fixed when the buyer hired it, so there
+// are no quotes to compare and nothing to recommend. Work starts through the same
+// start review once the package's required inputs are attached.
+function packageAgreement(task,selected){
+ const p=task.package,needsCsv=p.inputs.includes('csv')&&!task.input;
+ const start=needsCsv?'<p class="hint">Attach your CSV above to start. The package price and checklist stay the same.</p>'
+  :state.detail.approval&&state.detail.approval.status!=='approved'?'<p class="hint">Company approval is needed. Continue in the approval card below.</p>'
+  :state.reviewStart?'':'<button class="primary" data-action="review-start">Review and start</button>';
+ return `<article class="thread-message relay offer-section" aria-label="Hired package"><span class="thread-speaker">Relay</span>
+ <section class="panel selected-agreement"><span class="eyebrow">Hired package · v${p.packageVersion}</span><strong>${escape(p.title)}</strong>
+ <p>${escape(selected?.agentName||'')} · ${money(p.priceMinor,p.currency)} package price · ${deliveryDuration(p.deliveryMinutes)} to delivery after work starts</p>
+ <p>${escape(p.included)}</p>
+ <h3>Checklist agreed when you hired it</h3><ul>${p.criteria.map(c=>`<li>${escape(c.text)}</li>`).join('')}</ul>
+ <p class="hint">Fixes are free until the checklist is met${p.extraRounds?`, plus ${p.extraRounds} extra round${p.extraRounds===1?'':'s'} for other changes`:''}. Anything beyond the package needs a change request. ${selected?.runtimeBid===false&&typeof RelayExecution==='object'?escape(RelayExecution.where())+' · no payment collected.':''}</p>
+ ${start}</section></article>`;
 }
 function availableAgents(task) {
   return state.agents.filter(a=>!task.myOffers?.some(o=>o.agentId===a.id&&scopeMatches(o,task)&&o.expiresAt>Date.now()));

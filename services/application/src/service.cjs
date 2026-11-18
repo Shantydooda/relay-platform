@@ -240,6 +240,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       const task = newTask({ id: randomUUID(), actor, tenantId: body.tenantId, title: terms.title, brief: terms.included, time,
         preferredAgentId: agent.id, acquisition: require('./acquisition.cjs').acquisition('package', agent, 'agent', time) });
       task.status = 'posted';
+      // The buyer didn't write the package text, so it isn't shown as their message.
+      task.messages = [];
       task.package = { ...terms, criteria: terms.criteria.map(item => ({ ...item })), inputs: [...terms.inputs] };
       task.acceptanceCriteria = terms.criteria.map(item => ({ ...item }));
       task.scopes[0].acceptanceCriteria = task.acceptanceCriteria;

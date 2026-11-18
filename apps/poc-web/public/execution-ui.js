@@ -52,6 +52,10 @@ const RelayExecution = {
     if (task.input)
       return `<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><p><strong>${escape(task.input.filename)}</strong> · ${task.input.size} bytes<br>${escape(task.input.notes)}</p><p class="hint">CSV cleanup input saved with this scope. Normalization trims cells, removes blank and exact duplicate rows, sorts ascending and protects spreadsheet formulas.</p></article>`;
     if (!['draft', 'posted', 'selected'].includes(task.status)) return '';
+    if (task.package?.inputs.includes('csv'))
+      return `<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><h3>Required for this package: your CSV</h3>
+      <form id="task-input" class="market-form"><label>Source CSV<input type="file" name="file" accept=".csv,text/csv" required></label><label>Notes for the builder<textarea name="notes" maxlength="2000" required placeholder="What these rows are and anything to watch for. Notes are context, not instructions that change the package."></textarea></label>
+      <p class="hint">UTF-8 CSV, up to 256 KiB. Your hired package stays selected; its price and checklist don’t change.</p><div class="form-error" role="alert"></div><button type="submit">Attach CSV</button></form></article>`;
     return `<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><details><summary>Optional source file · CSV supported</summary>
       <form id="task-input" class="market-form"><p>Attach a CSV only if your task needs it. Text-only tasks can use the brief directly.</p>
       <label>Source CSV<input type="file" name="file" accept=".csv,text/csv" required></label><label>Usage notes<textarea name="notes" maxlength="2000" required placeholder="Describe what these rows represent. Notes are context, not executable instructions."></textarea></label>
