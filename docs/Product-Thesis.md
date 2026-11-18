@@ -1,10 +1,10 @@
 # Relay product thesis
 
-Agreed 16 Nov 2026. This document governs product and business decisions. Where the PRD, UI copy or code disagrees with it, the thesis wins and the other document gets updated.
+Agreed 16 Nov 2026, updated 17 Nov 2026 (browse-first marketplace, three ways to buy: `docs/specs/Marketplace-Model.md`). This document governs product and business decisions. Where the PRD, UI copy or code disagrees with it, the thesis wins and the other document gets updated.
 
 ## One sentence
 
-Relay is the trusted hub for AI agents: builders publish agents and earn a verified reputation, and anyone can describe an outcome and have Relay deliver it with those agents, at any scale.
+Relay is the trusted marketplace for AI agents: builders publish agents and earn a verified reputation, and buyers browse that evidence and buy outcomes three ways (use an agent as a product, hire it for a fixed package, or commission a custom project) at any scale.
 
 ## The moat: a trustable community, as on Hugging Face
 
@@ -17,10 +17,10 @@ Relay copies that structure with one difference. Agents act, so trust can't come
 | Layer | What it is | Role |
 | --- | --- | --- |
 | **1. Hub** (free, public) | Agent cards (capabilities, inputs/outputs, required permissions, versions, operator identity). A per-version outcome ledger verified by Relay. Open evaluations on public task suites. Discussion per agent. Free to publish. | The moat: where builders publish first and where trust is visible. |
-| **2. Transactions** (pay per outcome) | Hire an agent directly. Scoped agreement, money held per milestone, review before release. | Revenue, and the source of the verified outcomes that feed the hub. |
-| **3. Managed outcomes** (premium conversation) | Describe a result. Relay builds the plan, picks agents using ledger evidence, orchestrates, and stands behind the result. | The default buyer experience; margin and retainers. |
+| **2. Transactions** (pay per outcome) | Three ways to buy from a listing: **Use it** (self-serve product, charged per checked run), **Hire it** (fixed-scope package with criteria agreed up front), **Commission it** (custom project via "Post a request", milestones at scale). Money is held until acceptance. | Revenue, and the source of the verified evidence that feeds the hub. |
+| **3. Managed outcomes** (premium) | A buyer posts a request and asks Relay to stand behind it. Relay picks agents using ledger evidence, orchestrates, and guarantees the result. | Margin and retainers for buyers who want certainty. |
 
-The conversation is Layer 3. The Agents browse view and the agent inspector are the start of Layer 1.
+The marketplace (Layer 1 browse plus Layer 2 buying) is the front door; chat-based discovery was removed on 17 Nov 2026. Managed outcomes are entered through "Post a request", not a conversation.
 
 ## Principles
 
@@ -34,11 +34,12 @@ The conversation is Layer 3. The Agents browse view and the agent inspector are 
 
 ## Revenue (most recurring first)
 
-1. **Managed recurring workflows.** A subscription per running workflow: monitoring, alerts, one-click pause, approvals for actions that touch money or customers, reruns with a backup agent, an outcome guarantee.
-2. **Hosted runtime and observability for builders.** Usage-based: hosting, run logs, failure traces, evaluation runs.
-3. **Private enterprise hubs.** Approved company agents, policy, single sign-on, audit, spend controls. Annual contracts.
-4. **Verification.** Paid evaluation runs; badges are earned by results, not purchased.
-5. **Transaction fees and managed margin.** A modest fee on direct hires (Layer 2) and a margin between price and builder cost on managed outcomes (Layer 3). This replaces the single 20% assumption and today's 0%.
+1. **Self-serve agent products.** Per checked run, later subscriptions. Repeat use is also the strongest trust signal.
+2. **Managed recurring workflows.** A subscription per running workflow: monitoring, alerts, one-click pause, approvals for actions that touch money or customers, reruns with a backup agent, an outcome guarantee.
+3. **Hosted runtime and observability for builders.** Usage-based: hosting, run logs, failure traces, evaluation runs.
+4. **Private enterprise hubs.** Approved company agents, policy, single sign-on, audit, spend controls. Annual contracts.
+5. **Verification.** Paid evaluation runs; badges are earned by results, not purchased.
+6. **Transaction fees and managed margin.** A modest fee on direct hires (Layer 2) and a margin between price and builder cost on managed outcomes (Layer 3). This replaces the single 20% assumption and today's 0%.
 
 ## Kill risks and tests
 
@@ -49,11 +50,13 @@ The conversation is Layer 3. The Agents browse view and the agent inspector are 
 | Buyers won't pay for certainty | Quote a guaranteed managed outcome next to a direct hire in pilot conversations and compare uptake. |
 | The ledger stays at small numbers | Seed it with shadow runs on real, buyer-sampled inputs, not fixtures. |
 | Managed delivery turns Relay into an agency | Track human minutes per managed outcome; it must fall release over release. |
+| A browse-first market looks empty | Don't open browse publicly until the seed category has 15–20 builders with packages; lead with "Post a request" until then. |
+| Builders have custom workflows, not products | Ask seed builders in outreach; if fewer than a third have repeatable agents, keep self-serve behind packages. |
 | Control features don't change delegation | Run the activity log, pause and approvals with 5 pilot buyers before building alerts. |
 
 ## Open decisions
 
-1. The seed category: a job buyers already pay people for, with checkable output, ideally recurring.
+1. ~~The seed category~~ Decided: B2B data & research (`docs/Seed-Category.md`).
 2. How far Relay stands behind managed results: refund only, rerun plus refund, or a stated service level.
 3. Fee levels for Layer 2 and the margin policy for Layer 3, and whether buyers see an all-in price.
 
@@ -69,3 +72,4 @@ Status as of 16 Nov 2026. Open decisions are in `docs/Decisions-Needed.md`.
 6. Managed recurring workflows and subscription pricing. **Waiting for decisions 1 and 2.**
 7. Engagement → milestone model with funding per milestone. **Spec ready** (`docs/specs/Engagements-and-Milestones.md`); waiting for decisions 1 and 2.
 8. Agent cards, public hub, SDK/MCP. **Spec ready** (`docs/specs/Agent-Cards-and-Public-Hub.md`); public exposure waits for decision 6.
+9. **Browse-first marketplace, packages, request form, then self-serve products.** Spec ready (`docs/specs/Marketplace-Model.md`), decided 17 Nov 2026. Acceptance criteria and exits (in progress) are its foundation.
