@@ -202,7 +202,7 @@ html[data-appearance] body.market-open #app .mk-link-button:hover { text-decorat
 .mk-context { padding: 10px 14px; border-radius: 10px; background: var(--mk-accent-soft); font-size: 14px; }
 .mk-form { display: grid; gap: 6px; margin-top: 20px; }
 .mk-form label { font-size: 14px; font-weight: 600; margin-top: 12px; }
-.mk-form input, .mk-form textarea { font: inherit; font-size: 15px; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 10px; padding: 10px 12px; }
+.mk-form input, .mk-form textarea { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; font-size: 15px; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 10px; padding: 10px 12px; }
 .mk-form input:focus, .mk-form textarea:focus { outline: 2px solid var(--mk-accent); outline-offset: 1px; }
 .mk-optional { font-weight: 400; color: var(--mk-muted); }
 .mk-form-actions { display: flex; align-items: center; gap: 16px; margin-top: 18px; }

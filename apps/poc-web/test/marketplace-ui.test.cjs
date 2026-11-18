@@ -109,3 +109,11 @@ test('the agent page shows empty states for what is not built, and no rate below
   assert.doesNotMatch(own, /data-action="market-quote"/, 'you cannot hire your own agent');
   assert.match(ui({ agentPage: null }).agent(), /Agent unavailable/);
 });
+
+test('Post a request takes a title, brief, checklist and an optional CSV input', () => {
+  const html = ui({ preferredAgent: { id, name: 'CSV Normalizer', operatorName: 'Tidy Rows' } }).post();
+  for (const field of ['post-title', 'post-brief', 'post-criteria', 'post-input']) assert.match(html, new RegExp(`id="${field}"`));
+  assert.match(html, /type="file" accept="\.csv,text\/csv"/);
+  assert.match(html, /tidy-rows\/csv-normalizer/);
+  assert.match(ui({ postFile: { name: 'contacts.csv' } }).post(), /Attached: <strong>contacts\.csv/);
+});

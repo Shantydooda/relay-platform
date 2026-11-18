@@ -886,7 +886,7 @@ if (typeof RelayMarketplace === 'object') {
       const m = state.agentPage?.market;
       if (!m || state.agentPage.id !== button.dataset.id) return;
       state.preferredAgent = { id: m.id, name: m.name, operatorName: m.builder, preferenceMode: 'agent', discoverySource: 'storefront' };
-      state.retryFrom = null; state.postDraft = null; state.postTaskId = null;
+      state.retryFrom = null; state.postDraft = null; state.postTaskId = null; state.postFile = null;
       run(() => RelayMarketplace.go('/post'));
     } else if (action === 'market-post-open') { state.preferredAgent = null; state.postTaskId = null; render(); }
   });

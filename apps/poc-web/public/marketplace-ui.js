@@ -354,6 +354,8 @@ const RelayMarketplace = {
         <label for="post-brief">What do you need done?</label><textarea id="post-brief" name="brief" rows="7" maxlength="10000" required placeholder="The outcome, the inputs you'll provide, the format you want back and any deadline.">${escape(draft.brief ?? state.prompt ?? '')}</textarea>
         <label for="post-criteria">Acceptance checklist <span class="mk-optional">optional</span></label><textarea id="post-criteria" name="criteria" rows="4" placeholder="One per line, up to 12. e.g. Every duplicate row is removed">${escape(draft.criteria || '')}</textarea>
         <p class="mk-caption">The checklist becomes part of the agreement. Fixes are free until it’s met.</p>
+        <label for="post-input">Input file <span class="mk-optional">optional · CSV up to 256 KB</span></label><input id="post-input" name="input" type="file" accept=".csv,text/csv">
+        ${state.postFile ? `<p class="mk-caption">Attached: <strong>${escape(state.postFile.name)}</strong>. Choose another file to replace it.</p>` : '<p class="mk-caption">Agents that work on files, like CSV cleanup agents, quote only when the file is attached.</p>'}
         <div class="mk-form-actions"><button class="mk-primary" type="submit" ${state.postingRequest ? 'disabled' : ''}>${state.postingRequest ? 'Posting…' : 'Post request'}</button><a href="/" data-route>Cancel</a></div>
       </form></section>`;
   },
@@ -363,6 +365,12 @@ const RelayMarketplace = {
     const criteria = String(data.get('criteria') || '').split('\n').map(line => line.trim()).filter(Boolean);
     state.postDraft = { title, brief, criteria: criteria.join('\n') };
     if (criteria.length > 12) { notice.textContent = 'Use at most 12 checklist items.'; return; }
+    // Read the file before re-rendering: the file field doesn't survive a render.
+    const file = form.elements.input?.files?.[0];
+    if (file) {
+      if (!/\.csv$/i.test(file.name)) { notice.textContent = 'Attach a CSV file.'; return; }
+      state.postFile = { name: file.name, base64: await csvFileBase64(file) };
+    }
     const preferred = state.preferredAgent;
     state.postingRequest = true; render();
     try {
@@ -378,12 +386,16 @@ const RelayMarketplace = {
         taskId = state.postTaskId = created.taskId;
       }
       let detail = await api('/api/tasks/' + taskId);
+      if (state.postFile && !detail.task.input) {
+        await command(`/api/tasks/${taskId}/input`, 'POST', { expectedVersion: detail.task.version, filename: state.postFile.name, base64: state.postFile.base64, notes: brief.slice(0, 2000) });
+        detail = await api('/api/tasks/' + taskId);
+      }
       if (criteria.length && !detail.task.acceptanceCriteria?.length) {
         await command(`/api/tasks/${taskId}/acceptance-criteria`, 'PUT', { expectedVersion: detail.task.version, criteria });
         detail = await api('/api/tasks/' + taskId);
       }
       if (detail.task.status === 'draft') await command(`/api/tasks/${taskId}/post`, 'POST', { expectedVersion: detail.task.version });
-      state.postDraft = null; state.postTaskId = null; state.preferredAgent = null; state.retryFrom = null; state.prompt = '';
+      state.postDraft = null; state.postTaskId = null; state.postFile = null; state.preferredAgent = null; state.retryFrom = null; state.prompt = '';
       notice.textContent = 'Request posted. Offers appear here as agents quote.';
       await this.go('/tasks/' + taskId);
     } finally { state.postingRequest = false; if (root.querySelector('#post-request')) render(); }
