@@ -243,3 +243,51 @@ Policy: `docs/Decisions-Needed.md` §2, "Acceptance and exits". Code: `services/
 - `reconcileAutoAccept` moves `buyer_review` to `accepted` (`delivery.auto_accepted`, actor `system`) only when `autoAcceptAfterMs` is configured, the latest submission is older than the window, and the task has no payment.
 
 Compatibility: additive optional fields, two commands and no stored enum change or migration.
+
+## Implicit state machines and one work-state projection (17 Nov 2026)
+
+A second sweep of the server and the browser looked for lifecycle state that is *inferred* from combinations of fields rather than declared, and re-derived by more than one consumer. The families above are still the right decomposition; these are the places where their state was implicit.
+
+### What was implicit
+
+| Implicit machine | Built from | Re-derived by (before this change) |
+| --- | --- | --- |
+| **How a run ended, and who ended it** | assignment `status` × `error` code (7+ writers, one of them free text) × the event's `actorId` | outcome ledger, two retry rules, execution queue, activity, notifications, buyer copy, builder copy, supplier feed |
+| **Whether a runtime should claim** | `status`, `leaseUntil`, `permissionWait`, `buyerPause`, `attempt`, `deadlineAt` | claim guards, sweeper, queue `overdue`, two supplier feeds, both reference runtimes, every builder's runtime |
+| **Whose move it is** (buyer, approver, agent, Relay) | task status, live selection, approval status, holds, latest submission, file scans | buyer header tag, progress card, dashboard grouping and actions, builder dashboard and work tab, an unused `taskNextStep` |
+| **What this environment can do** | one `localExecution` boolean | 14 guards across execution, recovery, change proposals, orchestration, payments, integrations and scheduling |
+| "Selected" | `selectedOfferId` + offer expiry + `scopeVersion` | about eight server sites |
+| Paid vs unpaid | `assignment.mode` + whether `settlement` exists and its status | about eight sites, four copies of the `paymentStatus` ternary |
+| "Terminal" | literal lists of statuses | approvals, recurring (twice), orchestration recovery, refunds |
+| Agent "connected" | credential, expiry and heartbeat age | three sites, two of which skip the expiry check |
+
+Symptoms found: a delivery with a **blocked** file read as "still checking"; a buyer's own pause was grouped as "under way"; a recurring parent was grouped as "needs you"; builders saw the buyer's wording; a buyer ending a run as unmet, Relay's queue timeout and an agent's crash all read "Execution failed"; the retry limit reached inside `claim` was logged as the agent's action; and the pilot could not run anything past selection.
+
+### Decision
+
+Make the three most-consumed machines explicit as **server-owned projections**, without changing stored statuses, adding a state engine or moving writes out of transactions:
+
+1. **`packages/domain/src/work-state.cjs`**
+   - `workState(task, now)` returns `{ phase, waitingOn, reason, ending }`.
+   - `agentNext(assignment, now)` returns `{ action: claim | work | wait | stop, reason }`.
+   - `ending(assignment)` maps every stored ending to `{ endedBy: buyer | agent | relay, reason, code }`, including the legacy free-text scope-change cancellation.
+   - `REASONS` lists every code, and a web test fails if the browser lacks buyer or builder wording for one.
+2. **`services/application/src/capabilities.cjs`** names each environment capability, with the same values as before. Two guards that the pilot needs moved onto their own capability: starting unpaid work, and builder change proposals. The pilot can open unpaid supplier-hosted execution with `RELAY_PILOT_UNPAID_EXECUTION=enabled` ([runbook](Private-Hosted-Pilot.md#unpaid-supplier-execution-switch-added-17-nov-2026)).
+
+How it reaches each audience:
+
+| Audience | Gets | Effect |
+| --- | --- | --- |
+| Buyer (UX) | `task.work` on the list and detail; one wording table (`apps/poc-web/public/work-state-ui.js`) | Header, progress card and dashboard agree. Grouping follows `waitingOn`. Ended runs say how they ended. |
+| Builder (DX) | `work` on their work view, builder wording; `ending` and `next` on the Supplier API; the OpenAPI `AgentNextAction` and `WorkEnding` schemas | A builder sees "Ended by the buyer · checklist not met" or "Ended · not claimed in time" instead of "Execution failed", and gets stable codes to build on. |
+| Agent (AX) | `next` on both assignment feeds and the assignment detail; `shouldClaim()` in the SDK | Runtimes stop re-deriving claimability. A new kind of hold needs no runtime change. Both reference runtimes use it, with the old inference kept for older servers. |
+
+Compatibility: every field is additive and optional. There is no migration and no stored enum change. Auto-accept now also sets `assignment.autoAccepted`, and older records without it read as accepted by the buyer. The ledger is unchanged: every `failed` run still counts as failed, now with `endedBy` available if the ledger ever needs to separate them.
+
+### Still implicit, in priority order
+
+1. **Consequential controls without a server availability projection:** close request, post, edit scope, set acceptance criteria, select offer, review a change proposal, allow or decline tool access, open checkout. The browser decides these from raw fields; review a change proposal even uses the browser clock. Extend `action-availability.cjs` to them next.
+2. The **"selected"** predicate and the **paid/unpaid** predicate should each become one domain function, like `waitingForPermission`.
+3. Replace the **terminal-status literals** with `TERMINAL` from `work-state.cjs`, and the three **"connected"** checks with one predicate that includes expiry.
+4. `taskNextStep` in `buyer-flow.js` is tested but never rendered. Either render it from `work` or delete it with its tests.
+5. Recurring run labels (`recurring-ui.js#runLabel`) and approval card headings still use their own words for the same states.

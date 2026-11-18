@@ -69,3 +69,57 @@ test('pilot supplier qualification and quotes do not enable execution, payments 
   await app.revokeCredential(builder, agentId, { expectedVersion: agent.version }, randomUUID());
   await assert.rejects(app.heartbeat(principal, { runtimeName: 'Late supplier', runtimeVersion: '1' }), { code: 'INVALID_AGENT_KEY' });
 });
+
+// The pilot operator can open exactly one more capability: unpaid execution by
+// supplier-hosted runtimes. Payments, local processes and scheduled work stay off.
+test('a pilot with unpaid execution enabled runs supplier-hosted work end to end and nothing else opens', async t => {
+  const db = new DatabaseSync(':memory:');
+  t.after(() => db.close());
+  const repository = createSqliteRepository(db);
+  const person = name => ({ user: { id: randomUUID(), name }, memberships: [{ id: randomUUID(), role: 'owner' }] });
+  const buyer = person('Buyer'), builder = person('Builder');
+  const resolveActor = async id => [buyer, builder].find(a => a.user.id === id);
+  assert.throws(() => createApplication({ repository, pilotUnpaidExecution: true }), /PILOT_UNPAID_EXECUTION_REQUIRES_PILOT/);
+  const app = createApplication({ repository, pilotConnections: true, pilotUnpaidExecution: true, resolveActor, resolveOperator: resolveActor });
+  assert.equal(app.features.unpaidExecution, true);
+  assert.equal(app.features.changeProposals, true);
+  for (const closed of ['localExecution', 'recurring', 'workspaceApps', 'driveConnections', 'attioDelivery', 'notifications'])
+    assert.equal(app.features[closed], false, closed);
+
+  const { agentId } = await app.marketplace.addAgent(builder, {
+    name: 'Pilot CSV supplier', purpose: 'Normalize supplied CSV', kind: 'specialist', domain: 'Data', integration: 'api',
+    capabilities: [{ category: 'Data', task: 'Normalize supplied CSV' }],
+  }, randomUUID());
+  await assert.rejects(app.issueCredential(builder, agentId, { expectedVersion: 1 }, randomUUID()), { code: 'LOCAL_EXECUTION_DISABLED' });
+  await app.marketplace.configure(builder, agentId, { expectedVersion: 1, integration: 'api', setupStage: 3, automaticRequested: true, minimumPayout: 100, concurrency: 1 }, randomUUID());
+  const credential = await app.issueSupplierCredential(builder, agentId, { expectedVersion: 2 }, randomUUID());
+  const principal = await app.runtimePrincipal(credential.token, { kind: 'supplier-api' });
+  await app.heartbeat(principal, { runtimeName: 'Independent supplier fixture', runtimeVersion: '1' });
+  const agent = (await app.marketplace.agents(builder))[0];
+
+  const { taskId } = await app.createTask(buyer, { tenantId: buyer.memberships[0].id, title: 'CSV cleanup', brief: 'Normalize a small CSV file.' }, randomUUID());
+  await app.mutateTask(buyer, taskId, 'post', { expectedVersion: 1 }, randomUUID());
+  const quote = await app.marketplace.quote(builder, taskId, {
+    agentId, capabilityId: agent.capabilities[0].id, expectedVersion: 2,
+    amountMinor: 100, deliveryMinutes: 5, proposal: 'A test quote for CSV normalization.',
+  }, randomUUID(), principal);
+  await app.marketplace.accept(buyer, taskId, { expectedVersion: 2, offerId: quote.offerId }, randomUUID());
+  await assert.rejects(app.authorizeLocal(buyer, taskId, { expectedVersion: 3, mode: 'stripe-sandbox' }, randomUUID()), { code: 'LOCAL_EXECUTION_DISABLED' });
+  let detail = await app.detail(buyer, taskId);
+  assert.equal(detail.actions.execution.startLocal.allowed, true);
+  assert.equal(detail.actions.execution.startFunded.allowed, false);
+  await app.authorizeLocal(buyer, taskId, { expectedVersion: 3, mode: 'local-unpaid' }, randomUUID());
+
+  const [assignment] = await app.assignments(principal);
+  const claimed = await app.claim(principal, taskId, { assignmentId: assignment.assignmentId }, randomUUID());
+  const delivered = await app.submit(principal, taskId, { leaseToken: claimed.leaseToken, evidence: 'Cleaned.',
+    files: [{ filename: 'clean.csv', mime: 'text/csv', base64: Buffer.from('a\n1\n').toString('base64') }] }, randomUUID());
+  detail = await app.detail(buyer, taskId);
+  await app.reviewDelivery(buyer, taskId, 'accept-delivery', { expectedVersion: detail.task.version, submissionId: delivered.submissionId }, randomUUID());
+  detail = await app.detail(buyer, taskId);
+  assert.equal(detail.execution.status, 'accepted');
+  assert.equal(detail.execution.paymentStatus, 'not_applicable_local_unpaid');
+  assert.equal(detail.payment?.status ?? null, null, 'no payment exists');
+  // Same-agent recovery, orchestration and payment operations remain local-only.
+  await assert.rejects(app.retryExecution(buyer, taskId, { expectedVersion: detail.task.version, reason: 'Try the same agent again' }, randomUUID()), { code: 'LOCAL_ONLY' });
+});

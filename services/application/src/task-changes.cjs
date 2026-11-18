@@ -13,7 +13,7 @@ function createTaskChanges(context) {
   const { command, taskFor, resolveActor, now, expected, touch, event } =
     context;
   async function supplier(repo, actor, id, principal) {
-    if (!context.localExecution || !actor?.user?.id || actor.recoveryRequired)
+    if (!context.capabilities.changeProposals || !actor?.user?.id || actor.recoveryRequired)
       fail(403, 'FORBIDDEN', 'Sign in to continue.');
     const current = resolveActor ? await resolveActor(actor.user.id) : actor;
     if (!current?.memberships?.length)

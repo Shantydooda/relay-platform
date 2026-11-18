@@ -6,9 +6,14 @@ function taskWaitingForPermission(task) {
     task.permissionRequests?.some(request => ['pending', 'declined'].includes(request.status)),
   );
 }
+// Servers that send `work` decide the label (work-state-ui.js); the chain below
+// serves older servers and the plan and recurring-review cases it doesn't cover.
+const reviewingSchedule = (task) => task.status === 'selected' && task.workPlan && task.workPlan.cadence !== 'once';
 const taskLabel = (task) =>
   task.orchestrationPlan ? (task.orchestrationPlan.status === 'accepted' ? 'Completed plan' : 'Plan in progress') :
-  task.pausedByBuyer === true
+  typeof RelayWorkState === 'object' && RelayWorkState.known(task) && !reviewingSchedule(task)
+    ? RelayWorkState.label(task)
+    : task.pausedByBuyer === true
     ? 'Paused'
     : taskWaitingForPermission(task)
     ? 'Permission needed'
@@ -286,7 +291,7 @@ function taskView() {
   );
   const followUps = renderMessages(messages.filter(isFollowUp));
   const editor = `<form id="edit" class="panel editor scope-editor"><span class="eyebrow">Confirm a scope change</span><h2>What should the brief say?</h2><p>Only this confirmation changes scope.${posted ? ' Existing offers and selection will need review again.' : ''}</p><label for="title">Task title</label><input id="title" name="title" value="${escape(task.title)}" maxlength="120" required><label for="brief">Current requirements</label><textarea id="brief" name="brief" maxlength="10000" required>${escape(task.brief)}</textarea><div class="form-error" role="alert"></div><div class="inline-actions"><button class="primary" type="submit">Confirm brief change</button><button type="button" data-action="stop-edit">Keep current brief</button></div></form>`;
-  return `<section class="buyer-conversation" data-task-id="${task.id}"><header class="conversation-heading"><div><span class="conversation-brand">${relayCharacter()}Relay</span><h1>${escape(posted ? task.title : 'Let’s get it done.')}</h1></div><span class="tag ${task.status}" role="status">${task.status === 'buyer_review' && state.detail.submissions?.at(-1)?.files.some((file) => file.scan && file.scan.status !== 'clean') ? 'Checking delivery' : taskLabel(task)}</span><button type="button" class="quiet conversation-details-trigger" data-action="conversation-context" aria-controls="conversation-details-panel">Details</button></header><div class="thread-layout"><section class="thread-main" aria-label="Conversation and reply"><div class="thread-history" aria-label="Task conversation">${task.scheduleId ? '<article class="thread-message relay"><strong>Scheduled run</strong><p>This task uses its saved context and execution rules.</p><button class="quiet" data-action="buyer-nav" data-tab="scheduled">View schedule & context</button></article>' : ''}${transcript}${task.orchestrationPlan && typeof RelayOrchestration === 'object' ? RelayOrchestration.project(task) : ''}${typeof RelayOrchestration === 'object' ? RelayOrchestration.step(task) : ''}
+  return `<section class="buyer-conversation" data-task-id="${task.id}"><header class="conversation-heading"><div><span class="conversation-brand">${relayCharacter()}Relay</span><h1>${escape(posted ? task.title : 'Let’s get it done.')}</h1></div><span class="tag ${task.status}" role="status">${!task.work && task.status === 'buyer_review' && state.detail.submissions?.at(-1)?.files.some((file) => file.scan && file.scan.status !== 'clean') ? 'Checking delivery' : taskLabel(task)}</span><button type="button" class="quiet conversation-details-trigger" data-action="conversation-context" aria-controls="conversation-details-panel">Details</button></header><div class="thread-layout"><section class="thread-main" aria-label="Conversation and reply"><div class="thread-history" aria-label="Task conversation">${task.scheduleId ? '<article class="thread-message relay"><strong>Scheduled run</strong><p>This task uses its saved context and execution rules.</p><button class="quiet" data-action="buyer-nav" data-tab="scheduled">View schedule & context</button></article>' : ''}${transcript}${task.orchestrationPlan && typeof RelayOrchestration === 'object' ? RelayOrchestration.project(task) : ''}${typeof RelayOrchestration === 'object' ? RelayOrchestration.step(task) : ''}
  ${task.orchestrationPlan ? '' : state.editing ? editor : state.features?.scoping && task.scoping?.status === 'completed' && ['request', 'change'].includes(task.scoping.proposal.intent) ? `<details><summary>Current brief · scope v${task.scopeVersion}</summary><p>${escape(task.brief)}</p></details>${typeof RelayAcceptance === 'object' ? RelayAcceptance.scope(task) : ''}` : posted ? '' : `<article class="thread-message relay"><span class="thread-speaker">${relayCharacter()}Relay</span><p>${task.workPlan && task.workPlan.cadence !== 'once' ? 'Here’s your recurring request. Confirm the work and cadence before requesting offers.' : 'Here’s the brief I’ll send to agents. Does this capture what you need?'}</p>${scopeRecap(task)}</article>`}
 
  ${!task.orchestrationPlan && !state.editing && !['failed', 'cancelled'].includes(task.scoping?.status) ? scopingReview(task) : ''}
@@ -373,12 +378,17 @@ function taskDashboard() {
   const active = (task) =>
     ['posted', 'queued', 'running'].includes(task.status) &&
     !needsPermission(task);
+  const served = (task) => typeof RelayWorkState === 'object' && RelayWorkState.known(task) && !task.orchestrationPlan;
+  const inGroup = (label, legacy) => (task) => served(task) ? RelayWorkState.group(task) === label : legacy(task);
   const groups = [
-    ['Needs you', (task) => !completed(task) && !active(task)],
-    ['Under way', active],
-    ['Completed', completed],
+    ['Needs you', inGroup('Needs you', (task) => !completed(task) && !active(task))],
+    ['Under way', inGroup('Under way', active)],
+    ['Completed', inGroup('Completed', completed)],
   ];
+  const tone = (task) => served(task) ? RelayWorkState.tone(task)
+    : needsPermission(task) || ['failed', 'blocked'].includes(task.status) ? 'attention' : task.status === 'accepted' ? 'complete' : active(task) ? 'active' : '';
   const action = (task) =>
+    served(task) ? RelayWorkState.action(task) :
     needsPermission(task)
       ? 'Review permission'
       : task.status === 'draft'
@@ -415,7 +425,7 @@ function taskDashboard() {
         .map(
           (task) => `<article class="work-index-row">
       <div class="work-index-row-main"><span class="work-index-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span><div><h3><button data-action="task" data-id="${escape(task.id)}">${escape(task.title)}</button></h3><small>${task.updatedAt ? 'Updated ' + date(task.updatedAt) : 'Saved task'}</small></div></div>
-      <span class="task-status ${needsPermission(task) || ['failed', 'blocked'].includes(task.status) ? 'attention' : task.status === 'accepted' ? 'complete' : active(task) ? 'active' : ''}"><i aria-hidden="true"></i>${escape(taskLabel(task))}</span>
+      <span class="task-status ${tone(task)}"><i aria-hidden="true"></i>${escape(taskLabel(task))}</span>
       <button class="work-index-row-action" data-action="task" data-id="${escape(task.id)}">${action(task)}</button>
     </article>`,
         )
@@ -461,7 +471,7 @@ function activityPage() {
 }
 function environmentNote() {
   if (state.authMode === 'managed') {
-    const disabled = [!state.payments?.configured && 'payments', !state.features?.localExecution && 'supplier execution'].filter(Boolean);
+    const disabled = [!state.payments?.configured && 'payments', !(state.features?.unpaidExecution || state.features?.localExecution) && 'supplier execution'].filter(Boolean);
     return `${state.features?.scoping ? 'Relay suggestions · confirm scope before posting.' : 'Manual brief review · assistant replies are not enabled here yet.'}${disabled.length ? ` ${disabled.join(' and ').replace(/^./, c => c.toUpperCase())} ${disabled.length > 1 ? 'are' : 'is'} disabled in this environment. No money moves.` : ''}`;
   }
   return `${state.features?.scoping ? 'Local model suggestions · confirm scope before posting.' : 'Manual brief review · local model not configured.'} ${state.payments?.configured ? 'Sandbox payments only. Start permission is separate from funding.' : 'Stripe sandbox is not connected. Local execution can run unpaid.'}`;

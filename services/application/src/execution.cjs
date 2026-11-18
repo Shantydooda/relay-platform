@@ -4,7 +4,7 @@ const { waitingForPermission, pausedByBuyer } = require('../../../packages/domai
 
 const { assertUnfunded } = require('./payments.cjs');
 const { randomUUID, timingSafeEqual } = require('node:crypto');
-const { saveTask } = require('./supplier-feed.cjs');
+const { saveTask, assignmentItem } = require('./supplier-feed.cjs');
 const { executionWindowMs } = require('./quote-limits.cjs');
 const { assertReadyToStart } = require('./start-preflight.cjs');
 const { unmetCriteriaInput, revisionRounds, MAX_REVISION_ROUNDS } = require('./acceptance.cjs');
@@ -38,8 +38,12 @@ function createExecution(context) {
     return bytes;
   }
   context.verifiedBytes = verifiedBytes;
-  function localOnly() {
-    if (!localExecution) fail(403, 'LOCAL_EXECUTION_DISABLED', 'Unpaid execution is only available in explicit local development mode.');
+  // Starting work needs the environment to allow it. Unpaid work needs the unpaid
+  // capability. Funded sandbox work stays local-only; checkStart then reports a
+  // missing sandbox connection with its own code.
+  function startAllowed(mode) {
+    if (mode === 'stripe-sandbox' ? !localExecution : !context.capabilities.unpaidExecution)
+      fail(403, 'LOCAL_EXECUTION_DISABLED', 'Starting work is not enabled in this environment.');
   }
   async function taskForRuntime(repo, principal, id) {
     const task = await repo.get('task', id, true);
@@ -76,8 +80,9 @@ function createExecution(context) {
     });
   }
   async function authorizeLocal(actor, id, body, key) {
-    localOnly(); exactKeys(body, ['expectedVersion', 'mode']);
+    exactKeys(body, ['expectedVersion', 'mode']);
     if (!['local-unpaid', 'stripe-sandbox'].includes(body.mode)) fail(400, 'INVALID_MODE', 'Explicit unpaid local execution consent is required.');
+    startAllowed(body.mode);
     return command(actor.user.id, key, ['authorize-local', id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
       if (task.scheduleId) fail(409, 'SCHEDULE_MANAGED', 'The schedule starts this run automatically after its checks and any company approval.');
@@ -88,7 +93,7 @@ function createExecution(context) {
     require('./orchestration.cjs').ready(task);
     if (task.orchestrationStep && mode !== 'local-unpaid') fail(409, 'PLAN_LOCAL_ONLY', 'Orchestration currently supports local unpaid execution only.');
     if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Review and enable the recurring schedule. Each run gets its own execution.');
-    localOnly();
+    startAllowed(mode);
     if (mode === 'local-unpaid') assertUnfunded(task);
     else {
       if (!context.sandboxPaymentsEnabled) fail(503, 'SANDBOX_NOT_CONNECTED', 'Connect the Stripe sandbox before starting funded test work.');
@@ -135,7 +140,7 @@ function createExecution(context) {
       const grants = await repo.page('agent-grant', 'tenant_id', principal.agentId, { limit: 100, statuses: ['queued', 'running'] }), result = [];
       for (const grant of grants.filter(item => item.agentId === principal.agentId)) {
         const task = await repo.get('task', grant.taskId), assignment = task?.assignment;
-        if (assignment && ['queued', 'running'].includes(assignment.status)) result.push({ taskId: task.id, assignmentId: assignment.id, status: assignment.status, waitingForPermission: waitingForPermission(assignment), pausedByBuyer: pausedByBuyer(assignment), leaseUntil: assignment.leaseUntil || 0, attempt: assignment.attempt });
+        if (assignment && ['queued', 'running'].includes(assignment.status)) result.push(assignmentItem(task, now()));
       }
       return result;
     });
@@ -155,7 +160,8 @@ function createExecution(context) {
       if (assignment.attempt >= (assignment.attemptLimit || 3)) {
         // Return a durable failure rather than throwing and rolling it back.
         assignment.status = 'failed'; assignment.error = 'RETRY_EXHAUSTED'; assignment.endedAt = now();
-        touch(task, now()); event(task, principal.actor.user.id, 'execution.failed', now()); await saveTask(repo, task);
+        // Relay's retry limit ended the run, not the agent.
+        touch(task, now()); event(task, 'system', 'execution.failed', now()); await saveTask(repo, task);
         return { taskId: id, exhausted: true };
       }
       const agent = await runtimeAgent(repo, principal, 'execution:write');
@@ -301,6 +307,7 @@ function createExecution(context) {
         if (task.assignment.mode === 'stripe-sandbox' || task.settlement) return 0; // money release is not automatic
         try { await checkReview(repo, task, 'accept-delivery', submission.id); } catch (error) { if (error.status === 409) return 0; throw error; }
         acceptSubmission(task, submission, 'Accepted automatically: the buyer didn’t respond within the review window.');
+        task.assignment.autoAccepted = true;
         touch(task, now()); event(task, 'system', 'delivery.auto_accepted', now()); await saveTask(repo, task);
         return 1;
       });

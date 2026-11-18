@@ -24,8 +24,13 @@ function loadConfig(env = process.env) {
   if (env.RELAY_PILOT_STORAGE && !['private-bucket', 'disabled'].includes(env.RELAY_PILOT_STORAGE))
     throw new Error('INVALID_PILOT_STORAGE_MODE');
   const storageEnabled = env.RELAY_PILOT_STORAGE === 'private-bucket';
+  // Unpaid execution by supplier-hosted runtimes. Off unless the operator sets it.
+  // It never enables payments, local processes or scheduled work.
+  if (env.RELAY_PILOT_UNPAID_EXECUTION && !['enabled', 'disabled'].includes(env.RELAY_PILOT_UNPAID_EXECUTION))
+    throw new Error('INVALID_PILOT_UNPAID_EXECUTION');
+  const unpaidExecution = env.RELAY_PILOT_UNPAID_EXECUTION === 'enabled';
   const port = Number(env.PORT || 10000);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('INVALID_PORT');
-  return { ...managed, database, port, storageEnabled, membershipKey: Buffer.from(env.RELAY_MEMBERSHIP_KEY, 'hex') };
+  return { ...managed, database, port, storageEnabled, unpaidExecution, membershipKey: Buffer.from(env.RELAY_MEMBERSHIP_KEY, 'hex') };
 }
 module.exports = { loadConfig };

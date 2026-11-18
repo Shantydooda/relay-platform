@@ -1,6 +1,7 @@
 'use strict';
 
 const { waitingForPermission, pausedByBuyer } = require('../../../packages/domain/src/execution-state.cjs');
+const { agentNext, ending } = require('../../../packages/domain/src/work-state.cjs');
 
 const { fail } = require('../../../packages/contracts/src/input.cjs');
 
@@ -31,7 +32,15 @@ async function saveTask(repo, task) {
   await repo.save('agent-grant', { id: assignment.id, ownerId: agent.ownerId, tenantId: agent.id, taskId: task.id, agentId: agent.id, status: assignment.status });
   await repo.save('execution-index', { id: task.id, ownerId: task.ownerId, tenantId: task.tenantId, status: assignment.status });
 }
-function createSupplierFeed({ repository, credentials, opportunityView }) {
+// One shape for an assignment in a runtime's feed, shared by the local runtime
+// endpoint and the Supplier API. `next` tells the runtime what to do now.
+function assignmentItem(task, now) {
+  const value = task.assignment;
+  return { taskId: task.id, assignmentId: value.id, status: value.status, waitingForPermission: waitingForPermission(value), pausedByBuyer: pausedByBuyer(value),
+    attempt: value.attempt, leaseUntil: value.leaseUntil || 0, next: agentNext(value, now) };
+}
+
+function createSupplierFeed({ repository, credentials, opportunityView, now = Date.now }) {
   async function events(principal, after = '', limit = 50) {
     const page = pageInput(after, limit);
     if (after && !after.startsWith(`${principal.agentId}:`)) fail(400, 'INVALID_CURSOR', 'Use a cursor from this agent.');
@@ -52,6 +61,7 @@ function createSupplierFeed({ repository, credentials, opportunityView }) {
       const toolGrants = (await repo.list('tool-grant', 'tenant_id', task.tenantId)).filter(grant => grant.subjectKind === 'task' && grant.subjectId === id && grant.assignmentId === assignmentId && grant.agentId === principal.agentId && grant.status === 'active').map(({ id, sourceId, operation, expiresAt }) => ({ id, sourceId, operation, expiresAt }));
       return { taskId: id, assignmentId, messages: task.messages.map(({authorId,...message})=>message), changeProposals: task.changeProposals || [], contextReferences: (task.contextReferences || []).map(({content,...ref}) => ref), permissionRequests: task.permissionRequests || [], toolGrants, taskVersion: task.version, status, waitingForPermission: waitingForPermission(task.assignment), pausedByBuyer: pausedByBuyer(task.assignment), attempt, leaseUntil: leaseUntil || null,
         deadlineAt: deadlineAt || null, progress, error: error || null,
+        next: agentNext(task.assignment, now()), ending: ending(task.assignment),
         acceptanceCriteria: task.assignment.agreement?.acceptanceCriteria || [],
         submissions: task.submissions.map(item => ({ id: item.id, version: item.version, status: item.status, unmetCriteria: item.unmetCriteria || [] })) };
     });
@@ -77,11 +87,11 @@ function createSupplierFeed({ repository, credentials, opportunityView }) {
       const assignments = [];
       for (const row of rows) {
         const task = await repo.get('task', row.taskId), value = task?.assignment;
-        if (value?.agentId === principal.agentId && ['queued', 'running'].includes(value.status)) assignments.push({ taskId: task.id, assignmentId: value.id, status: value.status, waitingForPermission: waitingForPermission(value), pausedByBuyer: pausedByBuyer(value), attempt: value.attempt, leaseUntil: value.leaseUntil || 0 });
+        if (value?.agentId === principal.agentId && ['queued', 'running'].includes(value.status)) assignments.push(assignmentItem(task, now()));
       }
       return { assignments, nextCursor: rows.at(-1)?.id || after, hasMore: rows.length === limit };
     });
   }
   return { supplierEvents: events, supplierAssignment: assignment, supplierOpportunities: opportunities, supplierAssignments: assignments };
 }
-module.exports = { saveTask, pageInput, createSupplierFeed };
+module.exports = { saveTask, pageInput, createSupplierFeed, assignmentItem };
