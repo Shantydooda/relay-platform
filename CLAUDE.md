@@ -166,7 +166,8 @@ Earlier and already live:
 
 **In progress: the marketplace model** (`docs/specs/Marketplace-Model.md`), in this order:
 - ✅ marketplace home, evidence-first cards, real routes, chat removed; CSV input on "Post a request" (PR #6, on `main`, not deployed);
-- **packages, reusing the acceptance work** (current slice, branch `claude/packages`);
+- **packages, reusing the acceptance work** (current slice, branch `claude/packages`). Server side done: `services/application/src/packages.cjs`, tests in `services/poc-api/test/packages-flow.test.cjs`;
+- **one marketplace for buyers and builders** (decided 18 Nov 2026; spec "One marketplace for buyers and builders"): no builder workspace switch, owner Settings tab on the agent page, builder profiles for signed-in users, one shared Work list, the Relay test required to list, quote or sell, and one vocabulary (request / offer / work / Relay test);
 - the "Post a request" form;
 - self-serve products for the seed category (on the workspace-apps foundation; independent security review before builder code or language-model runtimes);
 - subscriptions after payments are live.

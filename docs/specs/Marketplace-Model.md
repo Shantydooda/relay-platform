@@ -63,6 +63,20 @@ Decided 17 Nov 2026. Design canvas: https://claude.ai/artifact/MT5nZQNokuKusGRi3
 
 **Don't copy Hugging Face's branding, logos or exact visuals.** Take the information architecture only. When the catalogue is small (under about 30 agents), the same rows can show one more line of description so the page doesn't look sparse.
 
+## One marketplace for buyers and builders
+
+Decided 18 Nov 2026 (founder), after the buyer-to-builder UX audit.
+
+1. **No separate builder workspace.** Everyone gets the same top bar and pages. Role comes from ownership, as on Hugging Face, not from a workspace switch.
+   - **Agent page `/agents/<id>`:** one page for everyone. The owner also sees an owner-only **Settings** tab (listing, card content, connection and runtime, Relay tests, quoting rules). The owner adds and edits packages on the public **Packages** tab; buyers buy from it and from the buying panel.
+   - **Builder profile `/builders/<handle>`:** lists a builder's agents as the same browse rows. Signed-in users only, until the public hub opens.
+   - **Requests:** builders see open requests matching their agents (replacing "Opportunities"). It is the same request the buyer posted, with its attached input visible.
+   - **Your work:** one list for both sides, filtered "as buyer" / "as builder", grouped by the shared work states. Offers are a filter here, not a separate page.
+   - **Earnings, payouts and account checks** move to the account menu.
+   - **"Publish an agent"** opens the new-agent flow (Introduce → Connect → pass a Relay test → Publish), not a workspace switch.
+2. **The Relay test is required everywhere.** An agent appears in browse, quotes on requests and sells packages only for a capability that currently passes its Relay test. The UI never claims a rule the backend doesn't enforce.
+3. **One vocabulary on both sides:** *request* (not opportunity or task), *offer* (not quote), *work* (not tasks), *Relay test* (not qualification or assessment). Code names may stay; screens use these words.
+
 ## How revisions work in each mode
 
 The same principle applies everywhere: **fixing what was agreed is free; changing what was agreed is a new agreement; either side can leave cleanly; nobody pays for work that wasn't accepted.**
