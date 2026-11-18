@@ -5,8 +5,8 @@
 // design reference in docs/design/marketplace/).
 //
 // Everything shown comes from the server: listings the builder declared and
-// evidence Relay recorded. Ways to buy that are not built yet (self-serve runs,
-// packages, published prices) show an honest empty state, never sample numbers.
+// evidence Relay recorded. Packages ("Hire it") carry the builder's fixed terms;
+// self-serve runs aren't built yet and show an honest empty state, never samples.
 const RelayMarketplace = {
   MIN_RATE_SAMPLE: 20,
   // While the catalogue is small, rows carry one line of description.
@@ -49,7 +49,14 @@ const RelayMarketplace = {
   // Keep the address bar in step after each render. A new page is a new history
   // entry so Back works; other hash-based views keep their hash on "/".
   sync() {
-    if (!globalThis.history || !state.account || state.auth || state.account.user.workspace !== 'buyer') return;
+    if (!globalThis.history || !state.account || state.auth) return;
+    // Builders open agent pages too (their own, to manage packages); the rest of
+    // the builder workspace keeps its hash routes until the shells are merged.
+    if (state.account.user.workspace !== 'buyer') {
+      const target = state.agentPageId ? `/agents/${state.agentPageId}` : '/';
+      if (location.pathname !== target) history[state.agentPageId && !this.restoring ? 'pushState' : 'replaceState'](null, '', target + (state.agentPageId ? '' : location.hash));
+      return;
+    }
     const target = this.path();
     const routed = target !== '/';
     const hash = routed ? '' : (/^#(tasks|market|scheduled|apps|tools|billing|activity|team-invite=.*|payment-recovery)$/.test(location.hash) ? location.hash : '');
@@ -76,12 +83,13 @@ const RelayMarketplace = {
 
   // ---- Data --------------------------------------------------------------
   async load(target = state) {
-    if (target.account?.user.workspace !== 'buyer') return;
-    if (target.buyerTab === 'market' && !target.agentPageId) {
+    const buyer = target.account?.user.workspace === 'buyer';
+    if (!buyer && !target.agentPageId) return;
+    if (buyer && target.buyerTab === 'market' && !target.agentPageId) {
       target.market = await api('/api/marketplace?sort=' + encodeURIComponent(target.marketSort || 'runs'));
     }
     target.agentPage = null;
-    if (target.buyerTab === 'market' && target.agentPageId) {
+    if (target.agentPageId && (!buyer || target.buyerTab === 'market')) {
       try { target.agentPage = (await api('/api/agent-market/' + target.agentPageId)).agent; }
       catch (error) { if (error.status !== 404) throw error; }
     }
@@ -122,7 +130,16 @@ const RelayMarketplace = {
     const names = { use: 'Use', hire: 'Hire', commission: 'Commission' };
     return agent.waysToBuy.map(way => names[way] || way).join(' · ');
   },
-  price(agent) { return agent.fromPrice ? `from ${agent.fromPrice}` : 'Quoted per request'; },
+  money(amountMinor, currency = 'USD') {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amountMinor / 100);
+  },
+  duration(minutes) {
+    if (minutes < 60) return `${minutes} min`;
+    if (minutes < 1440) { const h = Math.floor(minutes / 60), m = minutes % 60; return `${h} hr${m ? ` ${m} min` : ''}`; }
+    const days = Math.round(minutes / 1440); return `${days} day${days === 1 ? '' : 's'}`;
+  },
+  price(agent) { return agent.fromPrice ? `from ${this.money(agent.fromPrice.amountMinor, agent.fromPrice.currency)}` : 'Quoted per request'; },
+  INPUT_LABELS: { csv: 'A CSV file' },
   updated(agent) {
     return agent.version ? `${this.version(agent.version)} · ${this.ago(agent.versionSince || agent.listedAt)}` : `listed ${this.ago(agent.listedAt)}`;
   },
@@ -200,14 +217,20 @@ const RelayMarketplace = {
       ${show('categories') ? `<section><h2>Categories</h2>${cats.length ? `<div class="mk-chips">${shown.map(([name, n]) => this.chip('categories', name, `${this.dot(name)}${escape(name)}`, f.categories.includes(name), { count: n })).join('')}${cats.length > shown.length ? `<button type="button" class="mk-chip" data-action="market-more-categories">+ ${cats.length - shown.length}</button>` : ''}</div>` : '<p class="mk-empty-note">No categories yet.</p>'}</section>` : ''}
       ${show('main') ? `<section><h2>Ways to buy</h2><div class="mk-chips">
         ${this.chip('ways', 'use', '<strong>Use it</strong>&nbsp;· self-serve', false, { disabled: true, title: 'Self-serve runs are not available yet' })}
-        ${this.chip('ways', 'hire', '<strong>Hire it</strong>&nbsp;· package', false, { disabled: true, title: 'Packages are not available yet' })}
+        ${this.chip('ways', 'hire', '<strong>Hire it</strong>&nbsp;· package', f.ways.includes('hire'), { count: count(a => a.waysToBuy.includes('hire')), disabled: !count(a => a.waysToBuy.includes('hire')), title: count(a => a.waysToBuy.includes('hire')) ? '' : 'No agent offers a package yet' })}
         ${this.chip('ways', 'commission', '<strong>Commission</strong>&nbsp;· custom', f.ways.includes('commission'), { count: count(a => a.waysToBuy.includes('commission')) })}
-      </div><p class="mk-empty-note">Self-serve runs and packages aren’t available yet. Every agent quotes on a request today.</p></section>
-      <section><h2>Price</h2><p class="mk-empty-note">No published prices yet. Agents quote per request, and you approve the price before any work starts.</p></section>` : ''}
+      </div><p class="mk-empty-note">Self-serve runs aren’t available yet. Packages have a fixed price and checklist; anything else is quoted per request.</p></section>
+      <section><h2>Price</h2>${this.priceRange(all)}</section>` : ''}
       ${show('works') ? `<section><h2>Works with</h2>${connectors.length ? `<div class="mk-chips">${connectors.map(name => this.chip('works', name, escape(name), f.works.includes(name), { count: count(a => a.worksWith.includes(name)) })).join('')}</div><p class="mk-empty-note">Declared by builders. Access is only granted per task, with your approval.</p>` : '<p class="mk-empty-note">No connectors are set up in this environment yet.</p>'}</section>` : ''}
       ${show('evidence') ? `<section><h2>Evidence</h2><div class="mk-chips">${this.EVIDENCE_FILTERS.map(([id, label]) => this.chip('evidence', id, escape(label), f.evidence.includes(id), { count: evidenceCounts[id] })).join('')}</div></section>` : ''}
       <p class="mk-rail-note">Rankings can’t be bought. The order comes from the sort you choose and results Relay verified, including failures.</p>
     </aside>`;
+  },
+  priceRange(agents) {
+    const priced = agents.filter(a => a.fromPrice?.currency === 'USD');
+    if (!agents.some(a => a.fromPrice)) return '<p class="mk-empty-note">No package prices yet. Agents quote per request, and you approve the price before any work starts.</p>';
+    const low = Math.min(...priced.map(a => a.fromPrice.amountMinor)), high = Math.max(...priced.map(a => a.fromPrice.amountMinor));
+    return `<p class="mk-empty-note">${priced.length ? `Packages from ${this.money(low)}${high > low ? ` to ${this.money(high)}` : ''}` : 'Packages are priced in their builder’s currency'}. Sort by price to compare. Custom work is quoted per request.</p>`;
   },
   row(agent, describe) {
     const evidence = this.evidenceLine(agent);
@@ -235,8 +258,8 @@ const RelayMarketplace = {
     return `<div class="mk-browse">${this.rail()}<section class="mk-results" aria-labelledby="mk-results-title">
       <header class="mk-results-head"><h1 id="mk-results-title">Agents <span class="mk-total">${filtered ? `${agents.length} of ${all.length}` : all.length}</span></h1>
         <label class="mk-filter-name"><span class="sr-only">Filter by name</span><input type="search" data-market-name placeholder="Filter by name" value="${escape(f.q)}"></label>
-        <div class="mk-toggles"><label class="mk-check" title="No agent offers packages yet"><input type="checkbox" disabled> Has packages</label><button type="button" class="mk-chip" disabled title="No agent offers self-serve runs yet">Self-serve available</button>
-        <label class="mk-sort"><span class="sr-only">Sort agents</span><select data-market-sort><option value="runs" ${state.market.sort === 'runs' ? 'selected' : ''}>Sort: Most verified runs</option><option value="newest" ${state.market.sort === 'newest' ? 'selected' : ''}>Sort: Newest</option><option value="price" disabled>Sort: Price (no prices yet)</option></select></label></div>
+        <div class="mk-toggles"><label class="mk-check"><input type="checkbox" data-market-has-packages ${f.ways.includes('hire') ? 'checked' : ''} ${all.some(a => a.waysToBuy.includes('hire')) ? '' : 'disabled title="No agent offers a package yet"'}> Has packages</label><button type="button" class="mk-chip" disabled title="No agent offers self-serve runs yet">Self-serve available</button>
+        <label class="mk-sort"><span class="sr-only">Sort agents</span><select data-market-sort><option value="runs" ${state.market.sort === 'runs' ? 'selected' : ''}>Sort: Most verified runs</option><option value="newest" ${state.market.sort === 'newest' ? 'selected' : ''}>Sort: Newest</option><option value="price" ${state.market.sort === 'price' ? 'selected' : ''}>Sort: Lowest package price</option></select></label></div>
       </header>
       <p class="mk-sr-status sr-only" role="status" aria-live="polite">${agents.length} agents shown</p>
       ${list}${this.postCard()}
@@ -306,17 +329,98 @@ const RelayMarketplace = {
       <p class="mk-caption">A percentage appears only after ${this.MIN_RATE_SAMPLE} decided runs. Buyer cancellations before a decision aren’t counted as runs.</p></section>
       <section class="mk-section"><h2>Relay test</h2>${m.relayTest.passed ? `<p>Passed <strong>${escape(m.relayTest.title)}</strong> (<code>${escape(m.relayTest.rubric)}</code>) on ${escape(this.version(m.relayTest.runtimeVersion))}${m.relayTest.completedAt ? `, ${escape(this.ago(m.relayTest.completedAt))}` : ''}. A new runtime version has to pass again.</p><p class="mk-caption">A capability test checks a bounded task. It isn’t a guarantee that every request will succeed.</p>` : '<p>This agent hasn’t passed a current Relay test, so it can’t receive direct requests.</p>'}</section>`;
   },
+  // ---- Packages ("Hire it") --------------------------------------------
+  packageTerms(item) {
+    const inputs = item.inputs.map(key => this.INPUT_LABELS[key] || key);
+    return `<dl class="mk-terms"><div><dt>Price</dt><dd><strong>${escape(this.money(item.priceMinor, item.currency))}</strong></dd></div>
+      <div><dt>Delivery</dt><dd>${escape(this.duration(item.deliveryMinutes))} after work starts</dd></div>
+      <div><dt>You provide</dt><dd>${escape(inputs.join(', '))}, plus any notes</dd></div>
+      <div><dt>Changes</dt><dd>Fixes free until the checklist is met${item.extraRounds ? ` · ${this.plural(item.extraRounds, 'extra round')} for other changes` : ''}</dd></div></dl>
+      <h4>Checklist agreed up front</h4><ul class="mk-checks">${item.criteria.map(c => `<li>${escape(c.text)}</li>`).join('')}</ul>`;
+  },
+  packageCard(agent, item, owner) {
+    const status = owner ? `<span class="mk-tag ${item.status === 'published' ? 'mk-tag-good' : ''}">${{ published: 'Published', draft: 'Draft', paused: 'Paused' }[item.status]}</span>` : '';
+    const actions = owner
+      ? `<div class="mk-package-actions"><button type="button" data-action="package-edit" data-id="${escape(item.id)}">Edit</button>${item.status === 'published'
+        ? `<button type="button" data-action="package-status" data-id="${escape(item.id)}" data-status="paused">Pause</button>`
+        : `<button type="button" class="mk-primary" data-action="package-status" data-id="${escape(item.id)}" data-status="published">Publish</button>`}</div>`
+      : `<button type="button" class="mk-primary" data-action="package-buy" data-agent="${escape(agent.id)}" data-id="${escape(item.id)}" data-version="${item.version}">Hire for ${escape(this.money(item.priceMinor, item.currency))}</button>`;
+    return `<article class="mk-package"><header><h3>${escape(item.title)}</h3>${status}<span class="mk-caption">v${item.version}</span></header>
+      <p>${escape(item.included)}</p>${this.packageTerms(item)}${actions}</article>`;
+  },
+  packageForm(agent, m) {
+    const tested = m.capabilities.filter(item => item.qualification === 'qualified');
+    if (!tested.length) return '<div class="mk-empty"><h2>Pass a Relay test first</h2><p>Packages can only be sold for a capability that has passed its Relay test, so buyers know it was checked. Connect a runtime and run the test in your agent settings.</p></div>';
+    const edit = state.packageForm.id ? (agent.ownerPackages || []).find(item => item.id === state.packageForm.id) : null;
+    const v = edit || { title: '', included: '', priceMinor: '', deliveryMinutes: 60, criteria: [], extraRounds: 0, capabilityId: tested[0].id };
+    return `<form id="package-form" class="mk-form mk-package-form" data-id="${escape(edit?.id || '')}">
+      <h3>${edit ? `Edit ${escape(edit.title)}` : 'New package'}</h3>
+      ${edit?.status === 'published' ? '<p class="mk-caption">Saving makes a new version. Buyers who already hired this package keep the terms they bought.</p>' : ''}
+      <label for="package-capability">Capability</label><select id="package-capability" name="capabilityId">${tested.map(item => `<option value="${escape(item.id)}" ${item.id === v.capabilityId ? 'selected' : ''}>${escape(item.task)}</option>`).join('')}</select>
+      <label for="package-title">Package title</label><input id="package-title" name="title" minlength="3" maxlength="80" required value="${escape(v.title)}" placeholder="e.g. Clean one CSV export">
+      <label for="package-included">What’s included</label><textarea id="package-included" name="included" rows="3" minlength="3" maxlength="2000" required placeholder="Exactly what the buyer gets back.">${escape(v.included)}</textarea>
+      <div class="mk-form-row"><div><label for="package-price">Price (${escape(m.capabilities.length ? (agent.ownerPackages?.[0]?.currency || 'USD') : 'USD')})</label><input id="package-price" name="price" type="number" min="0.01" step="0.01" required value="${v.priceMinor ? (v.priceMinor / 100).toFixed(2) : ''}"></div>
+        <div><label for="package-delivery">Delivery, minutes after start</label><input id="package-delivery" name="delivery" type="number" min="1" step="1" required value="${v.deliveryMinutes}"></div>
+        <div><label for="package-rounds">Extra rounds</label><select id="package-rounds" name="extraRounds">${[0, 1, 2, 3].map(n => `<option value="${n}" ${n === v.extraRounds ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>
+      <label for="package-criteria">Checklist, one item per line (1–12)</label><textarea id="package-criteria" name="criteria" rows="4" required placeholder="No duplicate rows remain&#10;The header row is kept">${escape(v.criteria.map(c => c.text).join('\n'))}</textarea>
+      <p class="mk-caption">Buyers provide a CSV file and notes. Fixes for unmet checklist items are always free; extra rounds cover other changes.</p>
+      <div class="mk-package-actions"><button type="submit" class="mk-primary">${edit ? 'Save new version' : 'Save as draft'}</button><button type="button" data-action="package-cancel">Cancel</button></div>
+    </form>`;
+  },
+  packagesTab(agent, m) {
+    if (agent.ownerPreview) {
+      const own = agent.ownerPackages || [];
+      const list = own.length ? `<div class="mk-packages">${own.map(item => this.packageCard(agent, item, true)).join('')}</div>`
+        : '<p class="mk-empty-note">No packages yet. A package is a fixed scope, price and checklist buyers can hire without waiting for a quote.</p>';
+      return `<section class="mk-section"><div class="mk-section-head"><h2>Your packages</h2>${state.packageForm ? '' : '<button type="button" class="mk-primary" data-action="package-new">New package</button>'}</div>
+        ${state.packageForm ? this.packageForm(agent, m) : ''}${list}
+        <p class="mk-caption">Only published packages for a capability that currently passes its Relay test are shown to buyers.</p></section>`;
+    }
+    if (!m.packages.length) return '<div class="mk-empty"><h2>No packages yet</h2><p>This agent doesn’t offer a fixed-price package. Request a custom quote instead.</p></div>';
+    return `<section class="mk-section"><h2>Packages</h2><p class="mk-caption">Fixed scope, price and checklist, agreed before you hire. You attach your file and start when ready.</p>
+      <div class="mk-packages">${m.packages.map(item => this.packageCard(agent, item, false)).join('')}</div></section>`;
+  },
+  hireBox(agent, m) {
+    if (agent.ownerPreview || m.own) return `<section class="mk-buy-box"><h2>Hire it</h2><p>${(agent.ownerPackages || []).length ? 'Manage your packages on the Packages tab.' : 'Add a package so buyers can hire this agent at a fixed price.'}</p><button type="button" class="mk-link-button" data-action="market-agent-tab" data-tab="packages">Your packages →</button></section>`;
+    if (!m.packages.length) return '<section class="mk-buy-box"><h2>Hire it</h2><p>No packages for this agent. Request a custom quote below.</p></section>';
+    return `<section class="mk-buy-box"><h2>Hire it</h2><ul class="mk-buy-packages">${m.packages.map(item => `<li><span><strong>${escape(item.title)}</strong><small>${escape(this.duration(item.deliveryMinutes))} · ${this.plural(item.criteria.length, 'check')}</small></span>
+      <button type="button" data-action="package-buy" data-agent="${escape(agent.id)}" data-id="${escape(item.id)}" data-version="${item.version}">${escape(this.money(item.priceMinor, item.currency))}</button></li>`).join('')}</ul>
+      <p class="mk-caption">Hiring fixes the terms. Nothing starts until you attach your file and confirm.</p></section>`;
+  },
+  async buyPackage(button) {
+    const result = await command(`/api/agent-market/${button.dataset.agent}/packages/${button.dataset.id}/buy`, 'POST',
+      { tenantId: state.tenantId || state.account.memberships[0].id, expectedPackageVersion: Number(button.dataset.version) });
+    notice.textContent = 'Package hired. Attach your CSV, then review and start.';
+    await this.go('/tasks/' + result.taskId);
+  },
+  async submitPackage(form) {
+    const data = new FormData(form), agent = state.agentPage;
+    const body = { expectedVersion: agent.agentVersion, capabilityId: String(data.get('capabilityId')), title: String(data.get('title')).trim(),
+      included: String(data.get('included')).trim(), priceMinor: Math.round(Number(data.get('price')) * 100), deliveryMinutes: Number(data.get('delivery')),
+      criteria: String(data.get('criteria')).split('\n').map(line => line.trim()).filter(Boolean), inputs: ['csv'], extraRounds: Number(data.get('extraRounds')) };
+    const id = form.dataset.id;
+    await command(`/api/agents/${agent.id}/packages${id ? `/${id}` : ''}`, id ? 'PUT' : 'POST', body);
+    state.packageForm = null;
+    notice.textContent = id ? 'Package saved as a new version.' : 'Package saved as a draft. Publish it when it’s ready for buyers.';
+    await refresh(null); render();
+  },
+  async setPackageStatus(button) {
+    await command(`/api/agents/${state.agentPage.id}/packages/${button.dataset.id}`, 'PATCH', { expectedVersion: state.agentPage.agentVersion, status: button.dataset.status });
+    notice.textContent = button.dataset.status === 'published' ? 'Package published. Buyers can hire it now.' : 'Package paused. Buyers who already hired it keep their terms.';
+    await refresh(null); render();
+  },
+
   agent() {
     const agent = state.agentPage;
     const back = '<a class="mk-back" href="/" data-route>← All agents</a>';
     if (!agent) return `<section class="mk-page">${back}<div class="mk-empty"><h1>Agent unavailable</h1><p>This agent isn’t listed for your account right now.</p><a class="mk-primary" href="/" data-route>Browse agents</a></div></section>`;
     const m = agent.market;
     const tab = state.agentTab || 'card';
-    const counts = { packages: m.packages.length, versions: agent.trackRecord?.versions?.length || 0 };
+    const counts = { packages: (agent.ownerPreview ? agent.ownerPackages || [] : m.packages).length, versions: agent.trackRecord?.versions?.length || 0 };
     const chips = [`${this.dot(m.category || '')}${escape(m.category || 'Uncategorised')}`, ...m.waysToBuy.map(way => ({ commission: 'Commission', use: 'Use it', hire: 'Hire it' }[way])),
       ...m.worksWith.map(name => `Works with ${escape(name)}`), ...(m.hostedOnRelay ? ['Hosted on Relay'] : []), ...(m.version ? [escape(this.version(m.version))] : [])];
     const body = tab === 'evidence' ? this.evidenceTab(agent, m)
-      : tab === 'packages' ? '<div class="mk-empty"><h2>No packages yet</h2><p>Packages (a fixed scope, price and checklist) aren’t available on Relay yet. Request a custom quote instead.</p></div>'
+      : tab === 'packages' ? this.packagesTab(agent, m)
       : tab === 'versions' ? `<section class="mk-section"><h2>Results by version</h2>${m.version ? `<p>Current version <code>${escape(this.version(m.version))}</code>${m.versionSince ? `, reported ${escape(this.ago(m.versionSince))}` : ''}.</p>` : ''}${this.versionsTable(agent.trackRecord)}</section>`
       : tab === 'discussion' ? '<div class="mk-empty"><h2>Discussion isn’t open yet</h2><p>Questions about a specific job go in that task’s message thread, where the builder can reply.</p></div>'
       : this.cardTab(agent, m);
@@ -334,7 +438,7 @@ const RelayMarketplace = {
       <div class="mk-agent-layout"><div class="mk-agent-main">${body}</div>
         <aside class="mk-buy" aria-label="Ways to buy">
           <section class="mk-buy-box"><h2>Use it</h2><p>Self-serve runs aren’t available for this agent yet.</p><button type="button" disabled>Run this agent</button></section>
-          <section class="mk-buy-box"><h2>Hire it</h2><p>No packages yet. Packages with a fixed scope, price and checklist are coming.</p><button type="button" disabled>Continue with package</button></section>
+          ${this.hireBox(agent, m)}
           <section class="mk-buy-box mk-buy-custom"><h2>Need something custom?</h2><p>Describe the outcome and your checklist. ${escape(m.builder)} quotes, and you approve before work starts.</p>
             ${blocked ? `<p class="mk-caption">${agent.ownerPreview || m.own ? 'This is your agent. You can’t hire your own agent.' : 'Direct requests open once this agent passes a current Relay test.'}</p>` : `<button type="button" class="mk-link-button" data-action="market-quote" data-id="${escape(agent.id)}">Request a quote from ${escape(this.slug(m.builder))}</button>`}</section>
           <section class="mk-buy-box mk-builder"><h2>Builder</h2><p class="mk-handle">${escape(this.slug(m.builder))}</p><p>${escape(m.builder)}${builderAgents ? ` · ${this.plural(builderAgents, 'agent')} on Relay` : ''}</p><p class="mk-caption">Builder identity and business checks aren’t shown yet.</p></section>

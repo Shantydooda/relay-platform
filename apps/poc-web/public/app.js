@@ -195,8 +195,8 @@ function render(){
  const oldId = root.querySelector('.buyer-conversation')?.dataset.taskId;
  const scrollTop = scrollOwner.scrollTop;
  document.body.classList.toggle('workspace-open',!!state.account&&!state.auth);
- document.body.classList.toggle('market-open',!!state.account&&!state.auth&&state.account.user.workspace==='buyer'&&typeof RelayMarketplace==='object');
- root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${state.account.user.workspace === 'buyer' ? 'buyer-workspace mk-shell' : ''} ${activeCompanyMembership()?'company-workspace-active':''}">${state.account.user.workspace === 'buyer' && typeof RelayMarketplace === 'object' ? '' : `<div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>`}${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?builder():buyerPage()}</main></div>`);
+ document.body.classList.toggle('market-open',!!state.account&&!state.auth&&(state.account.user.workspace==='buyer'||!!state.agentPageId)&&typeof RelayMarketplace==='object');
+ root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${state.account.user.workspace === 'buyer' ? 'buyer-workspace mk-shell' : ''} ${activeCompanyMembership()?'company-workspace-active':''}">${state.account.user.workspace === 'buyer' && typeof RelayMarketplace === 'object' ? '' : `<div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>`}${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?(state.agentPageId&&typeof RelayMarketplace==='object'?RelayMarketplace.agent():builder()):buyerPage()}</main></div>`);
  if (typeof RelayLanding === 'object') RelayLanding.mount?.(root);
  if (typeof observeOfferExposure === 'function') observeOfferExposure();
  if (!changedView) root.querySelectorAll('.canvas details').forEach(item => {
@@ -512,6 +512,8 @@ root.addEventListener('submit',event=>{
       state.builderTab='quotes';await refresh();render();notice.textContent='Offer sent to the buyer.';
     }else if(form.id==='post-request'){
       await RelayMarketplace.submitPost(form);
+    }else if(form.id==='package-form'){
+      await RelayMarketplace.submitPackage(form);
     }else if(form.id==='market-search'){
       RelayMarketplace.filters().q=String(data.get('q')||'').trim();
       if(state.buyerTab==='market'&&!state.agentPageId&&!state.detail)RelayMarketplace.refreshList();else await RelayMarketplace.go('/');
@@ -889,6 +891,23 @@ if (typeof RelayMarketplace === 'object') {
       state.retryFrom = null; state.postDraft = null; state.postTaskId = null; state.postFile = null;
       run(() => RelayMarketplace.go('/post'));
     } else if (action === 'market-post-open') { state.preferredAgent = null; state.postTaskId = null; render(); }
+  });
+  // Packages ("Hire it"): owner editing on the agent page, buyer hiring.
+  root.addEventListener('click', event => {
+    const button = event.target.closest('[data-action^="package-"]');
+    if (!button) return;
+    const action = button.dataset.action;
+    if (action === 'package-new') { state.packageForm = { id: null }; render(); root.querySelector('#package-title')?.focus(); }
+    else if (action === 'package-edit') { state.packageForm = { id: button.dataset.id }; render(); root.querySelector('#package-title')?.focus(); }
+    else if (action === 'package-cancel') { state.packageForm = null; render(); }
+    else if (action === 'package-status') run(() => RelayMarketplace.setPackageStatus(button));
+    else if (action === 'package-buy') run(() => RelayMarketplace.buyPackage(button));
+  });
+  root.addEventListener('change', event => {
+    if (!event.target.matches('[data-market-has-packages]')) return;
+    const f = RelayMarketplace.filters();
+    f.ways = event.target.checked ? [...new Set([...f.ways, 'hire'])] : f.ways.filter(way => way !== 'hire');
+    RelayMarketplace.refreshList();
   });
   root.addEventListener('input', event => {
     if (!event.target.matches('[data-market-name], #market-search-input')) return;
