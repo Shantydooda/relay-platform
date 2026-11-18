@@ -59,3 +59,21 @@ test('"works with" lists only connectors that are configured here', () => {
   assert.deepEqual(r.worksWith, ['Google Drive'], 'a declared tool without a working connector is not shown');
   assert.deepEqual(r.declaredTools, ['Google Drive', 'Salesforce']);
 });
+
+test('published packages make an agent hireable, with a real from-price', () => {
+  const pkg = (id, priceMinor) => ({ id, version: 1, status: 'published', capabilityId: 'c1', title: `Package ${id}`, included: 'Clean CSV',
+    priceMinor, currency: 'USD', deliveryMinutes: 30, criteria: [{ id: 'c1', text: 'No duplicates' }], inputs: ['csv'], extraRounds: 0 });
+  const r = browseRow({ agent, listing: { ...listing(), packages: [pkg('p2', 4000), pkg('p1', 2500)] }, history: [], now: NOW,
+    connectors: [], actor: { user: { id: 'buyer' } } });
+  assert.deepEqual(r.waysToBuy, ['hire', 'commission']);
+  assert.deepEqual(r.packages.map(item => item.id), ['p2', 'p1'], 'as listed');
+  assert.deepEqual(r.fromPrice, { amountMinor: 2500, currency: 'USD' });
+});
+
+test('price sort puts the cheapest package first and quoted-only agents last', () => {
+  const { sortRows } = require('../src/marketplace-browse.cjs');
+  const rows = [{ builder: 'a', name: 'quoted', fromPrice: null, evidence: { runs: 9 } },
+    { builder: 'b', name: 'dear', fromPrice: { amountMinor: 9000, currency: 'USD' }, evidence: { runs: 0 } },
+    { builder: 'c', name: 'cheap', fromPrice: { amountMinor: 1000, currency: 'USD' }, evidence: { runs: 0 } }];
+  assert.deepEqual(sortRows(rows, 'price').map(item => item.name), ['cheap', 'dear', 'quoted']);
+});

@@ -54,6 +54,10 @@ test('builders define, version and publish packages for qualified capabilities o
     assert.deepEqual(agent.packages[0].criteria.map(item => item.text), PACKAGE.criteria);
     let listing = (await f.request(`/api/agent-market/${builder.agentId}`, f.buyer)).body.agent;
     assert.deepEqual(listing.packages, []);
+    assert.equal(listing.ownerPackages, undefined, 'buyers never see drafts');
+    const own = (await f.request(`/api/agent-market/${builder.agentId}`, builder.operator)).body.agent;
+    assert.deepEqual(own.ownerPackages.map(item => [item.id, item.status]), [[packageId, 'draft']], 'the owner sees drafts on their own agent page');
+    assert.equal(own.agentVersion, agent.version, 'and the version to edit against');
 
     response = await f.request(`${path}/${packageId}`, builder.operator, { expectedVersion: agent.version, status: 'published' }, 'PATCH');
     assert.equal(response.status, 200, JSON.stringify(response.body));

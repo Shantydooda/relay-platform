@@ -7,14 +7,15 @@
 // runs, repeat buyers). The two are labelled separately and never mixed, and
 // nothing here is ranked by payment.
 //
-// Ways to buy that are not built yet stay empty rather than invented: today an
-// agent can only be commissioned through a custom quote, so `waysToBuy` is
-// ['commission'], `packages` is [] and `fromPrice` is null.
+// Ways to buy that are not built yet stay empty rather than invented. Every agent
+// can be commissioned through a custom quote; it is hireable only when it has a
+// package a buyer can actually buy (packages.cjs#publicPackages), and `fromPrice`
+// is the cheapest such package. Self-serve ("use") isn't built yet.
 
 const linkAssessment = require('./link-assessment.cjs');
 const { taskOutcome, summarizeOutcomes, LEDGER_WINDOW_MS } = require('./outcome-ledger.cjs');
 
-const SORTS = Object.freeze(['runs', 'newest']);
+const SORTS = Object.freeze(['runs', 'newest', 'price']);
 const MAX_ROWS = 500;
 
 // Connectors this environment can really use: the capability is on and a
@@ -68,9 +69,9 @@ function browseRow({ agent, listing, history, now, connectors, actor }) {
     capabilities: listing.capabilities.map(({ id, category, task, qualification, metadata }) => ({ id, category, task, qualification, metadata })),
     availability: listing.availability,
     own: agent.ownerId === actor.user.id,
-    waysToBuy: ['commission'],
-    packages: [],
-    fromPrice: null,
+    waysToBuy: listing.packages?.length ? ['hire', 'commission'] : ['commission'],
+    packages: listing.packages || [],
+    fromPrice: fromPrice(listing.packages || []),
     relayTest: test,
     evidence,
     buyers: buyersFor(history, agent, now),
@@ -84,8 +85,23 @@ function browseRow({ agent, listing, history, now, connectors, actor }) {
   };
 }
 
+// Packages on one agent share its quoting currency; if an older package kept a
+// different one, the price shown is in the most common currency, never converted.
+function fromPrice(packages) {
+  if (!packages.length) return null;
+  const counts = new Map();
+  for (const item of packages) counts.set(item.currency, (counts.get(item.currency) || 0) + 1);
+  const [currency] = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  return { amountMinor: Math.min(...packages.filter(item => item.currency === currency).map(item => item.priceMinor)), currency };
+}
+
+const CURRENCY_ORDER = ['USD', 'EUR'];
 function sortRows(rows, sort) {
   const byName = (a, b) => `${a.builder}/${a.name}`.localeCompare(`${b.builder}/${b.name}`);
+  // Prices in different currencies aren't converted: USD first, then EUR, then quoted-only.
+  if (sort === 'price') return rows.sort((a, b) => !a.fromPrice - !b.fromPrice ||
+    (a.fromPrice && b.fromPrice && (CURRENCY_ORDER.indexOf(a.fromPrice.currency) - CURRENCY_ORDER.indexOf(b.fromPrice.currency) ||
+      a.fromPrice.amountMinor - b.fromPrice.amountMinor)) || byName(a, b));
   if (sort === 'newest') return rows.sort((a, b) => (b.listedAt || 0) - (a.listedAt || 0) || byName(a, b));
   return rows.sort((a, b) => b.evidence.runs - a.evidence.runs || byName(a, b));
 }
@@ -112,7 +128,7 @@ function createBrowse({ repository, now, listingView, connectors: available }) {
     // catalogue is small.
     browse: (actor, { sort = 'runs' } = {}) => {
       allowed(actor);
-      if (!SORTS.includes(sort)) require('../../../packages/contracts/src/input.cjs').fail(400, 'INVALID_SORT', 'Sort by most verified runs or newest.');
+      if (!SORTS.includes(sort)) require('../../../packages/contracts/src/input.cjs').fail(400, 'INVALID_SORT', 'Sort by most verified runs, newest or price.');
       return repository.read(async repo => {
         // Only agents with a current Relay test are listed (Marketplace-Model.md, "One marketplace" §2).
         const time = now();
@@ -127,4 +143,4 @@ function createBrowse({ repository, now, listingView, connectors: available }) {
   };
 }
 
-module.exports = { createBrowse, browseRow, buyersFor, workingConnectors, SORTS };
+module.exports = { createBrowse, browseRow, buyersFor, workingConnectors, sortRows, fromPrice, SORTS };

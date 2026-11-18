@@ -554,7 +554,10 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         const saved = await require('./saved-agents.cjs').savedAgents(repo, actor.user.id);
         const time = now();
         const history = await require('./fair-exposure.cjs').operatorHistory(repo, agent.ownerId);
-        return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: agent.ownerId === actor.user.id,
+        const owner = agent.ownerId === actor.user.id;
+        return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: owner,
+          // The owner edits packages on their own agent page, so they also get drafts and the version to edit against.
+          ...(owner ? { ownerPackages: (agent.packages || []).map(packageView), agentVersion: agent.version } : {}),
           trackRecord: require('./agent-card.cjs').agentEvidence(history, agent, time), market: await marketBrowse.row(repo, actor, agent) };
       }),
       acquisition: require('./acquisition.cjs').createAcquisition(context),
