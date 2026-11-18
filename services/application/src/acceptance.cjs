@@ -77,6 +77,7 @@ function createAcceptance({ command, taskFor, expected, now, touch, event, saveT
       expected(task, body.expectedVersion);
       if (task.status === 'cancelled') fail(409, 'TASK_CLOSED', 'This request is closed.');
       if (task.assignment) fail(409, 'TASK_ASSIGNED', 'Authorized work keeps its agreed criteria. Propose a change instead.');
+      require('./packages.cjs').assertNotPackage(task);
       if (task.orchestrationPlan || task.orchestrationStep) require('./orchestration.cjs').fixedScope(task);
       if (task.scheduleId || task.recurringScheduleId) fail(409, 'SCHEDULE_MANAGED', 'Recurring runs use an immutable scope.');
       assertUnfunded(task);

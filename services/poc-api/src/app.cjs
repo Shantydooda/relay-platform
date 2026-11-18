@@ -357,6 +357,8 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
           if (packageId && method === 'PUT') return send(200, await market.savePackage(actor, agentId, packageId, await jsonBody(req), key));
           if (packageId && method === 'PATCH') return send(200, await market.setPackageStatus(actor, agentId, packageId, await jsonBody(req), key));
         }
+        const buyPath = path.match(/^\/api\/agent-market\/([0-9a-f-]{36})\/packages\/([0-9a-f-]{36})\/buy$/);
+        if (buyPath && method === 'POST' && market.buyPackage) return send(201, await market.buyPackage(actor, buyPath[1], buyPath[2], await jsonBody(req), key));
         const listingPath=path.match(/^\/api\/agent-market\/([0-9a-f-]{36})$/);
         if(listingPath&&method==='GET')return send(200,{agent:await market.listing(actor,listingPath[1])});
         const acquisitionPath = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/acquisition$/);

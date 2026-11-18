@@ -150,6 +150,48 @@ function createPackages({ command, agentFor, expected, now, positive, qualificat
   return { savePackage, setPackageStatus };
 }
 
+// Bought terms hold for 30 days: the buyer can attach inputs and start any time in
+// that window without the builder re-quoting.
+const PACKAGE_OFFER_DAYS = 30;
+
+// The package offer is an ordinary offer record built from the frozen terms, so
+// selection, the start checks and the agreement treat it like any quote.
+function packageOffer({ agent, capability, qualification, task, terms, time }) {
+  return {
+    id: randomUUID(), agentId: agent.id, operatorId: agent.ownerId, agentName: agent.name, agentType: agent.kind,
+    operatorName: agent.operatorName, category: capability.category, capability: capability.task, capabilityId: capability.id,
+    qualification: qualification.qualification, qualificationEvidence: qualification.assessment,
+    taskVersion: task.version, scopeVersion: task.scopeVersion,
+    amountMinor: terms.priceMinor, deliveryMinutes: terms.deliveryMinutes, proposal: terms.included, currency: terms.currency,
+    createdAt: time, expiresAt: time + PACKAGE_OFFER_DAYS * 86400000, runtimeBid: false, runtimeKind: null,
+    packageId: terms.packageId, packageVersion: terms.packageVersion, extraRounds: terms.extraRounds,
+  };
+}
+
+// Attaching an input is a scope change. The package's price and checklist don't
+// depend on the file, so its offer follows the new scope and stays selected.
+function rebindPackageOffer(task) {
+  const offer = task.offers.find(item => item.packageId === task.package.packageId);
+  offer.scopeVersion = task.scopeVersion;
+  offer.taskVersion = task.version;
+  task.selectedOfferId = offer.id;
+}
+
+function assertNotPackage(task) {
+  if (task.package) fail(409, 'PACKAGE_FIXED', 'Package terms are fixed. Propose a change request instead.');
+}
+
+// Fixes for unmet checklist items are free (acceptance.cjs). A revision that names
+// none of them is a polish round, limited to what the package includes.
+function checkPolishRound(task, unmetCriteria) {
+  if (!task.package || unmetCriteria.length) return;
+  const used = task.submissions.filter(item => item.status === 'revision_requested' && !item.unmetCriteria?.length).length;
+  if (used >= task.package.extraRounds)
+    fail(409, 'POLISH_LIMIT', task.package.extraRounds
+      ? `This package includes ${task.package.extraRounds} extra round${task.package.extraRounds === 1 ? '' : 's'}, already used. Name the checklist items that aren’t met, or propose a change request.`
+      : 'This package doesn’t include extra rounds. Name the checklist items that aren’t met, or propose a change request.');
+}
+
 function editable(pkg) {
   const { capabilityId, title, included, priceMinor, deliveryMinutes, criteria, inputs, extraRounds } = pkg;
   return { capabilityId, title, included, priceMinor, deliveryMinutes, criteria: criteria.map(item => item.text), inputs, extraRounds };
@@ -158,4 +200,4 @@ function editable(pkg) {
 const MAX_PACKAGES = 10;
 
 module.exports = { normalizePackage, checkPurchasable, packageTerms, packageView, publicPackages, createPackages,
-  MAX_EXTRA_ROUNDS, MAX_PACKAGES, PACKAGE_INPUTS };
+  packageOffer, rebindPackageOffer, assertNotPackage, checkPolishRound, MAX_EXTRA_ROUNDS, MAX_PACKAGES, PACKAGE_INPUTS, PACKAGE_OFFER_DAYS };

@@ -7,7 +7,7 @@ const { assertUnfunded, paymentView } = require('./payments.cjs');
 const { capabilityView } = require('./qualification.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
 const { criteriaFor, acceptanceView, createAcceptance } = require('./acceptance.cjs');
-const { packageView, publicPackages, createPackages } = require('./packages.cjs');
+const { packageView, publicPackages, createPackages, checkPurchasable, packageTerms, packageOffer, assertNotPackage } = require('./packages.cjs');
 const { environmentCapabilities } = require('./capabilities.cjs');
 const { workState } = require('../../../packages/domain/src/work-state.cjs');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
@@ -63,6 +63,7 @@ function taskView(task, now) {
     scoping: task.scoping?.version === task.version ? (task.scoping.status === 'pending' && task.scoping.expiresAt <= now ? { status: 'failed', error: 'The local reply was interrupted. Try again; your message is saved.' } : task.scoping) : null,
     selectedOfferId: offer && offer.expiresAt > now ? offer.id : null,
     acceptanceCriteria: criteriaFor(task),
+    package: task.package ? { ...task.package, criteria: task.package.criteria.map(item => ({ ...item })), inputs: [...task.package.inputs] } : null,
     input: input ? { filename: input.filename, size: input.size, sha256: input.sha256, notes: input.notes } : null };
 }
 function retryAvailable(task, tenantId = task.tenantId) {
@@ -199,13 +200,48 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       } else if (body.preferenceMode !== undefined || body.discoverySource !== undefined) {
         fail(400, 'INVALID_INPUT', 'A routing preference requires an available agent.');
       }
-      const task = { id, tenantId: body.tenantId, ownerId: actor.user.id, title, brief, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf,
-        companyApprovalRequired: !!membership(actor, body.tenantId).company, status: 'draft', version: 1, scopeVersion: 1, createdAt: time, updatedAt: time,
-        messages: [{ id: randomUUID(), body: brief, authorId: actor.user.id, authorName: actor.user.name, createdAt: time }],
-        scopes: [{ version: 1, title, brief, createdAt: time }], events: [], offers: [], selectedOfferId: null, assignment: null, submissions: [] };
+      const task = newTask({ id, actor, tenantId: body.tenantId, title, brief, time, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf });
       event(task, actor.user.id, 'task.created', time);
       await saveTask(repo, task);
       return { taskId: id, version: 1 };
+    }, `workspace-create:${body.tenantId}`);
+  }
+  // One shape for every new task, whether posted as a request or bought as a package.
+  function newTask({ id, actor, tenantId, title, brief, time, preferredAgentId = null, preferredOperatorId = null, acquisition = null, repeatHireOf = null, retryOf = null }) {
+    return { id, tenantId, ownerId: actor.user.id, title, brief, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf,
+      companyApprovalRequired: !!membership(actor, tenantId).company, status: 'draft', version: 1, scopeVersion: 1, createdAt: time, updatedAt: time,
+      messages: [{ id: randomUUID(), body: brief, authorId: actor.user.id, authorName: actor.user.name, createdAt: time }],
+      scopes: [{ version: 1, title, brief, createdAt: time }], events: [], offers: [], selectedOfferId: null, assignment: null, submissions: [] };
+  }
+  // "Hire it": buying a package creates a posted task reserved for the package's
+  // agent, with the frozen terms and the package offer already selected. Starting
+  // it goes through the normal start review (execution.cjs#checkStart).
+  async function buyPackage(actor, agentId, packageId, body, key) {
+    exactKeys(body, ['tenantId', 'expectedPackageVersion']);
+    membership(actor, body.tenantId, true);
+    positive(body.expectedPackageVersion, 'Package version');
+    text(agentId, 'Agent', 36, 36); text(packageId, 'Package', 36, 36);
+    return command(actor.user.id, key, ['buy-package', agentId, packageId, body], async () => membership(actor, body.tenantId, true), async repo => {
+      const time = now(), agent = await repo.get('agent', agentId, true);
+      if (!requestableAgent(agent, actor, time)) notFound();
+      const pkg = checkPurchasable(agent, packageId, (item, capability) => capabilityView(item, capability, time).qualification);
+      if (pkg.version !== body.expectedPackageVersion) fail(409, 'PACKAGE_CHANGED', 'The builder updated this package. Review the new terms before buying.');
+      await limits.consumeConversation(repo, body.tenantId, time);
+      const terms = packageTerms(pkg), capability = agent.capabilities.find(item => item.id === terms.capabilityId);
+      const task = newTask({ id: randomUUID(), actor, tenantId: body.tenantId, title: terms.title, brief: terms.included, time,
+        preferredAgentId: agent.id, acquisition: require('./acquisition.cjs').acquisition('package', agent, 'agent', time) });
+      task.status = 'posted';
+      task.package = { ...terms, criteria: terms.criteria.map(item => ({ ...item })), inputs: [...terms.inputs] };
+      task.acceptanceCriteria = terms.criteria.map(item => ({ ...item }));
+      task.scopes[0].acceptanceCriteria = task.acceptanceCriteria;
+      const offer = packageOffer({ agent, capability, qualification: capabilityView(agent, capability, time), task, terms, time });
+      task.offers.push(offer);
+      task.selectedOfferId = offer.id;
+      event(task, actor.user.id, 'task.created', time);
+      event(task, actor.user.id, 'package.bought', time, offer.id);
+      await saveTask(repo, task);
+      await repo.save('offer-index', { id: offer.id, ownerId: agent.ownerId, taskId: task.id, offerId: offer.id });
+      return { taskId: task.id, version: task.version, offerId: offer.id };
     }, `workspace-create:${body.tenantId}`);
   }
   async function mutateTask(actor, id, action, body, key) {
@@ -223,6 +259,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       let type;
       if (['scope', 'edit'].includes(action)) {
         if (task.scheduleId) fail(409, 'SCHEDULE_MANAGED', 'Recurring runs use an immutable brief. Create and test a new task to change it.');
+        assertNotPackage(task);
         if (task.assignment) fail(409, 'TASK_ASSIGNED', 'Authorized work requires an agreed change request.');
         if (action === 'edit' && task.status !== 'draft') fail(409, 'INVALID_TRANSITION', 'Only a draft can be edited.');
         task.title = text(body.title, 'Title', 1, 120); task.brief = text(body.brief, 'Brief', 1, 10000);
@@ -330,6 +367,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) fail(404, 'NOT_FOUND', 'This direct request is reserved for another builder.');
       if (excludedFrom(task, body.agentId)) fail(409, 'AGENT_EXCLUDED', 'The buyer asked for a different agent after this agent’s run failed.');
       if (task.assignment) fail(409, 'TASK_ASSIGNED', 'This task is already assigned.');
+      assertNotPackage(task);
       if (task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) fail(409, 'TASK_SELECTED', 'The buyer has selected an offer.');
       expected(task, body.expectedVersion);
       const capability = agent.capabilities.find(item => item.id === body.capabilityId);
@@ -512,7 +550,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       acquisition: require('./acquisition.cjs').createAcquisition(context),
       recordExposure: require('./fair-exposure.cjs').createExposure(context).record,
       addPortfolio: portfolio.add, decidePortfolio: portfolio.decide,
-      updateListing, savePackage: packages.savePackage, setPackageStatus: packages.setPackageStatus,
+      updateListing, buyPackage, savePackage: packages.savePackage, setPackageStatus: packages.setPackageStatus,
       addAgent, configure, opportunities, offers, accept: select, work: supplierTasks, quotes,
       quote
     }

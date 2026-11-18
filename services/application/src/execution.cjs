@@ -74,7 +74,9 @@ function createExecution(context) {
       task.input = { filename, size: bytes.length, sha256: hash(bytes), notes, operation: 'csv-normalize-v1', artifactId };
       await repo.save('artifact', { id: artifactId, ownerId: actor.user.id, tenantId: task.tenantId, taskId: id, filename, sha256: task.input.sha256, size: bytes.length, base64: bytes.toString('base64') });
       task.scopeVersion++; task.selectedOfferId = null; touch(task, now());
-      task.scopes.push({ version: task.scopeVersion, title: task.title, brief: task.brief, inputHash: task.input.sha256, inputArtifactId: artifactId, notes, filename, createdAt: now() });
+      task.scopes.push({ version: task.scopeVersion, title: task.title, brief: task.brief, inputHash: task.input.sha256, inputArtifactId: artifactId, notes, filename, createdAt: now(),
+        ...(task.package ? { acceptanceCriteria: task.acceptanceCriteria } : {}) });
+      if (task.package) require('./packages.cjs').rebindPackageOffer(task);
       event(task, actor.user.id, 'input.attached', now()); await saveTask(repo, task);
       return { taskId: id, version: task.version, sha256: task.input.sha256 };
     });
@@ -111,7 +113,8 @@ function createExecution(context) {
     if (!offer || offer.expiresAt <= now() || offer.scopeVersion !== task.scopeVersion || task.status !== 'posted') fail(409, 'OFFER_UNAVAILABLE', 'Select a valid offer for the current scope.');
     require('./orchestration.cjs').withinBudget(task, offer.amountMinor);
     const agent = offer.agentId ? await repo.get('agent', offer.agentId, true) : null;
-    if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !offer.runtimeBid) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
+    if (task.package?.inputs.includes('csv') && !task.input) fail(409, 'INPUT_REQUIRED', 'This package needs a CSV file. Attach it before starting.');
+    if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !(offer.runtimeBid || offer.packageId)) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
     if (agent.runtimeKind !== 'supplier-hosted' && (agent.runtimeKind !== 'bounded-csv-automation' || !task.input)) fail(409, 'INPUT_REQUIRED', 'The local CSV runtime requires an attached CSV.');
     if ((offer.currency || 'USD') !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'The operator changed quoting currency. Request a fresh offer.');
     if (offer.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'The operator changed its minimum. Request an updated offer.');
@@ -325,6 +328,7 @@ function createExecution(context) {
       } else {
         const notes = text(body.notes, 'Revision notes', 1, 2000);
         submission.unmetCriteria = unmetCriteriaInput(task, body.unmetCriteria);
+        require('./packages.cjs').checkPolishRound(task, submission.unmetCriteria);
         if (task.assignment.runtimeKind !== 'supplier-hosted' && !['Sort rows descending', 'Keep duplicate rows', 'Sort rows ascending'].includes(notes)) fail(422, 'UNSUPPORTED_REVISION', 'Choose a supported CSV revision: Sort rows descending, Keep duplicate rows, or Sort rows ascending.');
         submission.status = 'revision_requested'; task.assignment.status = 'queued'; task.assignment.attempt = 0;
         task.assignment.progress = `Revision queued: ${notes}`; task.assignment.completedAt = null;
