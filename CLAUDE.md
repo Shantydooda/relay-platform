@@ -2,20 +2,53 @@
 
 Claude Code reads this file automatically. Read `AGENTS.md` too: those are the engineering standards and they take priority. This file covers what Relay is, how the repo is organised, what's deployed, the rules that always apply, and where the work stands. Last updated 17 Nov 2026.
 
+## 0. Current working mode: local development (from 17 Nov 2026)
+
+The founder's instruction: **run Relay on localhost while the marketplace changes are built.**
+- Start it with `npm run start:local`. It serves http://127.0.0.1:4180 (override with `RELAY_POC_PORT`), with SQLite and local identity. Keep it running, and check every change there in a browser, at desktop and mobile widths.
+- Ollama isn't needed: chat discovery is being removed. If the server reports scoping as unavailable, that's expected.
+- Use disposable local accounts and data only. Never point local at the pilot's Supabase, and never copy pilot data in.
+- Don't ask for pilot deploys while this work is in progress. Push finished, tested increments to `codex/v1-production-foundation` as usual. Ask the founder to deploy only when a coherent slice is done and `npm test` plus `npm run test:postgres` pass on Node 24.
+- When a slice is ready to look at, tell the founder the local URL and what to try.
+
 ## 1. What Relay is
 
-Relay is a conversation-first marketplace for **agentic project work at any scale**. A buyer describes an outcome. Builders' agents quote on it. The buyer picks an offer, the agent does the work under scoped permissions, and the buyer reviews the delivery.
+Relay is a **browse-first marketplace for AI agents and agentic work at any scale**, like Hugging Face for discovery. Buyers browse agent cards that lead with verified evidence, then buy in one of three ways the builder offers:
+- **Use it:** a self-serve product, charged per checked run;
+- **Hire it:** a fixed-scope package with acceptance criteria agreed up front;
+- **Commission it:** a custom project via "Post a request", with milestones at scale.
+
+**Chat-based discovery was removed on 17 Nov 2026** (founder decision; `docs/specs/Marketplace-Model.md`). Don't bring it back as the front door. Any future assistant could only be a helper inside the request form.
 
 The agreed thesis (`docs/Product-Thesis.md`) has three layers:
 1. **Hub (free, public, the moat):** a trustworthy community like Hugging Face's. Agent cards carry evidence that is verified, never self-reported.
 2. **Transactions:** quotes, agreements, held payment, delivery review, payout. Relay takes a fee.
-3. **Managed outcomes:** Relay sells the result, routes it to builders and stands behind it. Relay keeps a margin.
+3. **Managed outcomes:** Relay sells the result, routes it to builders and stands behind it. Relay keeps a margin. Buyers reach it through "Post a request", not chat.
 
 Non-negotiable product principles:
 - **Evidence is verified, never self-reported.** Every number shows its sample size and time window. A rate appears only from 20 decided runs (`MIN_RATE_SAMPLE`). Failures always count.
 - **No pay-to-rank.** Ranking uses fit, verified outcomes and fair exposure for qualified newcomers.
 - **One engagement → milestones → work items** model for large projects (`docs/specs/Engagements-and-Milestones.md`; not built yet).
 - **Pilot and sandbox evidence is labelled as such** and never presented as paid-customer proof.
+
+### Marketplace layout (decided 17 Nov 2026)
+
+Hugging Face's browse pattern carrying Relay's evidence. The full spec is in `docs/specs/Marketplace-Model.md` → "Layout". **Design reference in the repo: `docs/design/marketplace/`**, with static HTML mockups (`browse.html`, `agent-page.html`), desktop and mobile screenshots, and the design source; read its README first. (The original canvas, https://claude.ai/artifact/MT5nZQNokuKusGRi3csHZx, needs the founder's login.) Its agents and numbers are illustrative only, so never ship them as data.
+- **Browse page:**
+  - Left filter rail: categories (seed first), ways to buy, a price range, works with (only connectors that really work), and evidence filters (passed Relay test, 20+ verified runs, repeat buyers, hosted on Relay).
+  - Right: a dense two-column list. Each row is `builder/agent-name` in monospace, then one meta line: category · ways to buy · from-price · evidence · version and when it was updated.
+  - Sorting by most verified runs, newest or price; no paid placement. "Post a request" at the end of the list.
+- **Hugging Face numbers become Relay evidence:**
+  - downloads → verified runs;
+  - likes → accepted share (from 20 runs) or raw counts below that; saves are never a trust signal;
+  - model size → ways to buy and the from-price;
+  - updated → agent version and when it was updated.
+  - New agents show "Passed Relay test · no runs yet" plus a "New" tag.
+- **Agent page, like a model card:**
+  - Header `builder / agent` with chips, and tabs: Agent card · Evidence · Packages · Versions · Discussion.
+  - The card holds: an evidence strip with denominators, what it does, inputs and output, checks run every time, the access it asks for, and results by version.
+  - A buying panel on the right: Use it, Hire it (packages), a custom quote link, and the builder.
+- Take the information architecture only, never Hugging Face's branding or visuals. While there are fewer than about 30 agents, show one more description line per row.
 
 Seed category: **B2B data & research**, with sales & marketing next (`docs/Seed-Category.md`). Builders can still offer any kind of work. The seed category only decides where Relay focuses its own go-to-market and evaluation effort.
 
@@ -41,7 +74,7 @@ These come from the founder's brief and stay in force until he changes them.
 | Old staging | `relay-staging` from `render.yaml` on `main` | Not the pilot. `render.yaml` doesn't describe `relay-pilot-app`. |
 | Local | `npm run start:local` (poc-api, SQLite) | Local execution, a sandbox payments harness and the local model (Ollama) for scoping. |
 
-What the pilot runs: `scoping: false` (no hosted assistant yet, decision pending), supplier execution off, payments off.
+What the pilot runs: `scoping: false` (no hosted assistant; no longer needed since chat discovery is being removed), supplier execution off, payments off.
 
 ## 4. Repository map
 
@@ -79,7 +112,7 @@ node --test path/to/file.test.cjs
 npm run start:local
 ```
 
-- Run `npm test` **and** `npm run test:postgres` on Node 24 before every deploy. CI (`.github/workflows/ci.yml`) runs both on every PR, on the Node version in `.nvmrc`: "Core and browser contracts" runs `npm audit --omit=dev`, `npm test` and `npm run test:web`, and "Native PostgreSQL and recovery" runs `db:local:setup` then `npm run test:postgres`. A green CI run is the full-suite evidence; a local run in a cloud container is not, because `initdb` refuses to run as root there and only Node 22 may be installed.
+- Run `npm test` **and** `npm run test:postgres` on Node 24 before every deploy. CI (`.github/workflows/ci.yml`) runs both on every PR, on the Node version in `.nvmrc`: "Core and browser contracts" runs `npm audit --omit=dev`, `npm test` and `npm run test:web`, and "Native PostgreSQL and recovery" runs `db:local:setup` then `npm run test:postgres`. A green CI run is the full-suite evidence; a run in a cloud container is not, because `initdb` refuses to run as root there and only Node 22 may be installed.
 - The acceptance work (PR #3) passed both CI jobs on Node 24. Earlier changes (start preflight, buyer pause, activity, agent card, retry) were pushed before CI covered them on this branch. Their next CI run is their first full run.
 - End-to-end tests use `services/poc-api/test/helpers/recommendation-flow.cjs`: a real localhost server and the real supplier SDK. Two builders are qualified on `csv-normalize-v1`. Options are `{ repository, now, autoAcceptAfterMs }`, and each test needs its own port.
 - Frontend tests load public JS into `vm` contexts (see `apps/poc-web/test/*.test.cjs`).
@@ -95,13 +128,12 @@ npm run start:local
 
 ## 7. State of the work
 
-**The live pilot runs `1ad3d8b`** until the founder deploys. On `codex/v1-production-foundation` but not deployed yet:
+Pushed to `codex/v1-production-foundation` (see `git log` for the head). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
 - the auth fix for Supabase's default email links (`01dc6da`);
 - the seed category and its matching vocabulary (`2793988`);
 - the fee rule, at 0% and not wired (`e99c5ce`);
 - the agent card v1 track record (`cb3444f`);
-- "Try another agent" after a failure (`c3a6cce`);
-- **acceptance criteria and exits**, from PR #3 (branch `claude/nice-sagan-pccp0j`). Merge that PR before this file is accurate on this point.
+- "Try another agent" after a failure (`c3a6cce`).
 
 Earlier and already live:
 - the outcome ledger;
@@ -113,16 +145,24 @@ Earlier and already live:
 - recommendation fixes;
 - landing thesis copy.
 
-**Acceptance criteria and exits** (policy: `docs/Decisions-Needed.md` §2; transitions: `docs/State-Machines.md`; code: `services/application/src/acceptance.cjs`, `apps/poc-web/public/acceptance-ui.js`):
+**Acceptance criteria and exits: done in PR #3** (branch `claude/nice-sagan-pccp0j`; merge it before this file is accurate on this point). The `docs/handoff/` patch is that PR's first commit; the PR finishes its to-do list and deletes the folder. Policy: `docs/Decisions-Needed.md` §2; transitions: `docs/State-Machines.md`; code: `services/application/src/acceptance.cjs`, `apps/poc-web/public/acceptance-ui.js`.
 1. A checklist of up to 12 acceptance criteria on the scope. Changing it is a scope change; authorized work keeps the copy frozen in its agreement.
 2. Fixes are free until the checklist is met. Revision requests name unmet criteria, and the runtime gets them on `claim`. The safety cap is 10 rounds for supplier-hosted runtimes.
 3. After 2 rounds the buyer can **end as unmet** (`BUYER_ENDED_UNMET`). It counts as failed and unlocks "try another agent". Restarting the same agent is refused, and the run is left out of the execution queue. Ending is refused while a payment is held.
 4. Auto-accept on buyer silence, behind `autoAcceptAfterMs`, stays **off**. No deployment sets it and no worker calls `reconcileAutoAccept`.
 
-Still open on it: connecting refunds to the end-as-unmet exit, and choosing the auto-accept review window before turning it on.
+Still open on it: connecting refunds to the end-as-unmet exit, and choosing the auto-accept review window before turning it on. The checklist editor currently sits with the brief in the conversation view; it moves to packages and the "Post a request" form as those are built.
 
-Next after that:
-- a UI/UX review (promised to the founder, not started);
+Next after that: **the marketplace model** (`docs/specs/Marketplace-Model.md`), in this order:
+- marketplace home, evidence-first cards, real routes, chat removed;
+- packages, reusing the acceptance work;
+- the "Post a request" form;
+- self-serve products for the seed category (on the workspace-apps foundation; independent security review before builder code or language-model runtimes);
+- subscriptions after payments are live.
+
+The UI/UX review is done: `docs/UX-Review-2026-11-17.md`. The marketplace decision supersedes most of it. Its quick fixes (Work status counts, notification badge, shimmer, plain buyer vocabulary) can run in parallel.
+
+Also queued:
 - wiring the fee schedule into offers, charge, ledger and payout in **one** change, verified by the Postgres payment suites;
 - the engagements and milestones model;
 - public hub pages (needs founder decisions);
@@ -132,7 +172,7 @@ Founder decisions still open (`docs/Decisions-Needed.md`):
 - the fee model (working assumption: tiered option B, all-in, live 0%);
 - the guarantee policy;
 - the funding choice when a buyer tries another agent (recommended: refund, then fund the new task);
-- the hosted assistant provider and data rules;
+- marketplace details: package and per-run fees, trial runs, flag thresholds, where self-serve runs execute;
 - auto-deploy and `render.yaml`;
 - when the public hub opens.
 
@@ -143,4 +183,4 @@ Founder decisions still open (`docs/Decisions-Needed.md`):
 - **Pilot capabilities are off on purpose** (scoping, execution, payments). Don't "fix" them by changing config.
 - **`render.yaml` describes the old staging service.** Syncing a blueprint could change live services, so don't.
 - Copy must never imply localhost or demo-only behaviour on the pilot, or promise outcomes the evidence doesn't support.
-- Keep `docs/` and the project docs in step when decisions change. The founder reads the claude.ai project `Relay`: `Product-Thesis`, `Decisions-Needed`, `Seed-Category`, `specs/*`, `QA-Audit-2026-11-15`, `Handoff-Acceptance-WIP`.
+- Keep `docs/` and the project docs in step when decisions change. The founder reads the claude.ai project `Relay` (mirrors of `Product-Thesis`, `Decisions-Needed`, `Seed-Category`, `specs/*`, the UX review and the audit). Claude Code can't read the project, so everything it needs lives in this repo.
