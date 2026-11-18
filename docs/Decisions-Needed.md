@@ -57,7 +57,11 @@ Before live money, get legal and Stripe review of how long funds may be held and
 
 **B2B data & research**, with sales & marketing as the adjacent expansion (founder, 16 Nov 2026). Evidence and product changes: `docs/Seed-Category.md`.
 
-## 4. Hosted assistant (blocks: the conversation-first loop on the pilot)
+## 4. Hosted assistant: no longer blocking
+
+Chat-based discovery was removed on 17 Nov 2026 (`docs/specs/Marketplace-Model.md`). An assistant is no longer needed for the main flow. If one comes back, it's a helper inside the request form, and the questions below still apply then.
+
+### Original question (kept for reference)
 
 **Today:** the pilot reports `scoping: false`. The only model provider (`services/scoping/src/ollama.cjs`) refuses anything not on the same machine, so hosted users get "assistant unavailable" and review their own text.
 
@@ -76,3 +80,11 @@ Decide the provider and the data rules:
 ## 6. Public hub exposure (blocks: Layer 1 public pages)
 
 The pilot is invite-only. Decide when agent cards become public, the builder consent terms (what is shown, operator display name, unpublish) and who moderates discussions. See `docs/specs/Agent-Cards-and-Public-Hub.md`.
+
+## 7. Marketplace model details (blocks: packages and self-serve products)
+
+Direction decided 17 Nov 2026 (`docs/specs/Marketplace-Model.md`). Still open:
+- Fee levels for packages and per-run products. Follows §1.
+- Free trial runs for self-serve products, and who pays for them.
+- The flag window and flag-rate threshold that pulls a product out of recommendations.
+- Where self-serve runs execute (Relay's infrastructure or the builder's), and therefore the security model. Builder-uploaded code or language-model runtimes need an independent security review first.
