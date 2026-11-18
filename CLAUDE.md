@@ -4,8 +4,14 @@ Claude Code reads this file automatically. Read `AGENTS.md` too: those are the e
 
 ## 0. Current working mode: local development (from 17 Nov 2026)
 
-The founder's instruction: **run Relay on localhost while the marketplace changes are built.**
-- Start it with `npm run start:local`. It serves http://127.0.0.1:4180 (override with `RELAY_POC_PORT`), with SQLite and local identity. Keep it running, and check every change there in a browser, at desktop and mobile widths.
+The founder's instruction: **run Relay inside your own Claude Code session while the marketplace changes are built.** Don't hand him terminal steps to run it himself unless he asks.
+- **At the start of every session**, start it yourself with `npm run start:local` as a background process. It serves http://127.0.0.1:4180 (override with `RELAY_POC_PORT`), with SQLite and local identity. Keep it running for the whole session, and restart it after changes the running server won't pick up.
+- **Set up the test accounts yourself:** a buyer and a builder, the builder with an agent connected through "Connect local CSV runtime". Post one request so offers, a delivery to review, the checklist and "End as unmet" can all be seen.
+- **Check every change yourself** in a headless browser (Playwright) at 1440 px and 390 px.
+- **Show the founder what changed:**
+  - In a **cloud session**, he can't open your localhost, so send him screenshots of each changed screen, desktop and mobile, with a line on what to look at.
+  - In a **local session on his Mac** (Claude Code started in `/Users/shantkevorkian/relay-platform`), he can open http://127.0.0.1:4180 himself, so give him the link and the test accounts' login details.
+- If port 4180 is taken (`EADDRINUSE`), an older Relay is still running. Find it with `lsof -nP -iTCP:4180 -sTCP:LISTEN` and stop it if it's yours; otherwise use another port.
 - Ollama isn't needed: chat discovery is being removed. If the server reports scoping as unavailable, that's expected.
 - Use disposable local accounts and data only. Never point local at the pilot's Supabase, and never copy pilot data in.
 - Don't ask for pilot deploys while this work is in progress. Push finished, tested increments to `codex/v1-production-foundation` as usual. Ask the founder to deploy only when a coherent slice is done and `npm test` plus `npm run test:postgres` pass on Node 24.
