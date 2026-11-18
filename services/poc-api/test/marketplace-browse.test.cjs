@@ -55,7 +55,10 @@ test('the marketplace lists real agents with the evidence Relay recorded, and pa
     assert.deepEqual(top.buyers, { total: 1, repeat: 0 });
     assert.equal(top.isNew, false);
     assert.equal(other.isNew, true);
-    assert.equal((await f.request('/api/marketplace?sort=price', f.buyer)).status, 400, 'there are no prices to sort by yet');
+    const byPrice = await f.request('/api/marketplace?sort=price', f.buyer);
+    assert.equal(byPrice.status, 200, 'packages give prices to sort by');
+    assert.ok(byPrice.body.agents.every(row => row.fromPrice === null), 'no packages here, so every agent is quoted per request');
+    assert.equal((await f.request('/api/marketplace?sort=cheapest', f.buyer)).status, 400);
     assert.equal((await f.request('/api/marketplace?sort=newest', f.buyer)).status, 200);
 
     // A builder sees their own listing marked as theirs.
