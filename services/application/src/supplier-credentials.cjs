@@ -82,6 +82,8 @@ function createCredentials({ repository, command, agentFor, expected, now, hash,
       agent.connectedAt = now();
       agent.runtimeKind = principal.transport === 'supplier-api' ? 'supplier-hosted' : 'bounded-csv-automation';
       agent.runtimeName = runtimeName;
+      // When this version first reported in: the marketplace shows "v1.3 · 2 days ago".
+      if (agent.runtimeVersion !== runtimeVersion || !agent.runtimeVersionSince) agent.runtimeVersionSince = now();
       agent.runtimeVersion = runtimeVersion;
       await repo.save('agent', agent);
       return { connected: true, agentId: agent.id, automaticRequested: agent.rules.automaticRequested,

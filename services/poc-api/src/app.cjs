@@ -20,6 +20,8 @@ const assets = {
   '/orchestration-ui.js':['orchestration-ui.js','text/javascript; charset=utf-8'],
   '/portfolio-ui.js':['portfolio-ui.js','text/javascript; charset=utf-8'],
   '/agent-market-ui.js':['agent-market-ui.js','text/javascript; charset=utf-8'],
+  '/marketplace-ui.js':['marketplace-ui.js','text/javascript; charset=utf-8'],
+  '/marketplace-ui.css':['marketplace-ui.css','text/css; charset=utf-8'],
   '/recurring-ui.js':['recurring-ui.js','text/javascript; charset=utf-8'],
   '/buyer-flow.js':['buyer-flow.js','text/javascript; charset=utf-8'],
   '/marketplace.js':['marketplace.js','text/javascript; charset=utf-8'],
@@ -131,8 +133,10 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       }
       if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed,features:store.features||{}});
       if (!managed && method === 'GET' && ['/drive/callback','/drive/picker'].includes(path)) res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
-      if(method==='GET'&&(Object.hasOwn(assets,path)||(managed&&path==='/auth/confirm'))) {
-        const [file,type]=assets[path==='/auth/confirm'?'/':path];
+      // Real links into the app: the page loads, then the browser reads the path.
+      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||['/post','/evidence'].includes(path);
+      if(method==='GET'&&(Object.hasOwn(assets,path)||appRoute||(managed&&path==='/auth/confirm'))) {
+        const [file,type]=assets[path==='/auth/confirm'||appRoute?'/':path];
         const content=await readFile(resolve(PUBLIC,file));
         res.writeHead(200,{'Content-Type':type});return res.end(content);
       }
@@ -342,6 +346,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if(store.marketplace){
         const market=store.marketplace,key=req.headers['idempotency-key'];
         if(path==='/api/agents'&&method==='GET')return send(200,{agents:await market.agents(actor)});
+        if(path==='/api/marketplace'&&method==='GET'&&market.browse)return send(200,await market.browse(actor,{sort:url.searchParams.get('sort')||'runs'}));
         if(path==='/api/agent-market'&&method==='GET')return send(200,await market.discover(actor,{savedOnly:url.searchParams.has('saved') ? ({true:true,false:false}[url.searchParams.get('saved')] ?? null) : false,q:url.searchParams.get('q')||'',category:url.searchParams.get('category')||'All agents',type:url.searchParams.get('type')||'All types',after:url.searchParams.get('after')||'',limit:Number(url.searchParams.get('limit')||25)}));
         const savedAgentPath = path.match(/^\/api\/agent-market\/([0-9a-f-]{36})\/saved$/);
         if (savedAgentPath && method === 'PATCH') return send(200, await market.saveAgent(actor, savedAgentPath[1], await jsonBody(req), key));

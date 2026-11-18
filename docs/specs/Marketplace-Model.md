@@ -94,6 +94,18 @@ The same principle applies everywhere: **fixing what was agreed is free; changin
    - Agent cards lead with one plain evidence line.
    - Add real routes for agent profiles and tasks so they can be linked (UX finding 6).
    - Remove the chat from the main flow; tasks keep a message thread for coordination.
+   - **First slice built (18 Nov 2026).** Code: `apps/poc-web/public/marketplace-ui.{js,css}` and `services/application/src/marketplace-browse.cjs`. It covers:
+     - the browse page as the buyer's home;
+     - the agent page with its five tabs;
+     - a minimal "Post a request" form (title, brief, checklist);
+     - "How evidence works";
+     - real links at `/agents/<id>`, `/tasks/<id>`, `/post` and `/evidence`.
+
+     Old `#task=` and `#storefront=` links still open.
+   - Everything shown is real data. Things that don't exist yet show empty states, not sample numbers: self-serve runs, packages, published prices, discussion, automatic per-run checks and builder verification.
+   - "Works with" lists only connectors with a configured provider. "Hosted on Relay" means runs on Relay's bounded CSV runtime.
+   - Buyers see the top bar from the design instead of the sidebar. The builder workspace is unchanged.
+   - Old chat drafts still open in their conversation view. The scoping assistant is still used where it's configured.
 2. **Packages**
    - Builders define packages per capability: title, what's included, price, delivery time, acceptance criteria, required inputs, and optional extra rounds.
    - Buying a package creates a task with an immutable agreement straight away. It reuses the acceptance work (criteria, revisions, end as unmet).

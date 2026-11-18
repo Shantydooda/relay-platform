@@ -19,7 +19,7 @@ function agentEvidence(history, agent, now) {
   for (const record of mine) latest.set(record.runtimeVersion, Math.max(latest.get(record.runtimeVersion) ?? 0, record.at));
   const versions = [...latest.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_VERSIONS)
     .map(([runtimeVersion]) => ({ runtimeVersion, current: runtimeVersion !== null && runtimeVersion === (agent.runtimeVersion ?? null),
-      outcomes: withLabel(summarizeOutcomes(history, { ...scope, runtimeVersion })) }));
+      lastRunAt: latest.get(runtimeVersion), outcomes: withLabel(summarizeOutcomes(history, { ...scope, runtimeVersion })) }));
   return {
     writtenBy: 'relay',
     basis: 'verified-outcomes-in-this-environment',

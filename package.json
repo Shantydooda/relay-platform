@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "start:local": "npm start --workspace @relay/poc-api",
+    "demo:marketplace": "node services/poc-api/scripts/marketplace-demo.cjs",
     "start:poc": "npm start --workspace @relay/poc-api",
     "start:staging": "node services/staging-api/src/server.cjs",
     "test": "node --test --test-concurrency=2 packages/ui/test/*.test.cjs packages/domain/test/*.test.cjs packages/contracts/test/*.test.cjs services/api/test/*.test.cjs services/poc-api/test/*.test.cjs services/staging-api/test/*.test.cjs services/application/test/*.test.cjs services/agent-runtime/test/*.test.cjs packages/supplier-sdk/test/*.test.cjs services/link-runtime/test/*.test.cjs services/model-runtime/test/*.test.cjs services/connectors/test/*.test.cjs services/app-runtime/test/*.test.cjs services/operations/test/*.test.cjs services/pilot-api/test/*.test.cjs",

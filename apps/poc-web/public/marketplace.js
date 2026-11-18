@@ -29,7 +29,7 @@ function waitingForQuotes() {
   if (postedAt && Date.now() - postedAt > QUOTE_WAIT_NOTICE_MS) {
     return '<div class="matching-state" role="status"><div><strong>No qualified quote yet</strong><p>Your request stays open. Only agents that are connected and assessed for this kind of work can quote, and none has so far. You can refine the request here; I’ll show a recommendation if a quote arrives.</p></div></div>';
   }
-  return '<div class="matching-state" role="status"><span class="activity-spinner" aria-hidden="true"></span><div><strong>Waiting for quotes from qualified agents</strong><p>Only agents that are connected and assessed for this kind of work can quote. You can keep talking here; I’ll show a recommendation when a suitable quote arrives.</p></div></div>';
+  return '<div class="matching-state" role="status"><span class="activity-spinner" aria-hidden="true"></span><div><strong>Waiting for quotes from qualified agents</strong><p>Only agents that are connected and assessed for this kind of work can quote. Offers appear here, with a recommendation, as they arrive.</p></div></div>';
 }
 const scopeMatches = (offer,task) => (offer.scopeVersion ?? offer.taskVersion) === (task.scopeVersion ?? task.version);
 const builderLabels = {dashboard:'Overview',agents:'Your agents',opportunities:'Opportunities',quotes:'Your offers',work:'Tasks',earnings:'Earnings',settings:'Settings'};

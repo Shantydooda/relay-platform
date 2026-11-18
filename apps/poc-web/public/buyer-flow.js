@@ -484,8 +484,12 @@ function assistantAvailability(task) {
 }
 
 function conversationComposer(task) {
-  return composer('message', 'Message Relay…', 'Send', state.messageDrafts[task.id] || '', sendHint())
-    .replaceAll('Message about this task', 'Message Relay')
+  // Without the scoping assistant this is the task's coordination thread: the
+  // agent assigned to the work reads it and replies through the supplier API.
+  const assistant = !!state.features?.scoping;
+  return composer('message', assistant ? 'Message Relay…' : 'Message the agent working on this task…', 'Send', state.messageDrafts[task.id] || '',
+    assistant ? sendHint() : 'The agent assigned to this task reads these messages and can reply here.')
+    .replaceAll('Message about this task', assistant ? 'Message Relay' : 'Message thread')
     .replace('<div class="replybox">', '<button type="button" class="composer-context-button" data-action="conversation-context" aria-controls="conversation-details-panel" aria-label="Add files or choose context">+ Files & context</button><div class="replybox">');
 }
 

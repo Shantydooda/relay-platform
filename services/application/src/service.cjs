@@ -479,10 +479,13 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const acceptance = createAcceptance({ ...context, saveTask, assertUnfunded });
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
+  const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView,
+    connectors: require('./marketplace-browse.cjs').workingConnectors({ capabilities, driveProvider, attioProvider }) });
   return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),
+      browse: marketBrowse.browse,
       agents: actor => repository.read(async repo => Promise.all((await repo.list('agent', 'owner_id', actor.user.id)).map(async agent => ({ ...agentView(agent, now()), portfolio: (await repo.portfolioRecords('agentId', agent.id)).map(({ history, ...item }) => item) })))),
       catalog: actor => repository.read(async repo => {
         if (!actor?.user?.id || actor.recoveryRequired) fail(403, 'FORBIDDEN', 'An active account is required.');
@@ -500,7 +503,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         const time = now();
         const history = await require('./fair-exposure.cjs').operatorHistory(repo, agent.ownerId);
         return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: agent.ownerId === actor.user.id,
-          trackRecord: require('./agent-card.cjs').agentEvidence(history, agent, time) };
+          trackRecord: require('./agent-card.cjs').agentEvidence(history, agent, time), market: await marketBrowse.row(repo, actor, agent) };
       }),
       acquisition: require('./acquisition.cjs').createAcquisition(context),
       recordExposure: require('./fair-exposure.cjs').createExposure(context).record,

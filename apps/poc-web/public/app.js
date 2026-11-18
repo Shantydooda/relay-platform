@@ -25,7 +25,7 @@ function createClientState() {
     companyBudget: null, team: null, teamHistory: null,
     tenantId: null, invitationPreview: null, teamInviteToken: null,
     teamInviteLink: null, teamHistoryBefore: null, teamRemoval: null,
-    buyerTab: 'request', builderTab: 'dashboard', editing: false,
+    buyerTab: 'market', builderTab: 'dashboard', editing: false,
     editingTitleTouched: false, addingAgent: false, agentDraft: null,
     agentIntroPart: 'profile', setupAgentId: null, setupStage: 2,
     returnAgentId: null, preferredAgent: null, agentMarketQuery: '',
@@ -120,6 +120,7 @@ function header() {
   if (!user || state.auth) return `<header class="auth-topbar"><button class="brand" data-action="home" aria-label="Relay home">relay</button><div><span>${state.auth === 'signup' ? 'Already have an account?' : 'New to Relay?'}</span><button class="quiet" data-action="${state.auth === 'signup' ? 'login' : 'signup'}">${state.auth === 'signup' ? 'Log in' : 'Create an account'}</button></div></header>`;
 
   const builderSide = user.workspace === 'builder';
+  if (!builderSide && typeof RelayMarketplace === 'object') return RelayMarketplace.topbar(user);
   const community = globalThis.document?.documentElement?.dataset.design === 'community';
   const company = activeCompanyMembership();
   const active = builderSide
@@ -166,7 +167,7 @@ function newTask() {
 }
 
 function taskList() { return taskDashboard(); }
-function buyerPage(){if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
+function buyerPage(){if(typeof RelayMarketplace==='object'&&!state.detail){if(state.buyerTab==='market')return state.agentPageId?RelayMarketplace.agent():RelayMarketplace.browse();if(state.buyerTab==='request')return RelayMarketplace.post();if(state.buyerTab==='evidence')return RelayMarketplace.evidencePage();}if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
 function focusOfferReview(offerId, reviewing) {
  const action = reviewing ? 'accept-offer' : 'review-offer';
  const target = [...root.querySelectorAll('[data-action]')].find(button =>
@@ -194,7 +195,8 @@ function render(){
  const oldId = root.querySelector('.buyer-conversation')?.dataset.taskId;
  const scrollTop = scrollOwner.scrollTop;
  document.body.classList.toggle('workspace-open',!!state.account&&!state.auth);
- root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${state.account.user.workspace === 'buyer' ? 'buyer-workspace' : ''} ${activeCompanyMembership()?'company-workspace-active':''}"><div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?builder():buyerPage()}</main></div>`);
+ document.body.classList.toggle('market-open',!!state.account&&!state.auth&&state.account.user.workspace==='buyer'&&typeof RelayMarketplace==='object');
+ root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${state.account.user.workspace === 'buyer' ? 'buyer-workspace mk-shell' : ''} ${activeCompanyMembership()?'company-workspace-active':''}">${state.account.user.workspace === 'buyer' && typeof RelayMarketplace === 'object' ? '' : `<div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>`}${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?builder():buyerPage()}</main></div>`);
  if (typeof RelayLanding === 'object') RelayLanding.mount?.(root);
  if (typeof observeOfferExposure === 'function') observeOfferExposure();
  if (!changedView) root.querySelectorAll('.canvas details').forEach(item => {
@@ -207,6 +209,7 @@ function render(){
    );
  }
  settleWorkspaceNavigation(changedView);
+ if (typeof RelayMarketplace === 'object') RelayMarketplace.sync();
  if(changedView&&typeof window!=='undefined')window.scrollTo?.(0,0);
  const next = root.querySelector('.thread-history');
  if (next) scrollOwner.scrollTop = state.scrollToLatest ? scrollOwner.scrollHeight : changedView ? 0 : scrollTop;
@@ -251,7 +254,8 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   state.activity=state.account.user.workspace!=='builder'&&state.buyerTab==='activity'?await api('/api/activity'):null;
   if(state.features?.recurring){state.schedules=tenant?(await api('/api/schedules?tenantId='+encodeURIComponent(tenant.id))).schedules:[];state.executionQueue=await api('/api/execution-queue');}
   if(state.features?.workspaceApps)state.workspaceApps=tenant?await api('/api/workspace-apps?tenantId='+encodeURIComponent(tenant.id)):null;
-  if(state.buyerTab==='market'&&state.account.user.workspace!=='builder'){
+  if(typeof RelayMarketplace==='object')await RelayMarketplace.load(state);
+  else if(state.buyerTab==='market'&&state.account.user.workspace!=='builder'){
     clearTimeout(RelayAgentMarket.searchTimer);
     const revision=RelayAgentMarket.searchRevision=(RelayAgentMarket.searchRevision||0)+1;
     const query=RelayAgentMarket.query(), owner=state.account.user.id;
@@ -506,6 +510,11 @@ root.addEventListener('submit',event=>{
       const capabilityId=data.get('capabilityId');if(!capabilityId)throw new Error('Choose the capability supporting this offer.');const agent=state.agents.find(a=>a.capabilities.some(c=>c.id===capabilityId));
       await command(`/api/tasks/${form.dataset.quote}/offers`,'POST',{agentId:agent.id,capabilityId,expectedVersion:Number(form.dataset.version),amountMinor:Math.round(Number(data.get('price'))*100),currency:data.get('currency')||'USD',deliveryMinutes:Number(data.get('minutes')),proposal:data.get('proposal')});
       state.builderTab='quotes';await refresh();render();notice.textContent='Offer sent to the buyer.';
+    }else if(form.id==='post-request'){
+      await RelayMarketplace.submitPost(form);
+    }else if(form.id==='market-search'){
+      RelayMarketplace.filters().q=String(data.get('q')||'').trim();
+      if(state.buyerTab==='market'&&!state.agentPageId&&!state.detail)RelayMarketplace.refreshList();else await RelayMarketplace.go('/');
     }else if(form.id==='message'){
       await chatController().message(String(data.get('brief')));
     }else if(form.id==='edit'){
@@ -698,7 +707,7 @@ root.addEventListener('click',event=>{
     }
     else if(action==='download-supplier-config'){RelaySupplier.download(button.dataset.id);}
     else if(action==='hide-supplier-key'){RelaySupplier.clear();render();}
-    else if(action==='home'||action==='new'){state.buyerTab='request';state.setupAgentId=null;state.addingAgent=false;state.auth=state.account?.recoveryRequired?'reset':null;state.intent=null;state.detail=null;state.editing=false;location.hash='';render();}
+    else if(action==='home'||action==='new'){state.buyerTab=state.account&&typeof RelayMarketplace==='object'?'market':'request';state.agentPageId=null;state.setupAgentId=null;state.addingAgent=false;state.auth=state.account?.recoveryRequired?'reset':null;state.intent=null;state.detail=null;state.editing=false;location.hash='';render();}
     else if(action==='login'||action==='signup'||action==='signup-buyer'){state.auth=action==='login'?'login':'signup';if(action==='signup-buyer')state.intent='buyer';render();}
     else if(action==='recover'){state.auth='recover';render();}
     else if(action==='builder'){state.intent='builder';state.auth='signup';render();}
@@ -715,7 +724,7 @@ root.addEventListener('click',event=>{
     else if(action==='spending-page'){const current=state.spendingHistory;state.spendingHistory=await api('/api/payments/history?tenantId='+encodeURIComponent(current.tenantId)+'&snapshot='+encodeURIComponent(current.snapshotId)+'&page='+encodeURIComponent(button.dataset.page));render();}
     else if(action==='spending-all'){state.spendingFrom='';state.spendingTo='';await refresh(null);render();}
     else if(action==='buyer-nav'){
-      state.buyerTab=button.dataset.tab;
+      state.buyerTab=button.dataset.tab;state.agentPageId=null;
       if(state.buyerTab==='business' && typeof RelayTeams==='object'){
         state.tenantId=RelayTeams.entryTenant(state.account.memberships,state.tenantId);
         state.budgetAfter='';
@@ -726,11 +735,12 @@ root.addEventListener('click',event=>{
       state.reviewStart=false;
       state.reviewOffer=null;
       if(state.buyerTab!=='request'){state.preferredAgent=null;state.retryFrom=null;}
-      location.hash=['tasks','market','scheduled','apps','tools','billing'].includes(state.buyerTab)?state.buyerTab:'';
+      if(typeof RelayMarketplace==='object'&&location.pathname!=='/')history.pushState(null,'','/');
+      location.hash=['tasks','scheduled','apps','tools','billing','activity'].includes(state.buyerTab)?state.buyerTab:'';
       await refresh(null);
       render();
     }
-    else if(action==='task'){state.reviewStart=false;state.editing=false;await refresh(button.dataset.id);state.buyerTab=state.detail.task.status==='draft'?'request':'tasks';location.hash=`${state.detail.task.status==='draft'?'chat':'task'}=${button.dataset.id}`;render();}
+    else if(action==='task'){state.reviewStart=false;state.editing=false;await refresh(button.dataset.id);state.buyerTab=state.detail.task.status==='draft'?'request':'tasks';if(typeof RelayMarketplace!=='object')location.hash=`${state.detail.task.status==='draft'?'chat':'task'}=${button.dataset.id}`;render();}
     else if(action==='builder-tab'){state.setupAgentId=null;state.addingAgent=false;location.hash='';state.builderTab=button.dataset.tab;await refresh();render();}
     else if(action==='add-agent'){state.setupAgentId=null;state.addingAgent=true;state.agentIntroPart='profile';location.hash='agent-new';try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}render();}
     else if(action==='continue-capabilities'){const form=document.getElementById('agent');if(!form.reportValidity())return;captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();}
@@ -833,9 +843,64 @@ async function boot(){
     if(location.hash==='#payment-recovery')state.recoveryOpen=true;
     if(location.hash==='#agent-new')state.addingAgent=true;if(location.hash==='#tasks')state.buyerTab='tasks';
     const setup=location.hash.match(/^#agent=([0-9a-f-]{36})&step=([1-3])$/);if(setup){state.setupAgentId=setup[1];state.setupStage=Number(setup[2]);}
-    const id=location.hash.match(/^#(?:task|chat)=([0-9a-f-]{36})$/)?.[1];await refresh(id);if(state.addingAgent){try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}}}
+    if(['#activity'].includes(location.hash))state.buyerTab='activity';
+    const routed=typeof RelayMarketplace==='object'?RelayMarketplace.apply(RelayMarketplace.parse()):null;
+    const id=routed||location.hash.match(/^#(?:task|chat)=([0-9a-f-]{36})$/)?.[1];await refresh(id);if(state.addingAgent){try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}}}
   catch(error){if(error.status!==401)notice.textContent=error.message;}
   render();
+}
+// Marketplace: real links, filters and the agent page (marketplace-ui.js).
+if (typeof RelayMarketplace === 'object') {
+  root.addEventListener('click', event => {
+    const link = event.target.closest('a[data-route]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const url = new URL(link.href);
+    if (url.origin !== location.origin) return;
+    event.preventDefault();
+    link.closest('details')?.removeAttribute('open');
+    if (link.dataset.tab) {
+      Object.assign(state, { buyerTab: link.dataset.tab, detail: null, agentPageId: null, editing: false, reviewOffer: null });
+      history.pushState(null, '', '/#' + link.dataset.tab);
+      run(async () => { await refresh(null); render(); });
+      return;
+    }
+    run(() => RelayMarketplace.go(url.pathname));
+  });
+  root.addEventListener('click', event => {
+    const button = event.target.closest('[data-action^="market-"]');
+    if (!button) return;
+    const action = button.dataset.action, f = RelayMarketplace.filters();
+    if (action === 'market-filter') {
+      const list = f[button.dataset.group], value = button.dataset.value;
+      f[button.dataset.group] = list.includes(value) ? list.filter(item => item !== value) : [...list, value];
+      RelayMarketplace.refreshList();
+      root.querySelector(`[data-action="market-filter"][data-group="${button.dataset.group}"][data-value="${CSS.escape(value)}"]`)?.focus();
+    } else if (action === 'market-rail-tab') { f.railTab = button.dataset.tab; RelayMarketplace.refreshList(); root.querySelector(`[data-action="market-rail-tab"][data-tab="${button.dataset.tab}"]`)?.focus(); }
+    else if (action === 'market-more-categories') { f.allCategories = true; RelayMarketplace.refreshList(); }
+    else if (action === 'market-clear') { Object.assign(f, { q: '', categories: [], ways: [], works: [], evidence: [] }); RelayMarketplace.refreshList(); }
+    else if (action === 'market-agent-tab') { state.agentTab = button.dataset.tab; render(); root.querySelector(`[data-action="market-agent-tab"][data-tab="${button.dataset.tab}"]`)?.focus(); }
+    else if (action === 'market-copy-link') {
+      const link = `${location.origin}/agents/${button.dataset.id}`;
+      navigator.clipboard?.writeText(link).then(() => { notice.textContent = 'Link copied. It opens for signed-in members of this Relay workspace.'; }, () => { notice.textContent = link; });
+    } else if (action === 'market-quote') {
+      const m = state.agentPage?.market;
+      if (!m || state.agentPage.id !== button.dataset.id) return;
+      state.preferredAgent = { id: m.id, name: m.name, operatorName: m.builder, preferenceMode: 'agent', discoverySource: 'storefront' };
+      state.retryFrom = null; state.postDraft = null; state.postTaskId = null;
+      run(() => RelayMarketplace.go('/post'));
+    } else if (action === 'market-post-open') { state.preferredAgent = null; state.postTaskId = null; render(); }
+  });
+  root.addEventListener('input', event => {
+    if (!event.target.matches('[data-market-name], #market-search-input')) return;
+    RelayMarketplace.filters().q = event.target.value;
+    if (state.buyerTab === 'market' && !state.agentPageId && !state.detail) RelayMarketplace.refreshList();
+  });
+  root.addEventListener('change', event => {
+    if (!event.target.matches('[data-market-sort]')) return;
+    state.marketSort = event.target.value;
+    run(async () => { await refresh(null); RelayMarketplace.refreshList(); root.querySelector('[data-market-sort]')?.focus(); });
+  });
+  window.addEventListener('popstate', () => { if (state.account && !state.auth) run(() => RelayMarketplace.follow()); });
 }
 boot();
 
