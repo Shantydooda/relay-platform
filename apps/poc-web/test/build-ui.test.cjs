@@ -57,3 +57,28 @@ test('the shell marks the current section and offers sit under Opportunities', (
   assert.match(html, /Waiting for the buyer/);
   assert.match(html, />Projects</);
 });
+
+// The Build pages use the same parts as the buyer pages: browse cards, list rows, stat strip.
+test('Build pages reuse the marketplace look, not the old workspace panels', () => {
+  const live = agent({ capabilities: [{ qualification: 'qualified', category: 'Data' }], listingStatus: 'published' });
+  const b = build({ account: { user: { name: 'Test Builder' } }, agents: [live, agent({ id: 'a2', name: 'Draft One' })],
+    quotes: [{ title: 'T', agentName: 'A', amountMinor: 5000, currency: 'USD', deliveryMinutes: 30, status: 'pending' }],
+    work: [{ id: 'w1', title: 'Clean export', agentName: 'CSV Cleaner', status: 'selected', amountMinor: 2500, currency: 'USD' }], opportunities: [] });
+  const agents = b.agentsPage();
+  assert.match(agents, /class="mk-list"/);
+  assert.match(agents, /mk-handle">test-builder\/csv-cleaner</);
+  const dash = b.dashboard();
+  assert.match(dash, /class="mk-strip/);
+  assert.match(dash, /class="mk-threads"/);
+  assert.match(dash, /Draft One/, 'unfinished agents need attention');
+  assert.doesNotMatch(dash + agents + b.offers() + b.projects() + b.earnings() + b.settings(), /class="panel/);
+  const shell = b.shell('agents', 'Agents', 'Lede', '', '');
+  assert.match(shell, /<h1>Agents <span class="mk-total">2<\/span><\/h1>/);
+  assert.match(b.projects(), /Clean export/);
+});
+
+test('an agent’s setup page is headed builder/agent, with no section count', () => {
+  const b = build({ account: { user: { name: 'Test Builder' } }, agents: [agent()], setupAgentId: 'a1' });
+  const html = b.shell('agents', b.agentTitle(agent()), 'Draft', '', '');
+  assert.match(html, /test-builder\/csv-cleaner<\/span><\/h1>/);
+});

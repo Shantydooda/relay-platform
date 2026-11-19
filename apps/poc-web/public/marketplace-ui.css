@@ -518,44 +518,96 @@ html[data-appearance] body.market-open #app .mk-price-track input[type=range] { 
 }
 
 /* Build area: a builder's own pages, left menu like Hugging Face's settings. */
+/* ---- Build: a builder's pages, in the same look as the buyer pages ----------
+   Left menu like the browse rail; the main column uses the browse heading, cards,
+   list rows and stat strip. Older workspace parts shown inside Build (agent setup,
+   project details, earnings) are flattened to the same cards, buttons and fields. */
 body.market-open .workspace-content.mk-shell > .canvas:has(.mk-build) { max-width: none; padding: 0; }
-.mk-build { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: calc(100dvh - 65px); }
-.mk-build-nav { display: flex; flex-direction: column; gap: 2px; padding: 24px 14px; border-right: 1px solid var(--mk-border); background: var(--mk-rail); }
-html[data-appearance] body.market-open #app .mk-build-nav a { display: block; padding: 8px 12px; border-radius: 8px; color: var(--mk-text); font-size: 14px; text-decoration: none; }
-html[data-appearance] body.market-open #app .mk-build-nav a:hover { background: var(--mk-accent-soft); }
+.mk-build { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100dvh - 65px); }
+.mk-build-nav { display: flex; flex-direction: column; gap: 2px; padding: 28px 20px; border-right: 1px solid var(--mk-border); background: var(--mk-rail); font-size: 15px; }
+.mk-build-who { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; padding: 0 8px; }
+.mk-build-who .mk-handle { font-size: 14px; }
+html[data-appearance] body.market-open #app .mk-build-nav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 8px; color: var(--mk-muted); text-decoration: none; }
+html[data-appearance] body.market-open #app .mk-build-nav a:hover { color: var(--mk-text); background: var(--mk-bg); }
 html[data-appearance] body.market-open #app .mk-build-nav a.active { background: var(--mk-ink); color: var(--mk-on-ink); font-weight: 600; }
-.mk-build-main { min-width: 0; max-width: 1080px; padding: 28px clamp(16px, 3vw, 40px) 64px; }
+html[data-appearance] body.market-open #app .mk-build-nav a.active .mk-count { color: inherit; opacity: 0.75; }
+.mk-build-main { min-width: 0; max-width: 1180px; padding: 32px; box-sizing: border-box; }
 .mk-build-main .market-workspace { padding: 0; max-width: none; }
-.mk-build-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
-.mk-build-head h1 { margin: 0; font-size: 26px; color: var(--mk-text); }
-.mk-build-head p { margin: 6px 0 0; color: var(--mk-muted); font-size: 14px; }
-html[data-appearance] body.market-open #app a.mk-publish { text-decoration: none; display: inline-block; }
-.mk-build-agents { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.mk-build-agent { border: 1px solid var(--mk-row-border); border-radius: 12px; padding: 16px; background: var(--mk-bg); }
-.mk-build-agent p { margin: 8px 0 0; color: var(--mk-text); font-size: 14px; }
-.mk-build-agent .mk-meta { color: var(--mk-muted); }
-.mk-build-agent-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.mk-build-agent-head .mk-mono { font-family: var(--mk-mono); font-size: 15px; overflow-wrap: anywhere; }
-.mk-build-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
-.mk-status { flex: none; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--mk-border); color: var(--mk-muted); white-space: nowrap; }
-.mk-status-live { color: var(--mk-good); border-color: var(--mk-good); }
-.mk-status-ready { color: var(--mk-accent); border-color: var(--mk-accent); }
-.mk-build-section { margin-top: 28px; }
-.mk-build-section h2 { font-size: 17px; color: var(--mk-text); margin: 0 0 10px; }
-.mk-build-offers { list-style: none; margin: 0; padding: 0; border: 1px solid var(--mk-row-border); border-radius: 12px; }
-.mk-build-offers li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--mk-row-border); }
-.mk-build-offers li:first-child { border-top: 0; }
-.mk-build-offers li > div { flex: 1; min-width: 0; }
-.mk-build-offers strong { color: var(--mk-text); }
-.mk-build-offers .mk-meta { margin-top: 4px; }
-.mk-opportunity .mk-meta { margin: 4px 0 8px; }
+.mk-build-head { justify-content: space-between; align-items: flex-start; }
+.mk-build-head .mk-caption { margin-top: 4px; font-size: 13px; }
+.mk-build-caption { margin: -8px 0 16px; }
+.mk-build-strip { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+html[data-appearance] body.market-open #app .mk-build-strip a.mk-stat { color: var(--mk-text); text-decoration: none; background: var(--mk-bg); }
+html[data-appearance] body.market-open #app .mk-build-strip a.mk-stat:hover { border-color: var(--mk-muted); }
+.mk-build-section { margin-top: 32px; }
+.mk-build-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.mk-build-section-head h2 { margin: 0; font-size: 18px; }
+.mk-build-section .mk-empty-note { margin: 0; }
+html[data-appearance] body.market-open #app .mk-build :is(.mk-next, .mk-publish) { text-decoration: none; }
+.mk-thread-muted { opacity: 0.7; }
+
+/* Agents: the browse card plus owner actions. */
+.mk-build-card { display: flex; flex-direction: column; }
+.mk-build-card .mk-status { margin-left: auto; }
+.mk-build-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: auto; padding-top: 14px; }
+html[data-appearance] body.market-open #app .mk-build-actions .mk-chip { padding: 5px 12px; font-size: 13px; font-weight: 600; }
+.mk-build-note { flex-basis: 100%; font-size: 12px; color: var(--mk-muted); }
+.mk-status { flex: none; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--mk-border); color: var(--mk-muted); white-space: nowrap; }
+.mk-status-live { color: var(--mk-good); border-color: currentColor; }
+.mk-status-ready { color: var(--mk-accent); border-color: currentColor; }
+
+/* Opportunities and projects: list rows that open in place. */
+.mk-build-opportunity .mk-thread { grid-template-columns: 56px minmax(0, 1fr); }
+.mk-build-checklist, .mk-build-offer-form { display: block; margin-top: 8px; font-size: 13px; }
+.mk-build-checklist :is(strong, h3, h4) { font-size: 13px; }
+.mk-build-checklist ul { margin: 4px 0; padding-left: 18px; color: var(--mk-text); }
+.mk-build-offer-form details { border-top: 1px solid var(--mk-row-border); padding-top: 10px; margin-top: 4px; }
+.mk-build-offer-form summary, .mk-build-main details > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--mk-accent); }
+.mk-build-project { border-radius: 12px; }
+.mk-build-main details.mk-build-project > summary { list-style: none; display: block; color: var(--mk-text); font-weight: 400; font-size: inherit; }
+.mk-build-project > summary::-webkit-details-marker { display: none; }
+.mk-build-project[open] > summary .mk-thread { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.mk-build-project > :not(summary) { margin: 0 !important; border: 1px solid var(--mk-row-border) !important; border-top: 0 !important; border-radius: 0 0 12px 12px !important; padding: 16px 18px 18px 72px !important; }
+.mk-build-steps { margin: 0 0 12px; padding-left: 20px; line-height: 1.8; font-size: 14px; }
+
+/* The Build header already names the page; the old setup hero and agent picker repeat it. */
+.mk-build-main :is(.supplier-intro, .registry-toolbar) { display: none; }
+.mk-build-title { font-size: 24px; font-weight: 600; }
+
+/* Older workspace parts inside Build, flattened to the marketplace look. */
+html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-form, .readiness, .offer-card, .business-card, .delivery-submission, .delivery-file, .blocked-note, .registry-toolbar, .delivery-placeholder) {
+  color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-row-border); border-radius: 12px; padding: 16px 18px; box-shadow: none; transform: none; }
+html[data-appearance] body.market-open #app .mk-build-main :is(.blocked-note, .delivery-placeholder) { background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-build-main .panel .panel { background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-build-main :is(h2, h3) { color: var(--mk-text); letter-spacing: 0; }
+html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-form, .readiness) h2 { font-size: 18px; font-weight: 600; margin: 4px 0 8px; }
+html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-form, .readiness) h3 { font-size: 15px; font-weight: 600; }
+html[data-appearance] body.market-open #app .mk-build-main :is(p, .hint, small, li) { font-size: 14px; line-height: 1.55; }
+html[data-appearance] body.market-open #app .mk-build-main :is(.hint, small, .muted, .eyebrow) { color: var(--mk-muted); }
+html[data-appearance] body.market-open #app .mk-build-main .eyebrow { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+html[data-appearance] body.market-open #app .mk-build-main .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--mk-border); background: transparent; color: var(--mk-muted); }
+html[data-appearance] body.market-open #app .mk-build-main button:not([class*='mk-']) { font: inherit; font-size: 13px; font-weight: 600; min-height: 0; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 8px; padding: 6px 12px; box-shadow: none; cursor: pointer; }
+html[data-appearance] body.market-open #app .mk-build-main button:not([class*='mk-']):hover { border-color: var(--mk-muted); background: var(--mk-bg); }
+html[data-appearance] body.market-open #app .mk-build-main button.primary { color: var(--mk-on-ink); background: var(--mk-ink); border-color: var(--mk-ink); }
+html[data-appearance] body.market-open #app .mk-build-main button.primary:hover { color: var(--mk-on-ink); background: var(--mk-ink); opacity: 0.88; }
+html[data-appearance] body.market-open #app .mk-build-main button.quiet { border-color: transparent; background: transparent; color: var(--mk-accent); padding-inline: 0; }
+html[data-appearance] body.market-open #app .mk-build-main :is(input:not([type='radio']):not([type='checkbox']), select, textarea) { font: inherit; font-size: 14px; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 9px; padding: 8px 11px; box-shadow: none; }
+html[data-appearance] body.market-open #app .mk-build-main :is(input, select, textarea):focus { outline: 2px solid var(--mk-accent); outline-offset: 1px; }
+html[data-appearance] body.market-open #app .mk-build-main label { font-size: 13px; font-weight: 600; color: var(--mk-text); }
+html[data-appearance] body.market-open #app .mk-build-main .dashboard-stats > * { border-radius: 12px; padding: 14px 16px; }
+html[data-appearance] body.market-open #app .mk-build-main .dashboard-stats strong { font-size: 22px; font-weight: 600; }
+html[data-appearance] body.market-open #app .mk-build-main .setup-steps { display: flex; flex-wrap: wrap; gap: 4px 28px; margin: 8px 0 20px; border-bottom: 1px solid var(--mk-border); }
+html[data-appearance] body.market-open #app .mk-build-main .setup-steps :is(button, span) { font-size: 15px; font-weight: 400; color: var(--mk-muted); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 2px 12px; }
+html[data-appearance] body.market-open #app .mk-build-main .setup-steps :is(button[aria-current='step'], span.active) { color: var(--mk-text); font-weight: 600; border-bottom-color: var(--mk-text); }
+html[data-appearance] body.market-open #app .mk-build-main .setup-steps small { font-size: 12px; color: var(--mk-muted); margin-right: 4px; }
+
 @media (max-width: 760px) {
   .mk-build { grid-template-columns: 1fr; grid-template-rows: auto 1fr; min-height: 0; }
-  .mk-build-nav { align-items: center; }
-  .mk-build-nav { flex-direction: row; overflow-x: auto; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--mk-border); scrollbar-width: none; }
+  .mk-build-nav { flex-direction: row; align-items: center; overflow-x: auto; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--mk-border); scrollbar-width: none; }
+  .mk-build-who { display: none; }
   html[data-appearance] body.market-open #app .mk-build-nav a { white-space: nowrap; padding: 7px 12px; }
   .mk-build-main { padding: 20px 16px 48px; }
   .mk-build-head { flex-direction: column; }
-  .mk-build-agents { grid-template-columns: 1fr; }
-  .mk-build-offers li { flex-wrap: wrap; }
+  .mk-build-opportunity .mk-thread { grid-template-columns: 44px minmax(0, 1fr); }
+  .mk-build-project > :not(summary) { padding: 14px 16px !important; }
 }
