@@ -119,6 +119,7 @@ const RelayRequestPage = {
       ${!state.editing && detail.mine !== false && typeof RelayExecution === 'object' && !detail.execution ? RelayExecution.input(t) : ''}
       ${state.editing ? '' : this.offers(detail)}
       ${approval}
+      ${typeof RelayConnections === 'object' ? RelayConnections.taskAccess(detail) : ''}
       ${typeof RelayPayments === 'object' ? RelayPayments.task(t, detail.payment, false, detail.execution) : ''}
       ${state.reviewStart && typeof startReview === 'function' ? startReview(t) : ''}
       ${typeof RelayExecution === 'object' ? RelayExecution.delivery(t) : ''}${typeof RelayApps === 'object' ? RelayApps.permissionDecisions(t) : ''}

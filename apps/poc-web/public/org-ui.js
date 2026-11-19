@@ -8,7 +8,7 @@
 // shown comes from the server; nothing on the Enterprise page claims a feature
 // that isn't built.
 const RelayOrg = {
-  ORG_TABS: [['projects', 'Projects'], ['work', 'Work'], ['members', 'Members'], ['spending', 'Spending'], ['settings', 'Settings']],
+  ORG_TABS: [['projects', 'Projects'], ['work', 'Work'], ['members', 'Members'], ['spending', 'Spending'], ['connections', 'Connected systems'], ['settings', 'Settings']],
   PROJECT_TABS: [['work', 'Work'], ['budget', 'Budget'], ['members', 'Members']],
   ICON: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h4.6l2 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Zm2 0v12h14V8h-8.2l-2-2H5Z" fill="currentColor"/></svg>',
 
@@ -17,7 +17,7 @@ const RelayOrg = {
     if (pathname === '/enterprise') return { page: 'enterprise', id: null };
     const project = /^\/org\/([0-9a-f-]{36})\/projects\/([0-9a-f-]{36})$/.exec(pathname);
     if (project) return { page: 'project', id: project[1], projectId: project[2] };
-    const org = /^\/org\/([0-9a-f-]{36})(?:\/(work|members|spending|settings))?$/.exec(pathname);
+    const org = /^\/org\/([0-9a-f-]{36})(?:\/(work|members|spending|connections|settings))?$/.exec(pathname);
     if (org) return { page: 'org', id: org[1], tab: org[2] || 'projects' };
     return null;
   },
@@ -47,6 +47,11 @@ const RelayOrg = {
         catch (error) { if (error.status !== 404) throw error; }
       }
     }
+    // Connected systems: the organization tab, and the request page when an agent asks for access.
+    target.connections = null;
+    const accessTenant = target.buyerTab === 'org' && target.orgTab === 'connections' && this.membership(target) ? target.orgId
+      : target.detail?.access?.requests?.some(r => r.status === 'pending') ? target.detail.task.tenantId : null;
+    if (accessTenant) target.connections = await api('/api/connections?tenantId=' + encodeURIComponent(accessTenant));
     // "Post a request" offers the organizations and projects you can file into.
     target.postTargets = null;
     if (target.buyerTab === 'request') {
@@ -105,7 +110,7 @@ const RelayOrg = {
     const tabs = this.ORG_TABS.filter(([id]) => id !== 'settings' || owner)
       .map(([id, label]) => [id, label, id === 'projects' ? (state.projects || []).length : id === 'members' && state.team?.members ? this.people().length : undefined]);
     const tab = tabs.some(([id]) => id === state.orgTab) ? state.orgTab : 'projects';
-    const body = { projects: () => this.projectsTab(m), work: () => this.workTab(), members: () => this.membersTab(m), spending: () => this.spendingTab(), settings: () => this.settingsTab() }[tab]();
+    const body = { projects: () => this.projectsTab(m), work: () => this.workTab(), members: () => this.membersTab(m), spending: () => this.spendingTab(), connections: () => typeof RelayConnections === 'object' ? RelayConnections.tab() : '', settings: () => this.settingsTab() }[tab]();
     return `<article class="mk-agent mk-org">${this.header(m, `Organization · you’re ${escape(this.role(m.role).toLowerCase())}`,
       `<span class="mk-handle-name">${escape(RelayMarketplace.slug(m.name))}</span>`,
       this.tabs(tabs, tab, id => `/org/${state.orgId}${id === 'projects' ? '' : '/' + id}`))}
@@ -212,7 +217,7 @@ const RelayOrg = {
     return `<section class="mk-section"><h2>Budget</h2>
       <div class="mk-strip">${RelayMarketplace.stat('Budget', this.money(b.capMinor), 'cap inside the company allowance')}${RelayMarketplace.stat('Reserved', this.money(b.reservedMinor), 'approved, not started')}${RelayMarketplace.stat('Committed', this.money(b.committedMinor), 'work under way or funded')}${RelayMarketplace.stat('Left', this.money(b.availableMinor), 'for new approvals', b.availableMinor > 0)}</div>
       ${this.bar(b)}
-      <h3>How it works</h3><ul class="mk-list">
+      <h3>How it works</h3><ul class="mk-bullets">
         <li>Approving a quote reserves its exact price against this project and the company allowance at once.</li>
         <li>Changing the offer or scope, or moving the work to another project, voids the approval and releases the money.</li>
         <li>Accepted, cancelled or failed unpaid work releases its reservation. Nothing here charges a card.</li>

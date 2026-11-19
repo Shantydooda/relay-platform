@@ -29,6 +29,7 @@ const assets = {
   '/approvals-ui.js':['approvals-ui.js','text/javascript; charset=utf-8'],
   '/org-ui.js':['org-ui.js','text/javascript; charset=utf-8'],
   '/request-ui.js':['request-ui.js','text/javascript; charset=utf-8'],
+  '/connections-ui.js':['connections-ui.js','text/javascript; charset=utf-8'],
   '/acceptance-ui.js':['acceptance-ui.js','text/javascript; charset=utf-8'],
   '/work-state-ui.js':['work-state-ui.js','text/javascript; charset=utf-8'],
   '/teams-ui.js':['teams-ui.js','text/javascript; charset=utf-8'],
@@ -136,7 +137,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed,features:store.features||{}});
       if (!managed && method === 'GET' && ['/drive/callback','/drive/picker'].includes(path)) res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
       // Real links into the app: the page loads, then the browser reads the path.
-      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||/^\/docs\/(?:evidence|relay-tests|packages|revisions)$/.test(path)||/^\/org\/[0-9a-f-]{36}(?:\/(?:work|members|spending|settings)|\/projects\/[0-9a-f-]{36})?$/.test(path)||['/post','/evidence','/enterprise'].includes(path);
+      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||/^\/docs\/(?:evidence|relay-tests|packages|revisions)$/.test(path)||/^\/org\/[0-9a-f-]{36}(?:\/(?:work|members|spending|connections|settings)|\/projects\/[0-9a-f-]{36})?$/.test(path)||['/post','/evidence','/enterprise'].includes(path);
       if(method==='GET'&&(Object.hasOwn(assets,path)||appRoute||(managed&&path==='/auth/confirm'))) {
         const [file,type]=assets[path==='/auth/confirm'||appRoute?'/':path];
         const content=await readFile(resolve(PUBLIC,file));
@@ -272,6 +273,15 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         const budgetRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/budget$/);
         if (budgetRoute && method === 'GET') return send(200, await store.companyBudget(actor, budgetRoute[1], url.searchParams.get('after') || ''));
         if (budgetRoute && method === 'POST') return send(200, await store.configureBudget(actor, budgetRoute[1], await jsonBody(req), key));
+        // Buyer connections and access grants (docs/specs/Buyer-Connections.md).
+        if (path === '/api/connections' && method === 'GET') return send(200, await store.connections(actor, url.searchParams.get('tenantId') || ''));
+        if (path === '/api/connections' && method === 'POST') return send(201, await store.connect(actor, await jsonBody(req), key));
+        const connectionRoute = path.match(/^\/api\/connections\/([0-9a-f-]{36})\/disconnect$/);
+        if (connectionRoute && method === 'POST') return send(200, await store.disconnect(actor, connectionRoute[1], await jsonBody(req), key));
+        const accessRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/access\/(approve|decline)$/);
+        if (accessRoute && method === 'POST') return send(200, await store[accessRoute[2] === 'approve' ? 'approveAccess' : 'declineAccess'](actor, accessRoute[1], await jsonBody(req), key));
+        const grantRoute = path.match(/^\/api\/access-grants\/([0-9a-f-]{36})\/revoke$/);
+        if (grantRoute && method === 'POST') return send(200, await store.revokeAccess(actor, grantRoute[1], await jsonBody(req), key));
         const teamProjectsRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/projects$/);
         if (teamProjectsRoute && method === 'GET') return send(200, await store.projects(actor, teamProjectsRoute[1]));
         if (teamProjectsRoute && method === 'POST') return send(201, await store.createProject(actor, teamProjectsRoute[1], await jsonBody(req), key));

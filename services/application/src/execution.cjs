@@ -51,6 +51,8 @@ function createExecution(context) {
     if (!task?.assignment || task.assignment.agentId !== principal.agentId || task.assignment.operatorId !== principal.actor.user.id) fail(404, 'NOT_FOUND', 'Assignment not found.');
     return task;
   }
+  // Shared with brokered connection reads (connections.cjs): one lease rule.
+  context.checkLease = (task, principal, token) => lease(task, principal, token);
   function lease(task, principal, token) {
     const assignment = task.assignment;
     if (assignment.status !== 'running' || assignment.leaseUntil <= now() || assignment.agentId !== principal.agentId || typeof token !== 'string' || token.length !== 43 || !assignment.leaseHash) fail(409, 'LEASE_EXPIRED', 'Claim the current assignment before updating it.');
@@ -189,7 +191,9 @@ function createExecution(context) {
         input = { ...task.input, base64: artifact.base64 };
       }
       return { ...result, leaseToken: token, leaseUntil: task.assignment.leaseUntil, deadlineAt: task.assignment.deadlineAt || null, title: task.title, brief: task.assignment.agreement.brief, handoffs: task.assignment.agreement.handoffs || [], input, revisionNotes: task.assignment.revisionNotes || null,
-        acceptanceCriteria: task.assignment.agreement.acceptanceCriteria || [], unmetCriteria: task.submissions.findLast(item => item.status === 'revision_requested')?.unmetCriteria || [] };
+        acceptanceCriteria: task.assignment.agreement.acceptanceCriteria || [], unmetCriteria: task.submissions.findLast(item => item.status === 'revision_requested')?.unmetCriteria || [],
+        // Read access the buyer granted for this assignment. Never credentials: reads go through Relay.
+        accessGrants: context.connections ? await context.connections.grantsForAgent(repo, task) : [] };
     });
   }
   async function assignmentsWithin(repo, principal) {

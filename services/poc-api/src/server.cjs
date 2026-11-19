@@ -1,7 +1,7 @@
 'use strict';
 
 const { resolve, join } = require('node:path');
-const { existsSync, readFileSync, statSync } = require('node:fs');
+const { existsSync, readFileSync, statSync, writeFileSync } = require('node:fs');
 const { openDatabase } = require('./database.cjs');
 const { openApplicationDatabase } = require('../../application/src/sqlite.cjs');
 const { openLocalPostgres } = require('../../application/src/postgres.cjs');
@@ -44,7 +44,14 @@ async function start() {
     const attioConfigPath = resolve(__dirname, '../../../.poc-data/attio.json');
     if (existsSync(attioConfigPath) && (statSync(attioConfigPath).mode & 0o077)) throw new Error('Attio config must be private (chmod 600).');
     const attioProvider = existsSync(attioConfigPath) ? require('../../connectors/src/attio.cjs').createAttio({ ...JSON.parse(readFileSync(attioConfigPath, 'utf8')), origin }) : null;
-    const store = await createUnifiedLocalStore({ attioProvider, driveProvider, objectStore, fileScanner, authDb, applicationDb, repository: native?.repository, storage: native ? 'postgres' : 'sqlite', localExecution: true, scopingProvider, paymentProvider, paymentRecoveryUserIds: (process.env.RELAY_PAYMENT_RECOVERY_USER_IDS || '').split(',').filter(Boolean) });
+    // Buyer connections: credentials are sealed with a key kept outside the database,
+    // in a private local file created on first start (docs/specs/Buyer-Connections.md).
+    const connectionKeyPath = resolve(__dirname, '../../../.poc-data/connections.json');
+    if (!existsSync(connectionKeyPath)) writeFileSync(connectionKeyPath, JSON.stringify({ encryptionKey: require('node:crypto').randomBytes(32).toString('hex') }), { mode: 0o600 });
+    if (statSync(connectionKeyPath).mode & 0o077) throw new Error('Connection key file must be private (chmod 600).');
+    const connectionVault = require('../../connectors/src/vault.cjs').createVault(JSON.parse(readFileSync(connectionKeyPath, 'utf8')).encryptionKey);
+    const connectionProviders = [require('../../connectors/src/erp-fixture.cjs').createSampleErp()];
+    const store = await createUnifiedLocalStore({ connectionVault, connectionProviders, attioProvider, driveProvider, objectStore, fileScanner, authDb, applicationDb, repository: native?.repository, storage: native ? 'postgres' : 'sqlite', localExecution: true, scopingProvider, paymentProvider, paymentRecoveryUserIds: (process.env.RELAY_PAYMENT_RECOVERY_USER_IDS || '').split(',').filter(Boolean) });
     const runtimeManager = createLocalRuntimeManager(origin);
     const paymentWebhookVerifier = paymentProvider && process.env.RELAY_STRIPE_WEBHOOK_SECRET
       ? require('../../payments/src/webhook.cjs').createWebhookVerifier({ secret: process.env.RELAY_STRIPE_WEBHOOK_SECRET }) : null;

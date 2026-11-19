@@ -295,6 +295,8 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
       state.drive = state.features?.driveConnections && taskMember?.role === 'owner' ? await api('/api/drive/status?tenantId='+encodeURIComponent(state.tenantId)) : null;
     }
     state.offers=id&&(state.features?.unifiedBackend||state.authMode==='local')?(await api(`/api/tasks/${id}/offers`)).offers:[];
+    // An agent asked for access: load the workspace's systems so the buyer can grant one here.
+    if(state.detail?.access?.requests?.some(r=>r.status==='pending')&&!state.connections)state.connections=await api('/api/connections?tenantId='+encodeURIComponent(state.detail.task.tenantId));
   }
 }
 function chatController() {
@@ -428,6 +430,13 @@ root.addEventListener('submit',event=>{
       const fields={name:String(data.get('name')||'').trim(),description:String(data.get('description')||'').trim(),leadId:data.get('leadId'),memberIds:data.getAll('memberIds'),capMinor:Math.round(Number(data.get('cap'))*100)};
       if(form.id==='project-create'){const created=await command('/api/teams/'+state.orgId+'/projects','POST',fields);state.projectCreateOpen=false;notice.textContent='Project created.';await RelayMarketplace.go('/org/'+state.orgId+'/projects/'+created.projectId);}
       else{await command('/api/projects/'+state.projectId,'POST',{...fields,status:data.get('archived')?'archived':'active',expectedVersion:Number(form.dataset.version)});notice.textContent='Project saved.';await refresh(null);render();}
+    }else if(form.id==='connection-create'){
+      const credentials={};for(const [name,value] of data.entries())if(name.startsWith('cred-'))credentials[name.slice(5)]=String(value);
+      await command('/api/connections','POST',{tenantId:state.orgId,provider:data.get('provider'),environment:data.get('environment'),label:String(data.get('label')||'').trim(),credentials});
+      notice.textContent='System connected. Its credentials are stored encrypted and won’t be shown again.';await refresh(null);render();
+    }else if(form.dataset.accessApprove){
+      await command('/api/tasks/'+state.detail.task.id+'/access/approve','POST',{expectedVersion:state.detail.task.version,requestId:form.dataset.accessApprove,connectionId:data.get('connectionId'),days:Number(data.get('days'))});
+      notice.textContent='Read access granted. The agent can continue.';await refresh(state.detail.task.id);render();
     }else if(form.id==='project-add-task'){
       const option=form.elements.taskId.selectedOptions[0];
       await command('/api/tasks/'+option.value+'/project','POST',{projectId:state.projectId,expectedVersion:Number(option.dataset.version)});notice.textContent='Added to the project. Any earlier approval needs to be requested again.';await refresh(null);render();
@@ -650,6 +659,10 @@ root.addEventListener('click',event=>{
     else if(action.startsWith('notification-')){await RelayNotifications.click(button);}
     else if(action.startsWith('app-')){await RelayApps.click(button);}
     else if(action==='project-create-toggle'){state.projectCreateOpen=!state.projectCreateOpen;render();root.querySelector('#project-name')?.focus();}
+    else if(action==='connection-disconnect'){if(state.disconnecting!==button.dataset.id){state.disconnecting=button.dataset.id;render();}else{await command('/api/connections/'+button.dataset.id+'/disconnect','POST',{expectedVersion:Number(button.dataset.version)});state.disconnecting=null;notice.textContent='Disconnected. Every grant on it has stopped.';await refresh(null);render();}}
+    else if(action==='connection-disconnect-cancel'){state.disconnecting=null;render();}
+    else if(action==='access-decline'){await command('/api/tasks/'+state.detail.task.id+'/access/decline','POST',{expectedVersion:state.detail.task.version,requestId:button.dataset.id});notice.textContent='Access declined. The work stays paused.';await refresh(state.detail.task.id);render();}
+    else if(action==='access-revoke'){await command('/api/access-grants/'+button.dataset.id+'/revoke','POST',{expectedVersion:Number(button.dataset.version)});notice.textContent='Access revoked. The agent’s next read will be refused.';await refresh(state.detail.task.id);render();}
     else if(action==='request-tab'){state.requestTab=button.dataset.tab;render();}
     else if(action==='project-tab'){state.projectTab=button.dataset.tab;render();}
     else if(action==='project-post'){state.postTarget={tenantId:button.dataset.tenant,projectId:button.dataset.project};await RelayMarketplace.go('/post');}
@@ -1014,7 +1027,7 @@ root.addEventListener('change',event=>{if(event.target.name==='integration'&&eve
 
 root.addEventListener('change',event=>{if(event.target.id==='registry-agent'){if(typeof RelaySupplier==='object')RelaySupplier.clear();const id=event.target.value;if(!id){state.setupAgentId=null;state.addingAgent=true;state.agentIntroPart='profile';location.hash='agent-new';}else{state.addingAgent=false;state.setupAgentId=id;state.setupStage=state.agents.find(a=>a.id===id)?.setupStage||2;location.hash=`agent=${id}&step=${state.setupStage}`;}render();}});
 
-root.addEventListener('change',event=>{if(event.target.id==='team-workspace')run(async()=>{state.tenantId=event.target.value;state.budgetAfter='';state.teamInviteLink=null;await refresh(null);render();});});
+root.addEventListener('change',event=>{if(event.target.matches?.('[data-connect-provider]')){state.connectProvider=event.target.value;render();return;}if(event.target.id==='team-workspace')run(async()=>{state.tenantId=event.target.value;state.budgetAfter='';state.teamInviteLink=null;await refresh(null);render();});});
 
 root.addEventListener('change', event => {
   if (event.target.form?.id === 'schedule-create') RelayRecurring.preview(event.target.form);
