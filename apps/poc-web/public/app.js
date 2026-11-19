@@ -101,7 +101,8 @@ function workspaceRoleLabel(role) {
 }
 function companyWorkspaceBanner() {
   const membership = activeCompanyMembership();
-  if (!membership) return '';
+  // Organization pages carry the organization in their own header.
+  if (!membership || ['org', 'enterprise'].includes(state.buyerTab) && !state.detail) return '';
   return `<section class="company-context-bar" aria-label="Current company workspace"><div><span class="company-context-label">COMPANY WORKSPACE</span><strong>${escape(membership.name)}</strong><span class="company-context-role">You’re a team member · ${escape(workspaceRoleLabel(membership.role))}</span></div><button class="quiet" data-action="buyer-nav" data-tab="business">Workspace & team</button></section>`;
 }
 
@@ -167,7 +168,7 @@ function newTask() {
 }
 
 function taskList() { return taskDashboard(); }
-function buyerPage(){if(typeof RelayMarketplace==='object'&&!state.detail){if(state.buyerTab==='tasks')return RelayMarketplace.work();if(state.buyerTab==='activity')return RelayMarketplace.activity();if(state.buyerTab==='market')return state.agentPageId?RelayMarketplace.agent():RelayMarketplace.browse();if(state.buyerTab==='request')return RelayMarketplace.post();if(state.buyerTab==='evidence')return RelayMarketplace.docsPage();}if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
+function buyerPage(){if(typeof RelayMarketplace==='object'&&!state.detail){if(state.buyerTab==='tasks')return RelayMarketplace.work();if(state.buyerTab==='activity')return RelayMarketplace.activity();if(state.buyerTab==='market')return state.agentPageId?RelayMarketplace.agent():RelayMarketplace.browse();if(state.buyerTab==='request')return RelayMarketplace.post();if(state.buyerTab==='evidence')return RelayMarketplace.docsPage();if(state.buyerTab==='org'&&typeof RelayOrg==='object')return RelayOrg.page();if(state.buyerTab==='enterprise'&&typeof RelayOrg==='object')return RelayOrg.enterprise();}if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
 function focusOfferReview(offerId, reviewing) {
  const action = reviewing ? 'accept-offer' : 'review-offer';
  const target = [...root.querySelectorAll('[data-action]')].find(button =>
@@ -248,7 +249,7 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   if(state.features?.notifications&&!background)try{await RelayNotifications.load();}catch{state.notificationError='Updates could not load. Try Refresh.';}
   if(state.features?.unifiedBackend)state.payments=await api('/api/payments/status');
   if(state.recoveryOpen&&state.payments?.recoveryAccess){state.recoveryData=await api('/api/payments/recovery?after='+encodeURIComponent(state.recoveryAfter||''));if(state.operationsBacklogUser!==state.account.user.id||!state.operationsBacklog){state.operationsBacklog=await api('/api/operations/backlog');state.operationsBacklogUser=state.account.user.id;}}
-  const tenant=state.account.memberships.find(m=>m.id===state.tenantId)||state.account.memberships[0];
+  const tenant=(state.buyerTab==='org'&&state.account.memberships.find(m=>m.id===state.orgId&&m.company))||state.account.memberships.find(m=>m.id===state.tenantId)||state.account.memberships[0];
   state.tenantId=tenant?.id;
   if (!background) state.spendingHistory = state.features?.unifiedBackend && state.buyerTab === 'billing' && tenant ? await api('/api/payments/history?tenantId='+encodeURIComponent(tenant.id)+'&from='+encodeURIComponent(state.spendingFrom||'')+'&to='+encodeURIComponent(state.spendingTo||'')+'&currency='+encodeURIComponent(state.spendingCurrency||'USD')) : null;
   state.activity=state.account.user.workspace!=='builder'&&state.buyerTab==='activity'?await api('/api/activity'):null;
@@ -274,7 +275,7 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
 
   state.attio = state.features?.attioDelivery && tenant?.role === 'owner' ? await api('/api/attio/status?tenantId='+encodeURIComponent(tenant.id)) : null;
   state.drive=state.features?.driveConnections && tenant?.role==='owner' ? await api('/api/drive/status?tenantId='+encodeURIComponent(tenant.id)) : null;
-  state.team=tenant?.company&&state.buyerTab==='business'?await api('/api/teams/'+tenant.id):null;
+  state.team=tenant?.company&&['business','org'].includes(state.buyerTab)?await api('/api/teams/'+tenant.id):null;
   state.teamHistory=state.team?.role==='owner'?await api('/api/teams/'+tenant.id+'/history?before='+encodeURIComponent(state.teamHistoryBefore||'')):null;
   state.companyBudget=state.team?await api('/api/teams/'+tenant.id+'/budget?after='+encodeURIComponent(state.budgetAfter||'')):null;
   state.tasks=tenant?(await api(`/api/tasks?tenantId=${encodeURIComponent(tenant.id)}`)).tasks:[];
@@ -421,6 +422,13 @@ root.addEventListener('submit',event=>{
       await refresh();render();
     }else if(form.id==='execution-retry'){
       await command('/api/tasks/'+state.detail.task.id+'/retry-execution','POST',{expectedVersion:state.detail.task.version,reason:data.get('reason')});await refresh();render();
+    }else if(form.id==='project-create'||form.id==='project-edit'){
+      const fields={name:String(data.get('name')||'').trim(),description:String(data.get('description')||'').trim(),leadId:data.get('leadId'),memberIds:data.getAll('memberIds'),capMinor:Math.round(Number(data.get('cap'))*100)};
+      if(form.id==='project-create'){const created=await command('/api/teams/'+state.orgId+'/projects','POST',fields);state.projectCreateOpen=false;notice.textContent='Project created.';await RelayMarketplace.go('/org/'+state.orgId+'/projects/'+created.projectId);}
+      else{await command('/api/projects/'+state.projectId,'POST',{...fields,status:data.get('archived')?'archived':'active',expectedVersion:Number(form.dataset.version)});notice.textContent='Project saved.';await refresh(null);render();}
+    }else if(form.id==='project-add-task'){
+      const option=form.elements.taskId.selectedOptions[0];
+      await command('/api/tasks/'+option.value+'/project','POST',{projectId:state.projectId,expectedVersion:Number(option.dataset.version)});notice.textContent='Added to the project. Any earlier approval needs to be requested again.';await refresh(null);render();
     }else if(form.id==='company-budget'){
       await command('/api/teams/'+state.tenantId+'/budget','POST',{limitMinor:Math.round(Number(data.get('limit'))*100),expectedVersion:state.companyBudget?.budget?.version||0});await refresh(null);render();
     }else if(form.id==='approval-request'){
@@ -639,6 +647,9 @@ root.addEventListener('click',event=>{
     }
     else if(action.startsWith('notification-')){await RelayNotifications.click(button);}
     else if(action.startsWith('app-')){await RelayApps.click(button);}
+    else if(action==='project-create-toggle'){state.projectCreateOpen=!state.projectCreateOpen;render();root.querySelector('#project-name')?.focus();}
+    else if(action==='project-tab'){state.projectTab=button.dataset.tab;render();}
+    else if(action==='project-post'){state.postTarget={tenantId:button.dataset.tenant,projectId:button.dataset.project};await RelayMarketplace.go('/post');}
     else if(action==='approval-next'||action==='approval-first'){state.budgetAfter=action==='approval-next'?state.companyBudget.nextCursor:'';await refresh(null);render();}
     else if(action==='scan-file'){
       await command('/api/tasks/'+button.dataset.task+'/submissions/'+button.dataset.submission+'/files/'+button.dataset.file+'/scan','POST',{});

@@ -144,13 +144,25 @@ function createProjects(context) {
       if (!all.length) return [];
       const budget = await repo.get('company-budget', tenantId);
       const tasks = await repo.list('task', 'tenant_id', tenantId, 1000);
-      return all.map(project => ({ ...projectView(project), budget: projectBudget(project, budget, now()),
+      const names = {};
+      for (const project of all) if (!(project.leadId in names)) names[project.leadId] = resolveOperator ? (await resolveOperator(project.leadId))?.user?.name || 'Former member' : null;
+      return all.map(project => ({ ...projectView(project), leadName: names[project.leadId], budget: projectBudget(project, budget, now()),
         taskCount: tasks.filter(task => task.projectId === project.id).length,
         you: { lead: project.leadId === actor.user.id, member: isMember(project, actor.user.id) } }))
         .sort((a, b) => (a.status === b.status ? 0 : a.status === 'active' ? -1 : 1) || a.name.localeCompare(b.name));
     });
   }
 
+  // The lead's approval queue lives on the project page: the request, its reason
+  // and whether this viewer may decide.
+  async function approvalFor(repo, actor, task) {
+    const approval = require('./approvals.cjs').approvalView(task, now());
+    if (!approval?.id) return { approval: null, approvalActions: null };
+    const { id, status, version, note, agreement, decisionNote } = approval;
+    return { approval: { id, status, version, note, decisionNote: decisionNote || null,
+      agreement: { agentName: agreement.agentName, amountMinor: agreement.amountMinor, currency: agreement.currency, scopeVersion: agreement.scopeVersion } },
+      approvalActions: await context.approvals.approvalActions(repo, actor, task) };
+  }
   async function project(actor, projectId) {
     return repository.read(async repo => {
       const { project, role } = await readable(repo, actor, projectId);
@@ -163,7 +175,7 @@ function createProjects(context) {
         members.push({ id, name: person?.user?.name || 'Former member', role: id === project.leadId ? 'lead' : 'member', active });
       }
       return { project: projectView(project), budget: projectBudget(project, budget, now()), members,
-        tasks: tasks.map(task => ({ ...taskView(task, now()), mine: task.ownerId === actor.user.id })),
+        tasks: await Promise.all(tasks.map(async task => ({ ...taskView(task, now()), mine: task.ownerId === actor.user.id, ...await approvalFor(repo, actor, task) }))),
         you: { owner: role === 'owner', lead: project.leadId === actor.user.id, member: isMember(project, actor.user.id) } };
     });
   }

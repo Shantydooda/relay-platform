@@ -29,11 +29,15 @@ const RelayMarketplace = {
     if (pathname === '/evidence') return { page: 'docs', id: 'evidence' };
     const doc = /^\/docs\/([a-z-]+)$/.exec(pathname)?.[1];
     if (doc && this.DOCS.some(item => item.slug === doc)) return { page: 'docs', id: doc };
+    const org = typeof RelayOrg === 'object' ? RelayOrg.parse(pathname) : null;
+    if (org) return org;
     return { page: null, id: null };
   },
   // Apply a route to buyer state. Returns the task id to load, if any.
   apply(route, target = state) {
     target.agentPageId = null;
+    if (typeof RelayOrg === 'object' && RelayOrg.apply(route, target)) return null;
+    if (target.buyerTab === 'org' || target.buyerTab === 'enterprise') target.projectId = null;
     if (route.page === 'agent') { target.buyerTab = 'market'; target.agentPageId = route.id; target.agentTab ||= 'card'; target.detail = null; }
     else if (route.page === 'post') { target.buyerTab = 'request'; target.detail = null; }
     else if (route.page === 'docs') { target.buyerTab = 'evidence'; target.docPage = route.id; target.detail = null; }
@@ -46,6 +50,8 @@ const RelayMarketplace = {
     if (current.buyerTab === 'market' && current.agentPageId) return `/agents/${current.agentPageId}`;
     if (current.buyerTab === 'request') return '/post';
     if (current.buyerTab === 'evidence') return `/docs/${current.docPage || 'evidence'}`;
+    const org = typeof RelayOrg === 'object' ? RelayOrg.path(current) : null;
+    if (org) return org;
     return '/';
   },
   // Keep the address bar in step after each render. A new page is a new history
@@ -90,6 +96,7 @@ const RelayMarketplace = {
     if (buyer && target.buyerTab === 'market' && !target.agentPageId) {
       target.market = await api('/api/marketplace?sort=' + encodeURIComponent(target.marketSort || 'runs'));
     }
+    if (buyer && typeof RelayOrg === 'object') await RelayOrg.load(target);
     target.agentPage = null;
     if (target.agentPageId && (!buyer || target.buyerTab === 'market')) {
       try { target.agentPage = (await api('/api/agent-market/' + target.agentPageId)).agent; }
@@ -154,21 +161,24 @@ const RelayMarketplace = {
   // ---- Shell -------------------------------------------------------------
   topbar(user) {
     const active = state.detail || ['tasks'].includes(state.buyerTab) ? 'work'
-      : state.buyerTab === 'activity' ? 'activity' : state.buyerTab === 'evidence' ? 'evidence' : state.buyerTab === 'market' ? 'agents' : '';
+      : state.buyerTab === 'activity' ? 'activity' : state.buyerTab === 'evidence' ? 'evidence' : state.buyerTab === 'market' ? 'agents'
+      : ['org', 'enterprise', 'business'].includes(state.buyerTab) ? 'org' : '';
+    const companies = (state.account?.memberships || []).filter(m => m.company);
     const link = (id, href, label, attrs = '') => `<a class="${active === id ? 'active' : ''}" href="${href}" ${active === id ? 'aria-current="page"' : ''} ${attrs}>${label}</a>`;
     const more = [
       ...(state.features?.recurring ? [['scheduled', 'Scheduled work']] : []),
       ...(state.features?.workspaceApps ? [['apps', 'Apps']] : []),
-      ['business', 'Business workspace'], ['billing', 'History & spend'], ['tools', 'Connected tools'],
+      ['business', companies.length ? 'Create or join an organization' : 'Business workspace'], ['billing', 'History & spend'], ['tools', 'Connected tools'],
     ];
     return `<a class="skip-workspace" href="#workspace-main">Skip to content</a><header class="mk-topbar">
       <a class="mk-brand" href="/" data-route aria-label="Relay home">relay</a>
       <form class="mk-search" id="market-search" role="search"><label class="sr-only" for="market-search-input">Search agents</label><span aria-hidden="true">⌕</span><input id="market-search-input" name="q" type="search" placeholder="Search agents, builders, outcomes" value="${escape(state.marketFilters?.q || '')}" autocomplete="off"></form>
-      <nav class="mk-nav" aria-label="Main">${link('agents', '/', 'Agents', 'data-route')}${link('work', '/#tasks', 'Your work', 'data-route data-tab="tasks"')}${link('activity', '/#activity', 'Activity', 'data-route data-tab="activity"')}${link('evidence', '/docs/evidence', 'Docs', 'data-route')}</nav>
+      <nav class="mk-nav" aria-label="Main">${link('agents', '/', 'Agents', 'data-route')}${link('work', '/#tasks', 'Your work', 'data-route data-tab="tasks"')}${link('activity', '/#activity', 'Activity', 'data-route data-tab="activity"')}${link('evidence', '/docs/evidence', 'Docs', 'data-route')}${companies.length === 1 ? link('org', `/org/${companies[0].id}`, escape(companies[0].name), 'data-route') : link('org', '/enterprise', 'Enterprise', 'data-route')}</nav>
       <div class="mk-account">
         <div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>
         <details class="mk-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span class="sr-only">Account and workspace for ${escape(user.name)}</span></summary>
           <div class="mk-menu-panel"><strong>${escape(user.name)}</strong><small>${escape(user.email)}</small>
+            ${companies.length ? `<span class="mk-menu-label">Organizations</span>${companies.map(m => `<a href="/org/${escape(m.id)}" data-route>${escape(m.name)}</a>`).join('')}<a href="/enterprise" data-route>Relay for organizations</a>` : ''}
             ${more.map(([id, label]) => `<button data-action="buyer-nav" data-tab="${id}">${label}</button>`).join('')}
             ${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}
             <button data-action="toggle-appearance" aria-pressed="${globalThis.document?.documentElement?.dataset.appearance !== 'light'}">Dark mode</button>
@@ -456,6 +466,7 @@ const RelayMarketplace = {
     return `<section class="mk-page mk-post"><a class="mk-back" href="/" data-route>← All agents</a><h1>Post a request</h1>
       <p class="mk-lead">Describe the outcome you need. Qualified agents quote a price and delivery time, and nothing starts until you approve an offer.</p>${context}
       <form id="post-request" class="mk-form">
+        ${this.postTargetField()}
         <label for="post-title">Title</label><input id="post-title" name="title" maxlength="120" required value="${escape(draft.title || '')}" placeholder="e.g. Clean and deduplicate our contact export">
         <label for="post-brief">What do you need done?</label><textarea id="post-brief" name="brief" rows="7" maxlength="10000" required placeholder="The outcome, the inputs you'll provide, the format you want back and any deadline.">${escape(draft.brief ?? state.prompt ?? '')}</textarea>
         <label for="post-criteria">Acceptance checklist <span class="mk-optional">optional</span></label><textarea id="post-criteria" name="criteria" rows="4" placeholder="One per line, up to 12. e.g. Every duplicate row is removed">${escape(draft.criteria || '')}</textarea>
@@ -465,9 +476,28 @@ const RelayMarketplace = {
         <div class="mk-form-actions"><button class="mk-primary" type="submit" ${state.postingRequest ? 'disabled' : ''}>${state.postingRequest ? 'Posting…' : 'Post request'}</button><a href="/" data-route>Cancel</a></div>
       </form></section>`;
   },
+  // Organizations and projects you can file a request into (docs/specs/Enterprise-and-Projects.md).
+  postTargetValue() {
+    const t = state.postTarget;
+    if (t) return `${t.tenantId}|${t.projectId || ''}`;
+    return `${state.tenantId || state.account?.memberships?.[0]?.id || ''}|`;
+  },
+  postTargetField() {
+    const targets = state.postTargets || [];
+    if (!targets.length || state.retryFrom || state.preferredAgent?.repeatFromTaskId) return '';
+    const personal = (state.account?.memberships || []).find(m => !m.company);
+    const current = this.postTargetValue();
+    const option = (value, label) => `<option value="${escape(value)}" ${current === value ? 'selected' : ''}>${escape(label)}</option>`;
+    return `<label for="post-target">Where does this belong?</label><select id="post-target" name="target">
+      ${personal ? option(`${personal.id}|`, 'Personal workspace') : ''}
+      ${targets.map(t => `<optgroup label="${escape(t.name)}">${option(`${t.tenantId}|`, `${t.name} · not in a project (private to you)`)}${t.projects.map(p => option(`${t.tenantId}|${p.id}`, `${t.name} / ${p.name}`)).join('')}</optgroup>`).join('')}</select>
+      <p class="mk-caption">Requests in a project are visible to its members, and its lead can approve the quote.</p>`;
+  },
   async submitPost(form) {
     const data = new FormData(form);
     const title = String(data.get('title') || '').trim(), brief = String(data.get('brief') || '').trim();
+    const [targetTenant, targetProject] = String(data.get('target') || this.postTargetValue()).split('|');
+    state.postTarget = { tenantId: targetTenant, projectId: targetProject || null };
     const criteria = String(data.get('criteria') || '').split('\n').map(line => line.trim()).filter(Boolean);
     state.postDraft = { title, brief, criteria: criteria.join('\n') };
     if (criteria.length > 12) { notice.textContent = 'Use at most 12 checklist items.'; return; }
@@ -483,7 +513,8 @@ const RelayMarketplace = {
       let taskId = state.postTaskId;
       if (!taskId) {
         const created = await command('/api/tasks', 'POST', {
-          tenantId: state.tenantId || state.account.memberships[0].id, title, brief,
+          tenantId: targetTenant || state.tenantId || state.account.memberships[0].id, title, brief,
+          ...(targetProject ? { projectId: targetProject } : {}),
           ...(state.retryFrom && !preferred ? { retryFromTaskId: state.retryFrom.taskId, expectedSourceVersion: state.retryFrom.expectedSourceVersion } : {}),
           ...(preferred?.repeatFromTaskId ? { repeatFromTaskId: preferred.repeatFromTaskId, expectedSourceVersion: preferred.expectedSourceVersion } : {}),
           ...(preferred && !preferred.repeatFromTaskId ? { preferredAgentId: preferred.id, preferenceMode: preferred.preferenceMode || 'agent', discoverySource: preferred.discoverySource || 'storefront' } : {}),
@@ -501,7 +532,7 @@ const RelayMarketplace = {
         detail = await api('/api/tasks/' + taskId);
       }
       if (detail.task.status === 'draft') await command(`/api/tasks/${taskId}/post`, 'POST', { expectedVersion: detail.task.version });
-      state.postDraft = null; state.postTaskId = null; state.postFile = null; state.preferredAgent = null; state.retryFrom = null; state.prompt = '';
+      state.postDraft = null; state.postTaskId = null; state.postFile = null; state.postTarget = null; state.preferredAgent = null; state.retryFrom = null; state.prompt = '';
       notice.textContent = 'Request posted. Offers appear here as agents quote.';
       await this.go('/tasks/' + taskId);
     } finally { state.postingRequest = false; if (root.querySelector('#post-request')) render(); }

@@ -80,6 +80,12 @@ for (const adapter of ['sqlite', 'postgres']) {
     await f.move(projectId);
     await f.request();
     await assert.rejects(f.decide(f.analyst), { code: 'FORBIDDEN' });
+    // The lead's queue lives on the project page, with the request reason.
+    const queued = (await f.app.project(f.lead, projectId)).tasks.find(task => task.id === f.taskId);
+    assert.equal(queued.approval.status, 'pending');
+    assert.equal(queued.approval.note, 'Vendor master load');
+    assert.equal(queued.approvalActions.approve.allowed, true);
+    assert.equal((await f.app.project(f.analyst, projectId)).tasks[0].approvalActions.approve.allowed, false);
     await f.decide(f.lead);
     const view = await f.app.project(f.lead, projectId);
     assert.equal(view.budget.reservedMinor, 500);

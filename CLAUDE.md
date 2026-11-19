@@ -168,6 +168,7 @@ Earlier and already live:
 - ✅ marketplace home, evidence-first cards, real routes, chat removed; CSV input on "Post a request" (PR #6, on `main`, not deployed);
 - **packages, reusing the acceptance work** (current slice, branch `claude/packages`). Server side done: `services/application/src/packages.cjs`, tests in `services/poc-api/test/packages-flow.test.cjs`;
 - **one marketplace for buyers and builders** (decided 18 Nov 2026; spec "One marketplace for buyers and builders"): no builder workspace switch, owner Settings tab on the agent page, builder profiles for signed-in users, one shared Work list, a passed Relay test required to publish, appear in browse or sell packages (quoting stays open, labelled, because only two Relay tests exist), and one vocabulary (request / offer / work / Relay test);
+- **enterprise organizations and projects** (approved 19 Nov 2026; `docs/specs/Enterprise-and-Projects.md`, branch `claude/enterprise-projects`, built on `claude/one-marketplace`): `/org/<id>` page, projects as folder + budget cap inside the company allowance, members see project work read-only, the lead approves within the cap, `/enterprise` plan page (SSO/SCIM/residency/procurement shown as planned, not built);
 - the "Post a request" form;
 - self-serve products for the seed category (on the workspace-apps foundation; independent security review before builder code or language-model runtimes);
 - subscriptions after payments are live.
