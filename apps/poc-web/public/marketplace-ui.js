@@ -37,6 +37,7 @@ const RelayMarketplace = {
   apply(route, target = state) {
     target.agentPageId = null;
     if (typeof RelayOrg === 'object' && RelayOrg.apply(route, target)) return null;
+    if (route.page === 'task' && target.detail?.task.id !== route.id) target.requestTab = 'request';
     if (target.buyerTab === 'org' || target.buyerTab === 'enterprise') target.projectId = null;
     if (route.page === 'agent') { target.buyerTab = 'market'; target.agentPageId = route.id; target.agentTab ||= 'card'; target.detail = null; }
     else if (route.page === 'post') { target.buyerTab = 'request'; target.detail = null; }

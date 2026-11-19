@@ -63,6 +63,10 @@ for (const adapter of ['sqlite', 'postgres']) {
     await assert.rejects(f.app.detail(f.analyst, f.taskId), { code: 'NOT_FOUND' });
     await f.move(projectId);
     assert.equal((await f.app.detail(f.analyst, f.taskId)).task.projectId, projectId);
+    assert.deepEqual({ ...(await f.app.detail(f.analyst, f.taskId)).project }, { id: projectId, name: 'NetSuite migration – Wave 2', status: 'active', leadId: f.lead.user.id });
+    assert.equal((await f.app.detail(f.analyst, f.taskId)).postedBy, 'Requester');
+    assert.equal((await f.app.detail(f.analyst, f.taskId)).mine, false);
+    assert.equal((await f.app.detail(f.employee, f.taskId)).mine, true);
     assert.equal((await f.app.project(f.analyst, projectId)).tasks.length, 1);
     await assert.rejects(f.app.detail(f.outsider, f.taskId), { code: 'NOT_FOUND' });
     // Seeing isn't changing: a member can't post on someone else's task.

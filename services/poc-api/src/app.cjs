@@ -28,6 +28,7 @@ const assets = {
   '/execution-ui.js':['execution-ui.js','text/javascript; charset=utf-8'],
   '/approvals-ui.js':['approvals-ui.js','text/javascript; charset=utf-8'],
   '/org-ui.js':['org-ui.js','text/javascript; charset=utf-8'],
+  '/request-ui.js':['request-ui.js','text/javascript; charset=utf-8'],
   '/acceptance-ui.js':['acceptance-ui.js','text/javascript; charset=utf-8'],
   '/work-state-ui.js':['work-state-ui.js','text/javascript; charset=utf-8'],
   '/teams-ui.js':['teams-ui.js','text/javascript; charset=utf-8'],

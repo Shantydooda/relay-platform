@@ -425,3 +425,34 @@ html[data-appearance] body.market-open #app .mk-tabs a[aria-current='page'] { co
   .mk-approval { padding: 0 0 14px; }
   .mk-org-head .mk-tabs { overflow-x: auto; }
 }
+
+/* ---- Request page: a commission laid out like a discussion page, not a chat ---- */
+.mk-crumbs { font-family: var(--mk-mono); font-size: 14px; color: var(--mk-muted); margin-bottom: 10px; }
+.mk-crumbs a { color: var(--mk-muted); text-decoration: none; }
+.mk-crumbs a:hover { color: var(--mk-text); text-decoration: underline; }
+.mk-agent-title h1.mk-request-title { font-family: inherit; font-weight: 600; font-size: 26px; }
+.mk-desc { border: 1px solid var(--mk-border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+.mk-desc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; background: var(--mk-rail); border-bottom: 1px solid var(--mk-border); font-size: 14px; }
+.mk-desc-head .mk-link-button { margin-left: auto; }
+.mk-desc-body { padding: 14px 16px 16px; }
+.mk-brief { margin: 0 0 12px; white-space: pre-wrap; line-height: 1.55; overflow-wrap: anywhere; }
+.mk-offer-list { display: grid; gap: 12px; margin-bottom: 8px; }
+.mk-request-main .mk-section { margin-bottom: 28px; }
+.mk-request-main .mk-section h2 { display: flex; align-items: baseline; gap: 8px; }
+.mk-empty-inline { padding: 18px; text-align: left; border: 1px dashed var(--mk-border); border-radius: 12px; }
+.mk-empty-inline h3 { margin: 0 0 4px; font-size: 16px; }
+.mk-empty-inline p { margin: 0; }
+/* Reused cards drop their old chat framing here. */
+.mk-request .thread-speaker { display: none; }
+.mk-request .thread-message { background: none; border: 0; box-shadow: none; padding: 0; margin: 0; max-width: none; }
+.mk-request .scope-recap, .mk-request .panel { border: 1px solid var(--mk-border); border-radius: 12px; padding: 16px; margin: 0 0 20px; background: var(--mk-bg); box-shadow: none; }
+.mk-request .scope-recap .eyebrow, .mk-request .panel .eyebrow { color: var(--mk-muted); }
+.mk-comment { border: 1px solid var(--mk-border); border-radius: 12px; margin: 0 0 12px; overflow: hidden; }
+.mk-comment header { display: flex; gap: 8px; align-items: baseline; padding: 8px 14px; background: var(--mk-rail); border-bottom: 1px solid var(--mk-border); font-size: 14px; }
+.mk-comment p { margin: 0; padding: 12px 14px; }
+.mk-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 8px 0 0; font-size: 14px; }
+.mk-facts dt { color: var(--mk-muted); }
+.mk-facts dd { margin: 0; }
+html[data-appearance] body.market-open #app .mk-danger { color: #c4320a; }
+html[data-appearance='dark'] body.market-open #app .mk-danger { color: #f97066; }
+.mk-next-step strong { font-size: 16px; }
