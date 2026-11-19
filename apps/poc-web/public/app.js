@@ -123,7 +123,7 @@ function header() {
   if (!user || state.auth) return `<header class="auth-topbar"><button class="brand" data-action="home" aria-label="Relay home">relay</button><div><span>${state.auth === 'signup' ? 'Already have an account?' : 'New to Relay?'}</span><button class="quiet" data-action="${state.auth === 'signup' ? 'login' : 'signup'}">${state.auth === 'signup' ? 'Log in' : 'Create an account'}</button></div></header>`;
 
   const builderSide = user.workspace === 'builder';
-  if (!builderSide && typeof RelayMarketplace === 'object') return RelayMarketplace.topbar(user);
+  if (typeof RelayMarketplace === 'object') return RelayMarketplace.topbar(user);
   const community = globalThis.document?.documentElement?.dataset.design === 'community';
   const company = activeCompanyMembership();
   const active = builderSide
@@ -198,8 +198,9 @@ function render(){
  const oldId = root.querySelector('.buyer-conversation')?.dataset.taskId;
  const scrollTop = scrollOwner.scrollTop;
  document.body.classList.toggle('workspace-open',!!state.account&&!state.auth);
- document.body.classList.toggle('market-open',!!state.account&&!state.auth&&(state.account.user.workspace==='buyer'||!!state.agentPageId)&&typeof RelayMarketplace==='object');
- root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${state.account.user.workspace === 'buyer' ? 'buyer-workspace mk-shell' : ''} ${activeCompanyMembership()?'company-workspace-active':''}">${state.account.user.workspace === 'buyer' && typeof RelayMarketplace === 'object' ? '' : `<div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>`}${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?(state.agentPageId&&typeof RelayMarketplace==='object'?RelayMarketplace.agent():builder()):buyerPage()}</main></div>`);
+ document.body.classList.toggle('market-open',!!state.account&&!state.auth&&typeof RelayMarketplace==='object');
+ document.body.classList.toggle('build-open',!!state.account&&!state.auth&&state.account.user.workspace==='builder'&&!state.agentPageId&&typeof RelayBuild==='object');
+ root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${state.account.user.workspace === 'buyer' ? 'buyer-workspace mk-shell' : typeof RelayMarketplace === 'object' ? 'mk-shell' : ''} ${activeCompanyMembership()?'company-workspace-active':''}">${typeof RelayMarketplace === 'object' ? '' : `<div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>`}${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?(state.agentPageId&&typeof RelayMarketplace==='object'?RelayMarketplace.agent():builder()):buyerPage()}</main></div>`);
  if (typeof RelayLanding === 'object') RelayLanding.mount?.(root);
  if (typeof observeOfferExposure === 'function') observeOfferExposure();
  if (!changedView) root.querySelectorAll('.canvas details').forEach(item => {
@@ -887,7 +888,7 @@ async function boot(){
     const setup=location.hash.match(/^#agent=([0-9a-f-]{36})&step=([1-3])$/);if(setup){state.setupAgentId=setup[1];state.setupStage=Number(setup[2]);}
     if(['#activity'].includes(location.hash))state.buyerTab='activity';
     const routed=typeof RelayMarketplace==='object'?RelayMarketplace.apply(RelayMarketplace.parse()):null;
-    const id=routed||location.hash.match(/^#(?:task|chat)=([0-9a-f-]{36})$/)?.[1];await refresh(id);if(state.addingAgent){try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}}}
+    const id=routed||location.hash.match(/^#(?:task|chat)=([0-9a-f-]{36})$/)?.[1];await refresh(id);if(typeof RelayBuild==='object'&&typeof RelayMarketplace==='object'&&!location.hash){const route=RelayMarketplace.parse();if(await RelayBuild.ensure(route)){RelayMarketplace.apply(route);await refresh(id);}}if(state.addingAgent){try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}}}
   catch(error){if(error.status!==401)notice.textContent=error.message;}
   render();
 }
@@ -903,7 +904,7 @@ if (typeof RelayMarketplace === 'object') {
     if (link.dataset.tab) {
       Object.assign(state, { buyerTab: link.dataset.tab, detail: null, agentPageId: null, editing: false, reviewOffer: null });
       history.pushState(null, '', '/#' + link.dataset.tab);
-      run(async () => { await refresh(null); render(); });
+      run(async () => { if (typeof RelayBuild === 'object') await RelayBuild.ensure({ page: 'tab' }); await refresh(null); render(); });
       return;
     }
     run(() => RelayMarketplace.go(url.pathname));

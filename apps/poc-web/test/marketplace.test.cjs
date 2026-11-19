@@ -327,8 +327,8 @@ test('builder dashboard links each active task to its own delivery card',()=>{
   state.builderTab='dashboard';
   state.work=[{id:'task-one',title:'First task',status:'running',agentName:'CSV'},{id:'task-two',title:'Second task',status:'buyer_review',agentName:'CSV'}];
   const html=vm.runInContext('builder()',ctx);
-  assert.match(html,/data-action="builder-task" data-id="task-one">View task/);
-  assert.match(html,/data-action="builder-task" data-id="task-two">View task/);
+  assert.match(html,/data-action="builder-task" data-id="task-one">Open/);
+  assert.match(html,/data-action="builder-task" data-id="task-two">Open/);
 });
 
 test('download names identify each file and escape supplier-controlled filenames', () => {

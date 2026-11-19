@@ -33,11 +33,14 @@ const RelayMarketplace = {
     if (doc && this.DOCS.some(item => item.slug === doc)) return { page: 'docs', id: doc };
     const org = typeof RelayOrg === 'object' ? RelayOrg.parse(pathname) : null;
     if (org) return org;
+    const build = typeof RelayBuild === 'object' ? RelayBuild.parse(pathname) : null;
+    if (build) return build;
     return { page: null, id: null };
   },
   // Apply a route to buyer state. Returns the task id to load, if any.
   apply(route, target = state) {
     target.agentPageId = null;
+    if (typeof RelayBuild === 'object' && RelayBuild.apply(route, target)) return null;
     if (typeof RelayOrg === 'object' && RelayOrg.apply(route, target)) return null;
     if (route.page === 'task' && target.detail?.task.id !== route.id) target.requestTab = 'request';
     if (target.buyerTab === 'org' || target.buyerTab === 'enterprise') target.projectId = null;
@@ -67,8 +70,8 @@ const RelayMarketplace = {
     // Builders open agent pages too (their own, to manage packages); the rest of
     // the builder workspace keeps its hash routes until the shells are merged.
     if (state.account.user.workspace !== 'buyer') {
-      const target = state.agentPageId ? `/agents/${state.agentPageId}` : '/';
-      if (location.pathname !== target) history[state.agentPageId && !this.restoring ? 'pushState' : 'replaceState'](null, '', target + (state.agentPageId ? '' : location.hash));
+      const target = state.agentPageId ? `/agents/${state.agentPageId}` : typeof RelayBuild === 'object' ? RelayBuild.path() : '/';
+      if (location.pathname !== target) history[!this.restoring && location.pathname !== '/' ? 'pushState' : 'replaceState'](null, '', target + (target !== '/' ? '' : location.hash));
       return;
     }
     const target = this.path();
@@ -84,8 +87,10 @@ const RelayMarketplace = {
     await this.follow();
   },
   async follow() {
-    const id = this.apply(this.parse());
-    if (!this.parse().page) {
+    const route = this.parse();
+    if (typeof RelayBuild === 'object') await RelayBuild.ensure(route);
+    const id = this.apply(route);
+    if (!route.page) {
       state.agentPageId = null;
       state.detail = null;
       state.buyerTab = ['tasks', 'activity', 'scheduled', 'apps', 'tools', 'billing'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'market';
@@ -167,7 +172,8 @@ const RelayMarketplace = {
 
   // ---- Shell -------------------------------------------------------------
   topbar(user) {
-    const active = state.detail || ['tasks'].includes(state.buyerTab) ? 'work'
+    const building = state.account?.user.workspace === 'builder';
+    const active = building ? (state.agentPageId ? 'agents' : 'build') : state.detail || ['tasks'].includes(state.buyerTab) ? 'work'
       : state.buyerTab === 'activity' ? 'activity' : state.buyerTab === 'evidence' ? 'evidence' : state.buyerTab === 'market' ? 'agents'
       : state.buyerTab === 'requests' ? 'requests' : state.buyerTab === 'builders' ? 'builders'
       : ['org', 'enterprise', 'business'].includes(state.buyerTab) ? 'org' : '';
@@ -181,7 +187,7 @@ const RelayMarketplace = {
     return `<a class="skip-workspace" href="#workspace-main">Skip to content</a><header class="mk-topbar">
       <a class="mk-brand" href="/" data-route aria-label="Relay home">relay</a>
       <form class="mk-search" id="market-search" role="search"><label class="sr-only" for="market-search-input">Search agents</label><span aria-hidden="true">⌕</span><input id="market-search-input" name="q" type="search" placeholder="Search agents, builders, outcomes" value="${escape(state.marketFilters?.q || '')}" autocomplete="off"></form>
-      <nav class="mk-nav" aria-label="Main">${link('agents', '/', 'Agents', 'data-route')}${link('requests', '/requests', 'Requests', 'data-route')}${link('builders', '/builders', 'Builders', 'data-route')}${link('work', '/#tasks', 'Your work', 'data-route data-tab="tasks"')}${link('activity', '/#activity', 'Activity', 'data-route data-tab="activity"')}${link('evidence', '/docs/evidence', 'Docs', 'data-route')}${companies.length === 1 ? link('org', `/org/${companies[0].id}`, escape(companies[0].name), 'data-route') : link('org', '/enterprise', 'Enterprise', 'data-route')}</nav>
+      <nav class="mk-nav" aria-label="Main">${link('agents', '/', 'Agents', 'data-route')}${link('requests', '/requests', 'Requests', 'data-route')}${link('builders', '/builders', 'Builders', 'data-route')}${link('build', '/build', 'Build', 'data-route')}${link('work', '/#tasks', 'Your work', 'data-route data-tab="tasks"')}${link('activity', '/#activity', 'Activity', 'data-route data-tab="activity"')}${link('evidence', '/docs/evidence', 'Docs', 'data-route')}${companies.length === 1 ? link('org', `/org/${companies[0].id}`, escape(companies[0].name), 'data-route') : link('org', '/enterprise', 'Enterprise', 'data-route')}</nav>
       <div class="mk-account">
         <div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>
         <details class="mk-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span class="sr-only">Account and workspace for ${escape(user.name)}</span></summary>
@@ -191,7 +197,7 @@ const RelayMarketplace = {
             ${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}
             <button data-action="toggle-appearance" aria-pressed="${globalThis.document?.documentElement?.dataset.appearance !== 'light'}">Dark mode</button>
             <button data-action="logout">Sign out</button></div></details>
-        <button class="mk-publish" data-action="switch">Publish an agent</button>
+        <a class="mk-publish" href="/build/new" data-route>Publish an agent</a>
       </div></header>`;
   },
 
