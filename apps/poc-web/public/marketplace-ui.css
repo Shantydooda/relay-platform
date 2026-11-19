@@ -471,3 +471,12 @@ html[data-appearance='dark'] body.market-open #app .mk-danger { color: #f97066; 
 .mk-readiness.mk-ready { border-left-color: var(--mk-good); }
 .mk-readiness .mk-bullets { margin: 0; }
 .mk-kind { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+
+/* ---- Automatic check results ---- */
+.mk-check-results { list-style: none; margin: 12px 0 0; padding: 0; border: 1px solid var(--mk-border); border-radius: 10px; overflow: hidden; }
+.mk-check-results > li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--mk-row-border); font-size: 14px; }
+.mk-check-results > li:last-child { border-bottom: 0; }
+.mk-check-mark { font-weight: 700; text-align: center; }
+.mk-check-pass .mk-check-mark { color: var(--mk-good); }
+.mk-check-fail .mk-check-mark { color: #c4320a; }
+.mk-check-error .mk-check-mark { color: #b54708; }

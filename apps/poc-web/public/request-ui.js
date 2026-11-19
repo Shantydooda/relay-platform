@@ -121,13 +121,14 @@ const RelayRequestPage = {
     const org = this.org(detail);
     const approval = typeof RelayApprovals === 'object' && detail.approval ? RelayApprovals.task(t, detail.approval) : '';
     const main = tab === 'activity' ? this.activity(detail) : `${this.description(detail)}
-      ${typeof RelayIntake === 'object' ? RelayIntake.section(detail) : ''}
+      ${typeof RelayIntake === 'object' ? RelayIntake.section(detail) + RelayIntake.checksSection(detail) : ''}
       ${!state.editing && detail.mine !== false && typeof RelayExecution === 'object' && !detail.execution ? RelayExecution.input(t) : ''}
       ${state.editing ? '' : this.offers(detail)}
       ${approval}
       ${typeof RelayConnections === 'object' ? RelayConnections.taskAccess(detail) : ''}
       ${typeof RelayPayments === 'object' ? RelayPayments.task(t, detail.payment, false, detail.execution) : ''}
       ${state.reviewStart && typeof startReview === 'function' ? startReview(t) : ''}
+      ${typeof RelayIntake === 'object' ? RelayIntake.checkResults(detail) : ''}
       ${typeof RelayExecution === 'object' ? RelayExecution.delivery(t) : ''}${typeof RelayApps === 'object' ? RelayApps.permissionDecisions(t) : ''}
       ${typeof changeProposalCards === 'function' ? changeProposalCards(t, detail.changeProposals) : ''}${typeof repeatHireCard === 'function' ? repeatHireCard() : ''}${typeof retryCard === 'function' ? retryCard() : ''}
       ${this.messages(detail)}`;

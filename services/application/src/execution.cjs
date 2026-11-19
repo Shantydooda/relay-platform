@@ -133,7 +133,7 @@ function createExecution(context) {
     task.assignment = { id: randomUUID(), agentId: agent.id, operatorId: offer.operatorId, offerId: offer.id,
       status: 'queued', authorizedAt: now(), mode, attempt: 0, progress: 'Waiting for the runtime',
       runtimeKind: agent.runtimeKind, runtimeVersion: agent.runtimeVersion || null, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + executionWindowMs(offer.deliveryMinutes),
-      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null, acceptanceCriteria: task.acceptanceCriteria || [] } };
+      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null, acceptanceCriteria: task.acceptanceCriteria || [], checks: require('./checks.cjs').freeze(task.checks, task) } };
     touch(task, now()); event(task, actor.user.id, 'assignment.authorized_local', now());
     await saveTask(repo, task);
     await repo.save('grant', { id: task.assignment.id, ownerId: offer.operatorId, tenantId: task.tenantId, taskId: task.id, agentId: agent.id });
@@ -194,6 +194,8 @@ function createExecution(context) {
         acceptanceCriteria: task.assignment.agreement.acceptanceCriteria || [], unmetCriteria: task.submissions.findLast(item => item.status === 'revision_requested')?.unmetCriteria || [],
         // Read access the buyer granted for this assignment. Never credentials: reads go through Relay.
         accessGrants: context.connections ? await context.connections.grantsForAgent(repo, task) : [],
+        // The agreed machine checks, so the agent can test its own output before delivering.
+        checks: (task.assignment.agreement.checks || []).map(require('./checks.cjs').checkView),
         // The ERP intake and its files, released now that the buyer has authorized the work.
         intake: task.intake ? require('./intake.cjs').intakeView(task) : null,
         attachments: context.intake ? await context.intake.forAgent(repo, task) : [] };
@@ -254,6 +256,17 @@ function createExecution(context) {
       }
       const manifest = files.map(({ base64, ...metadata }) => metadata);
       const submission = { id: submissionId, version: task.submissions.length + 1, status: 'ready', createdAt: now(), evidence, files: manifest };
+      // Run the agreed machine checks on the delivered CSV before the buyer reviews it.
+      const agreedChecks = task.assignment.agreement.checks || [];
+      if (agreedChecks.length) {
+        const load = async attachmentId => {
+          const file = (task.attachments || []).find(f => f.id === attachmentId);
+          const artifact = file ? await repo.get('artifact', file.artifactId) : null;
+          if (!artifact || artifact.sha256 !== file.sha256) throw new Error('a request file is unavailable');
+          return Buffer.from(artifact.base64, 'base64');
+        };
+        submission.checks = { ranAt: now(), ...(await require('./checks.cjs').runChecks(agreedChecks, files, load)) };
+      }
       task.submissions.push(submission); task.assignment.status = 'buyer_review'; task.assignment.completedAt = now();
       task.assignment.leaseHash = null; task.assignment.progress = 'Files delivered for review';
       touch(task, now()); event(task, principal.actor.user.id, 'submission.received', now()); await saveTask(repo, task);
@@ -334,7 +347,8 @@ function createExecution(context) {
         acceptSubmission(task, submission, 'The buyer accepted this delivery.');
       } else {
         const notes = text(body.notes, 'Revision notes', 1, 2000);
-        submission.unmetCriteria = unmetCriteriaInput(task, body.unmetCriteria);
+        // A failing machine check is unmet whether or not the buyer names it, so fixing it is free.
+        submission.unmetCriteria = [...new Set([...unmetCriteriaInput(task, body.unmetCriteria), ...require('./checks.cjs').failing(submission.checks)])];
         require('./packages.cjs').checkPolishRound(task, submission.unmetCriteria);
         if (task.assignment.runtimeKind !== 'supplier-hosted' && !['Sort rows descending', 'Keep duplicate rows', 'Sort rows ascending'].includes(notes)) fail(422, 'UNSUPPORTED_REVISION', 'Choose a supported CSV revision: Sort rows descending, Keep duplicate rows, or Sort rows ascending.');
         submission.status = 'revision_requested'; task.assignment.status = 'queued'; task.assignment.attempt = 0;

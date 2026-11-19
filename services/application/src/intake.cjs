@@ -178,6 +178,18 @@ function createIntake(context) {
     });
   }
 
+  // Machine-run acceptance checks (checks.cjs): part of the scope, like the checklist.
+  async function setChecks(actor, taskId, body, key) {
+    exactKeys(body, ['expectedVersion', 'checks']);
+    return command(actor.user.id, key, ['checks', taskId, body], repo => taskFor(repo, actor, taskId, true), async repo => {
+      const task = await taskFor(repo, actor, taskId, true); expected(task, body.expectedVersion); editable(task);
+      task.checks = require('./checks.cjs').normalizeChecks(body.checks, task);
+      scopeChange(task, actor.user.id, 'checks.updated');
+      await saveTask(repo, task);
+      return { taskId, version: task.version, scopeVersion: task.scopeVersion, checks: task.checks.map(require('./checks.cjs').checkView) };
+    });
+  }
+
   // Post is refused until the intake is complete.
   function assertReady(task) {
     const r = readiness(task);
@@ -203,7 +215,7 @@ function createIntake(context) {
     return out;
   }
 
-  return { setIntake, addAttachment, removeAttachment, assertReady, forBidders, forAgent };
+  return { setIntake, setChecks, addAttachment, removeAttachment, assertReady, forBidders, forAgent };
 }
 
 module.exports = { createIntake, readiness, intakeView, TARGETS, OBJECTS, ROLES, CASES, MIN_PAIRS };

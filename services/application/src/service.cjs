@@ -464,7 +464,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       const project = task.projectId ? await repo.get('project', task.projectId) : null;
       const poster = resolveOperator && task.ownerId !== actor.user.id ? await resolveOperator(task.ownerId) : null;
       const postedBy = task.ownerId === actor.user.id ? actor.user.name : poster?.user?.name || task.messages[0]?.authorName || null;
-      return { retry, acceptance: acceptanceView(task), postedBy, intake: require('./intake.cjs').intakeView(task), access: await context.connections.forTask(repo, task), mine: task.ownerId === actor.user.id,
+      return { retry, acceptance: acceptanceView(task), postedBy, intake: require('./intake.cjs').intakeView(task),
+        checks: (task.assignment?.agreement?.checks || task.checks || []).map(require('./checks.cjs').checkView), access: await context.connections.forTask(repo, task), mine: task.ownerId === actor.user.id,
         project: project ? { id: project.id, name: project.name, status: project.status, leadId: project.leadId } : null, actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
         approval: require('./approvals.cjs').approvalView(task, now()), execution: publicExecution(task), payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), submissions: task.submissions.map(publicSubmission) };
     });
@@ -480,7 +481,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) return null;
     return { id: task.id, title: task.title, brief: task.brief, version: task.version, scopeVersion: task.scopeVersion, acceptanceCriteria: task.acceptanceCriteria || [],
       input: task.input ? { filename: task.input.filename, size: task.input.size, sha256: task.input.sha256, notes: task.input.notes, operation: task.input.operation } : null,
-      intake: context.intake.forBidders(task),
+      intake: context.intake.forBidders(task), checks: (task.checks || []).map(require('./checks.cjs').checkView),
       context: [], myOffers: task.offers.filter(offer => offer.operatorId === actor.user.id).map(offer => ({ id: offer.id, agentId: offer.agentId, taskVersion: offer.taskVersion, scopeVersion: offer.scopeVersion, expiresAt: offer.expiresAt })) };
   }
   async function opportunities(actor) {
@@ -617,8 +618,8 @@ function publicExecution(task) {
   return { waitingForPermission: waitingForPermission(task.assignment), pausedByBuyer: pausedByBuyer(task.assignment), id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? (task.settlement?.status || 'unknown') : 'not_applicable_local_unpaid' };
 }
 function publicSubmission(submission) {
-  const { id, version, status, createdAt, evidence, files, unmetCriteria } = submission;
+  const { id, version, status, createdAt, evidence, files, unmetCriteria, checks } = submission;
   return { id, version, status, createdAt, evidence, files: files.map(({ id, filename, mime, size, sha256, scan }) => ({ id, filename, mime, size, sha256, ...(scan ? { scan } : {}) })),
-    ...(unmetCriteria?.length ? { unmetCriteria } : {}) };
+    ...(unmetCriteria?.length ? { unmetCriteria } : {}), ...(checks ? { checks } : {}) };
 }
 module.exports = { createApplication, publicSubmission };

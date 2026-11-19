@@ -74,6 +74,60 @@ const RelayIntake = {
         <p class="mk-caption">Files go to the agent only after you start the work. Mask bank account and tax ID columns unless the work needs them.${detail.task.status !== 'draft' ? ' Adding a file changes the scope: agents quote again.' : ''}</p>
         <div class="form-error" role="alert"></div><div class="mk-form-actions"><button type="submit">Add file</button></div></form>` : ''}</section>`;
   },
+  // ---- Machine-run acceptance checks (checks.cjs) --------------------------
+  CHECKS: [['row_count', 'Row count'], ['required_fields', 'Required fields are filled'], ['unique_key', 'Key is unique'], ['header_matches_template', 'Columns match the import template'],
+    ['values_in_crosswalk', 'Codes exist in the cross-walk'], ['control_total', 'Control total ties'], ['matches_samples', 'Sample pairs come back as expected']],
+  // The API takes the whole list; strip the display fields Relay adds.
+  checkBody(c) {
+    const { id, label, description, filename, samples, ...body } = c;
+    return body;
+  },
+  checkParams(type, files) {
+    const crosswalks = files.filter(f => f.role === 'code_crosswalk');
+    switch (type) {
+      case 'row_count': return '<label for="chk-expected">Expected rows</label><input id="chk-expected" name="expected" type="number" min="0" required><label for="chk-tol">Tolerance (rows)</label><input id="chk-tol" name="tolerance" type="number" min="0" value="0">';
+      case 'required_fields': return '<label for="chk-fields">Columns that must be filled</label><input id="chk-fields" name="fields" required placeholder="External ID, Company Name, Terms">';
+      case 'unique_key': return '<label for="chk-fields">Key columns</label><input id="chk-fields" name="fields" required placeholder="Tax ID  (or: Name, Country)">';
+      case 'header_matches_template': return files.some(f => f.role === 'target_template') ? '<p class="mk-caption">The delivered columns must match your target import template exactly, in order.</p>' : '<p class="mk-caption">Add the target import template first.</p>';
+      case 'values_in_crosswalk': return crosswalks.length ? `<label for="chk-field">Delivered column</label><input id="chk-field" name="field" required placeholder="Terms"><label for="chk-walk">Cross-walk</label><select id="chk-walk" name="attachmentId">${crosswalks.map(f => `<option value="${escape(f.id)}">${escape(f.filename)}</option>`).join('')}</select><label for="chk-col">Cross-walk column with the new codes</label><input id="chk-col" name="column" required placeholder="netsuite">` : '<p class="mk-caption">Add a code cross-walk first.</p>';
+      case 'control_total': return '<label for="chk-field">Column to total</label><input id="chk-field" name="field" required placeholder="Open Balance"><label for="chk-expected">Expected total</label><input id="chk-expected" name="expected" type="number" step="0.01" required><label for="chk-tol">Tolerance</label><input id="chk-tol" name="tolerance" type="number" min="0" step="0.01" value="0">';
+      case 'matches_samples': return files.some(f => f.role === 'expected_output') ? '<label for="chk-key">Key column that identifies a record</label><input id="chk-key" name="key" required placeholder="External ID">' : '<p class="mk-caption">Add a sample pair first.</p>';
+    }
+    return '';
+  },
+  checkFromForm(data) {
+    const type = data.get('type'), list = v => String(v || '').split(',').map(x => x.trim()).filter(Boolean), num = v => Number(v);
+    return { type, ...(type === 'row_count' ? { expected: num(data.get('expected')), tolerance: num(data.get('tolerance') || 0) } : {}),
+      ...(['required_fields', 'unique_key'].includes(type) ? { fields: list(data.get('fields')) } : {}),
+      ...(type === 'values_in_crosswalk' ? { field: String(data.get('field') || '').trim(), attachmentId: data.get('attachmentId'), column: String(data.get('column') || '').trim() } : {}),
+      ...(type === 'control_total' ? { field: String(data.get('field') || '').trim(), expected: num(data.get('expected')), tolerance: num(data.get('tolerance') || 0) } : {}),
+      ...(type === 'matches_samples' ? { key: String(data.get('key') || '').trim() } : {}) };
+  },
+  checksSection(detail) {
+    const checks = detail.checks || [], files = detail.intake?.attachments || [];
+    const editable = detail.mine !== false && !detail.execution && ['draft', 'posted', 'selected'].includes(detail.task.status);
+    if (!checks.length && !editable) return '';
+    const type = state.checkType || 'unique_key';
+    return `<section class="mk-section" aria-labelledby="mk-checks-title"><h2 id="mk-checks-title">Automatic checks <span class="mk-total">${checks.length}</span></h2>
+      <p class="mk-caption">Relay runs these on every delivery. A failing check counts as unmet, so the fix is free. The agent sees them before quoting and can test its own output.</p>
+      ${checks.length ? `<ul class="mk-member-list">${checks.map(c => `<li><span class="mk-tag">${escape(c.label)}</span><span>${escape(c.description)}</span>${editable ? `<button type="button" class="mk-link-button" data-action="check-remove" data-id="${escape(c.id)}">Remove</button>` : ''}</li>`).join('')}</ul>` : ''}
+      ${editable ? `<form id="check-add" class="mk-form mk-panel"><h3>Add a check</h3>
+        <label for="chk-type">Check</label><select id="chk-type" name="type" data-check-type>${this.option(this.CHECKS, type)}</select>
+        ${this.checkParams(type, files)}
+        <p class="mk-caption">${detail.task.status === 'draft' ? '' : 'Changing checks changes the scope: agents quote again. '}</p>
+        <div class="form-error" role="alert"></div><div class="mk-form-actions"><button type="submit">Add check</button></div></form>` : ''}</section>`;
+  },
+  checkResults(detail) {
+    const subs = (detail.submissions || []).filter(s => s.checks);
+    if (!subs.length) return '';
+    const latest = subs.at(-1), results = latest.checks.results, failed = results.filter(r => r.status !== 'pass');
+    return `<section class="mk-section" aria-labelledby="mk-results-title"><h2 id="mk-results-title">Checks on delivery v${latest.version}</h2>
+      <div class="mk-readiness ${failed.length ? '' : 'mk-ready'}" role="status"><strong>${failed.length ? `${failed.length} of ${results.length} checks didn’t pass` : `All ${results.length} checks passed`}</strong>
+        <span class="mk-caption">Checked ${escape(latest.checks.file || 'no CSV')}. ${failed.length ? 'Ask for changes and the failing checks are included automatically: the fix is free.' : 'Review the file and the checklist, then accept.'}</span></div>
+      <ul class="mk-check-results">${results.map(r => `<li class="mk-check-${escape(r.status)}"><span class="mk-check-mark" aria-hidden="true">${r.status === 'pass' ? '✓' : r.status === 'fail' ? '✕' : '!'}</span>
+        <span><strong>${escape(r.label)}</strong> <span class="mk-caption">${escape(r.description)}</span><br>${escape(r.detail)}${r.examples?.length ? `<ul class="mk-bullets mk-caption">${r.examples.map(e => `<li>${escape(e)}</li>`).join('')}</ul>` : ''}</span>
+        <span class="sr-only">${r.status === 'pass' ? 'Passed' : r.status === 'fail' ? 'Failed' : 'Couldn’t run'}</span></li>`).join('')}</ul></section>`;
+  },
   async fileBase64(file) {
     if (!file || !file.size || file.size > 5 * 1024 * 1024) throw new Error('Choose a file of up to 5 MB.');
     const url = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('The file could not be read.')); reader.readAsDataURL(file); });

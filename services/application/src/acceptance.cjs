@@ -48,7 +48,8 @@ function revisionRounds(task) {
 
 function unmetCriteriaInput(task, value) {
   if (value === undefined) return [];
-  const agreed = new Set(criteriaFor(task).map(item => item.id));
+  // Machine-run checks (checks.cjs) can be named as unmet too.
+  const agreed = new Set([...criteriaFor(task).map(item => item.id), ...(task.assignment?.agreement?.checks || []).map(item => item.id)]);
   if (!Array.isArray(value) || value.some(id => !agreed.has(id)) || new Set(value).size !== value.length)
     fail(400, 'INVALID_INPUT', 'Choose criteria from the agreement.');
   return value;

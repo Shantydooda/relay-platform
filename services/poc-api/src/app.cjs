@@ -346,9 +346,9 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
           return send(200, { agentId: id, version: credential.version, started: !!credential.token });
         }
         // ERP intake, typed attachments and sample pairs (intake.cjs).
-        const intakeRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(intake|attachments|attachments\/remove)$/);
+        const intakeRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(intake|checks|attachments|attachments\/remove)$/);
         if (intakeRoute && method === 'POST') {
-          const name = { intake: 'setIntake', attachments: 'addAttachment', 'attachments/remove': 'removeAttachment' }[intakeRoute[2]];
+          const name = { intake: 'setIntake', checks: 'setChecks', attachments: 'addAttachment', 'attachments/remove': 'removeAttachment' }[intakeRoute[2]];
           return send(200, await store[name](actor, intakeRoute[1], await jsonBody(req, intakeRoute[2] === 'attachments' ? 7200000 : 32768), key));
         }
         const input = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/input$/);

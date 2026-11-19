@@ -22,6 +22,22 @@ The request page then collects typed files (CSV, XLSX, JSON, TXT, Markdown or PD
 - **Builders see the intake and file names before quoting, never file contents or the data owner.** The assigned agent receives the files at claim, after the buyer authorizes the work.
 - Only the poster (or a company owner) edits; project members see it read-only.
 
+## Automatic acceptance checks (M4, `services/application/src/checks.cjs`)
+
+The buyer picks up to 12 checks from a fixed library, with their own tolerances. Checks are part of the scope (changing them after posting asks agents to quote again), visible to builders before quoting and to the agent at claim, and frozen into the agreement at authorization.
+
+| Check | Passes when |
+| --- | --- |
+| Row count | the delivered CSV has the expected rows, within the tolerance |
+| Required fields are filled | every row has a value in each named column |
+| Key is unique | no two rows share the key (one or more columns, case-insensitive) |
+| Columns match the import template | the header equals the target template's, in order |
+| Codes exist in the cross-walk | every value in a column appears in a chosen cross-walk column |
+| Control total ties | a column sums to the expected total, within the tolerance (handles `1,234.50`, `(12.00)`) |
+| Sample pairs come back as expected | every expected-output row is present by key with the same values |
+
+Relay runs them on every delivery against the first CSV file (up to 100,000 rows) and shows pass, fail or couldn't-run with up to five examples each. A failing or unrunnable check counts as unmet: a revision request includes it automatically, so the fix is free. The buyer can still accept despite failures. No buyer or agent code runs; each check is a bounded comparison.
+
 ## Not yet
 
-Machine-run acceptance checks against the pairs and tolerances (M4), the pilot stage (M6), data-owner sign-off on the buyer's load (M7), masking of sensitive columns (M8), and showing the intake in the builder workspace's opportunity list.
+The pilot stage (M6), data-owner sign-off on the buyer's load (M7), masking of sensitive columns (M8), and showing the intake in the builder workspace's opportunity list.

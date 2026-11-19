@@ -2,7 +2,7 @@
 
 // Deliberately bounded automation. This does not infer instructions with a model
 // and never executes a buyer's text, formulas, URLs or shell commands.
-function parseCsv(source) {
+function parseCsv(source, { maxRows = 10000 } = {}) {
   const rows = [];
   let row = [], field = '', quoted = false, closed = false;
   source = source.replace(/^\uFEFF/, '');
@@ -26,12 +26,12 @@ function parseCsv(source) {
       if (closed && character.trim()) throw new Error('Unexpected text after CSV quote');
       if (!closed) field += character;
     }
-    if (rows.length > 10000 || row.length > 100) throw new Error('CSV exceeds row or column limit');
+    if (rows.length > maxRows || row.length > 100) throw new Error('CSV exceeds row or column limit');
   }
   if (quoted) throw new Error('CSV has an unclosed quoted field');
   row.push(field.trim());
   if (row.some(value => value !== '')) rows.push(row);
-  if (!rows.length || rows[0].length > 100 || rows.length > 10001) throw new Error('CSV needs a bounded header and rows');
+  if (!rows.length || rows[0].length > 100 || rows.length > maxRows + 1) throw new Error('CSV needs a bounded header and rows');
   const width = rows[0].length;
   if (rows.some(item => item.length !== width)) throw new Error('CSV rows have inconsistent column counts');
   if (rows[0].some(value => !value) || new Set(rows[0].map(value => value.toLowerCase())).size !== width) throw new Error('CSV needs unique nonempty headers');
