@@ -25,7 +25,7 @@ function decode(value, limit = MAX_FILE_BYTES, binary = false) {
   return bytes;
 }
 function createExecution(context) {
-  const { objectStore, fileScanner, repository, command, taskFor, now, localExecution, hash, expected, touch, event, autoAcceptAfterMs = null } = context;
+  const { objectStore, fileScanner, repository, command, taskFor, taskReader = taskFor, now, localExecution, hash, expected, touch, event, autoAcceptAfterMs = null } = context;
   const { runtimeAgent, runtimePrincipal, heartbeat, issueCredential, issueSupplierCredential, revokeCredential } = context.credentials;
   async function verifiedBytes(metadata, artifact, taskId) {
     if (!artifact || artifact.taskId !== taskId || (!artifact.objectKey && typeof artifact.base64 !== 'string')) fail(409, 'FILE_UNAVAILABLE', 'File bytes are unavailable.');
@@ -345,7 +345,7 @@ function createExecution(context) {
       const task = await repo.get('task', id);
       if (!task) fail(404, 'NOT_FOUND', 'File not found.');
       const supplier = task.assignment?.operatorId === actor.user.id;
-      if (!supplier) await taskFor(repo, actor, id);
+      if (!supplier) await taskReader(repo, actor, id);
       const submission = task.submissions.find(item => item.id === submissionId);
       const file = submission?.files.find(item => item.id === fileId);
       if (!file) fail(404, 'NOT_FOUND', 'File not found.');

@@ -50,7 +50,7 @@ function taskView(task, now) {
   const status = task.recurringScheduleId ? 'scheduled' : task.assignment?.status || (offer && offer.expiresAt > now ? 'selected' : task.status);
   const { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, input } = task;
   const approvalStatus = require('./approvals.cjs').approvalView(task, now)?.status || null;
-  return { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, status,
+  return { id, tenantId, projectId: task.projectId || null, title, brief, version, scopeVersion, createdAt, updatedAt, status,
     // Phase, whose move it is, why, and how a finished run ended. See packages/domain/src/work-state.cjs.
     work: workState(task, now, { approvalStatus, retryAvailable: retryAvailable(task) }),
     waitingForPermission: waitingForPermission(task.assignment),
@@ -157,10 +157,24 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     if (write && task.orchestrationStep?.supersededBy) fail(409, 'STEP_SUPERSEDED', 'This step was replaced. Open the current parent plan.');
     return task;
   };
+  // Read-only access: the task's owner and company owners, plus members of the
+  // task's project (docs/specs/Enterprise-and-Projects.md). Every command still
+  // goes through taskFor, so project members can see but not change a task.
+  const taskReader = async (repo, actor, id) => {
+    const current = resolveActor ? await resolveActor(actor.user.id) : actor;
+    const viewer = { ...actor, memberships: current?.memberships || [] };
+    const task = await repo.get('task', id);
+    if (!task) notFound();
+    const member = membership(viewer, task.tenantId);
+    if (task.ownerId === actor.user.id || member.role === 'owner') return task;
+    const project = task.projectId && member.company ? await repo.get('project', task.projectId) : null;
+    if (project?.tenantId === task.tenantId && require('./projects.cjs').isMember(project, actor.user.id)) return task;
+    notFound();
+  };
   const agentFor = async (repo, actor, id) => owner(actor, await repo.get('agent', id, true));
 
   async function createTask(actor, body, key) {
-    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion']);
+    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion', 'projectId']);
     membership(actor, body.tenantId, true);
     const repeating = body.repeatFromTaskId !== undefined;
     const retrying = body.retryFromTaskId !== undefined;
@@ -180,6 +194,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       membership(actor, body.tenantId, true);
       if (repeating) await taskFor(repo, actor, body.repeatFromTaskId);
       if (retrying) await taskFor(repo, actor, body.retryFromTaskId, true);
+      if (body.projectId !== undefined) await context.projects.checkFiling(repo, actor, body.tenantId, body.projectId);
     };
     const title = text(body.title, 'Title', 1, 120), brief = text(body.brief, 'Brief', 1, 10000);
     return command(actor.user.id, key, ['create', body], authorize, async repo => {
@@ -220,6 +235,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         fail(400, 'INVALID_INPUT', 'A routing preference requires an available agent.');
       }
       const task = newTask({ id, actor, tenantId: body.tenantId, title, brief, time, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf });
+      if (body.projectId !== undefined) task.projectId = (await context.projects.checkFiling(repo, actor, body.tenantId, body.projectId)).id;
       event(task, actor.user.id, 'task.created', time);
       await saveTask(repo, task);
       return { taskId: id, version: 1 };
@@ -427,7 +443,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
 
   async function detail(actor, id) {
     return repository.read(async repo => {
-      const task = await taskFor(repo, actor, id);
+      const task = await taskReader(repo, actor, id);
       const schedule = task.scheduleId ? await repo.get('schedule', task.scheduleId) : null;
       if (task.scoping?.status === 'pending') {
         const job = await repo.get('scoping-job', task.scoping.id);
@@ -482,7 +498,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   async function offers(actor, id) {
     return repository.read(async repo => {
-      const task = await taskFor(repo, actor, id);
+      const task = await taskReader(repo, actor, id);
       const checkedAt = now();
       const offers = await require('./fair-exposure.cjs').offersWithExposure(repo, task, checkedAt);
       return require('./offer-recommendation.cjs').recommendOffers(task, offers, checkedAt)
@@ -526,8 +542,10 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   // Runtime-specific commands are installed in one place and share task locks,
   // authorization, receipt replay handling and the same immutable task document.
-  const context = { capabilities, supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView, autoAcceptAfterMs };
+  const context = { capabilities, supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, taskReader, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView, autoAcceptAfterMs };
   context.approvals = require('./approvals.cjs').createApprovals(context);
+  context.projects = require('./projects.cjs').createProjects(context);
+  const { checkFiling, ...projectCommands } = context.projects;
   context.credentials = require('./supplier-credentials.cjs').createCredentials(context);
   const orchestration = require('./orchestration.cjs').createOrchestration(context);
   const portfolio = require('./portfolio.cjs').createPortfolio(context);
@@ -546,7 +564,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   context.refreshSourceWithin = refreshSourceWithin;
   const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView,
     connectors: require('./marketplace-browse.cjs').workingConnectors({ capabilities, driveProvider, attioProvider }) });
-  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
+  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),

@@ -270,6 +270,14 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         const budgetRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/budget$/);
         if (budgetRoute && method === 'GET') return send(200, await store.companyBudget(actor, budgetRoute[1], url.searchParams.get('after') || ''));
         if (budgetRoute && method === 'POST') return send(200, await store.configureBudget(actor, budgetRoute[1], await jsonBody(req), key));
+        const teamProjectsRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/projects$/);
+        if (teamProjectsRoute && method === 'GET') return send(200, await store.projects(actor, teamProjectsRoute[1]));
+        if (teamProjectsRoute && method === 'POST') return send(201, await store.createProject(actor, teamProjectsRoute[1], await jsonBody(req), key));
+        const projectRoute = path.match(/^\/api\/projects\/([0-9a-f-]{36})$/);
+        if (projectRoute && method === 'GET') return send(200, await store.project(actor, projectRoute[1]));
+        if (projectRoute && method === 'POST') return send(200, await store.updateProject(actor, projectRoute[1], await jsonBody(req), key));
+        const taskProjectRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/project$/);
+        if (taskProjectRoute && method === 'POST') return send(200, await store.moveTask(actor, taskProjectRoute[1], await jsonBody(req), key));
         const approvalRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/approval(?:\/(decide))?$/);
         if (approvalRoute && method === 'POST') return send(200, await store[approvalRoute[2] ? 'decideApproval' : 'requestApproval'](actor, approvalRoute[1], await jsonBody(req), key));
         if (path === '/api/payments/recovery' && method === 'GET') return send(200, await store.paymentRecovery(actor, url.searchParams.get('after') || ''));
