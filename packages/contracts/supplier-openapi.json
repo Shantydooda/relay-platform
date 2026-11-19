@@ -2025,6 +2025,15 @@
                       "string",
                       "integer"
                     ]
+                  },
+                  "params": {
+                    "type": "object",
+                    "maxProperties": 5,
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    "description": "Object parameters such as a GitHub repository (owner/name) or file path."
                   }
                 },
                 "required": [

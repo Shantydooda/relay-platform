@@ -41,6 +41,8 @@ const PLANNED = Object.freeze([
   { kind: 'sap-s4hana', label: 'SAP S/4HANA', note: 'A communication arrangement with a read-only business role.' },
   { kind: 'dynamics-365', label: 'Microsoft Dynamics 365', note: 'An app registration with export-only duties.' },
   { kind: 'sftp', label: 'SFTP drop folder', note: 'Read-only access to one folder of exports.' },
+  { kind: 'salesforce', label: 'Salesforce', note: 'A connected app with read-only object permissions.' },
+  { kind: 'jira', label: 'Jira', note: 'An API token for a read-only account on chosen projects.' },
 ]);
 
 function createConnections(context) {
@@ -88,6 +90,7 @@ function createConnections(context) {
   function connectionCatalog() {
     return [
       ...[...providers.values()].map(p => ({ kind: p.kind, label: p.label, available: true, environments: [...p.environments], objects: [...p.objects],
+        objectParams: Object.fromEntries(Object.entries(p.objectParams || {}).map(([k, v]) => [k, [...v]])), help: p.help || null,
         credentialFields: p.credentialFields.map(({ name, label, secret }) => ({ name, label, secret: !!secret })) })),
       ...PLANNED.filter(p => !providers.has(p.kind)).map(p => ({ ...p, available: false })),
     ];
@@ -290,17 +293,23 @@ function createConnections(context) {
 
   async function readAccess(principal, taskId, body) {
     enabled();
-    exactKeys(body, ['leaseToken', 'grantId', 'object', 'cursor']);
+    exactKeys(body, ['leaseToken', 'grantId', 'object', 'cursor', 'params']);
+    // Object parameters (a repository, a file path) are plain short strings; each
+    // connector validates them against its own fixed patterns.
+    const params = body.params ?? {};
+    if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).length > 5 ||
+      Object.entries(params).some(([k, v]) => !/^[a-z]{1,20}$/.test(k) || typeof v !== 'string' || v.length > 300))
+      fail(400, 'INVALID_INPUT', 'Read parameters must be a few short text values.');
     return repository.transaction(`task:${taskId}`, async repo => {
       const task = await runtimeTask(repo, principal, taskId);
       context.checkLease(task, principal, body.leaseToken);
       const { g, c } = await liveGrant(repo, task, body.grantId);
       if (!g.objects.includes(body.object)) fail(403, 'GRANT_SCOPE', `This grant covers ${g.objects.join(', ')} only.`);
       const credentials = connectionVault.open(c.secret, `connection:${c.id}`);
-      const result = await provider(c.provider).read(credentials, { object: body.object, cursor: body.cursor ?? 0, limit: READ_LIMIT });
+      const result = await provider(c.provider).read(credentials, { object: body.object, cursor: body.cursor ?? 0, limit: READ_LIMIT, params });
       g.reads++; g.rowsRead += result.rows.length; g.lastReadAt = now();
       await repo.save('access-grant', g);
-      await repo.save('access-log', { id: randomUUID(), tenantId: g.tenantId, ownerId: g.ownerId, taskId: task.id, grantId: g.id, object: body.object, rows: result.rows.length, createdAt: now() });
+      await repo.save('access-log', { id: randomUUID(), tenantId: g.tenantId, ownerId: g.ownerId, taskId: task.id, grantId: g.id, object: body.object, params, rows: result.rows.length, createdAt: now() });
       return { object: body.object, rows: result.rows, nextCursor: result.nextCursor ?? null };
     });
   }

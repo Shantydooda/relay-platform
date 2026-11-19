@@ -22,9 +22,15 @@ If the buyer declines an access request, or leaves it unanswered for 72 hours, t
 
 ## Connectors
 
-Built: a labelled **Sample ERP (local testing)** with made-up records, implementing the provider contract `verify(credentials) → { account, objects }` and `read(credentials, { object, cursor, limit }) → { rows, nextCursor }`.
+Built (provider contract `verify(credentials) → { account, objects }`, `read(credentials, { object, cursor, params }) → { rows, nextCursor }`):
+- **Sample ERP (local testing)**: made-up records, labelled as a sample.
+- **GitHub** (`services/connectors/src/saas-readers.cjs`): fine-grained tokens only (classic tokens can't be limited to chosen repositories or read-only). Objects: repositories, issues, pull requests, a file (repo and path validated against fixed patterns; no `..`).
+- **HubSpot**: a private app token with read scopes; contacts, companies, deals, with paging. Sandbox and production.
+- **Attio**: an access token with read scopes; companies and people through the record query (a POST that only reads).
 
-Planned, shown as "Coming next", each after a test account and an independent security review: NetSuite (token-based login on a dedicated read-only integration role), SAP S/4HANA (communication arrangement with a read-only business role), Dynamics 365 (app registration with export-only duties), SFTP drop folder.
+All three use fixed hosts, no redirects, a 10 s timeout and a 2 MB response cap, and are tested against a stubbed network only: **not yet verified against live accounts.**
+
+Planned, shown as "Coming next", each after a test account and an independent security review: NetSuite (token-based login on a dedicated read-only integration role), SAP S/4HANA (communication arrangement with a read-only business role), Dynamics 365 (app registration with export-only duties), SFTP drop folder, Salesforce, Jira.
 
 ## Known limits
 

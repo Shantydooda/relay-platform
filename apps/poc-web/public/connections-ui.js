@@ -33,7 +33,7 @@ const RelayConnections = {
     return `<form id="connection-create" class="mk-form mk-panel"><h3>Connect a system</h3>
       <label for="connection-provider">System</label><select id="connection-provider" name="provider" data-connect-provider>${providers.map(p => `<option value="${escape(p.kind)}" ${p.kind === chosen.kind ? 'selected' : ''}>${escape(p.label)}</option>`).join('')}</select>
       <label for="connection-environment">Environment</label><select id="connection-environment" name="environment">${chosen.environments.map(e => `<option value="${escape(e)}">${escape(this.ENV[e] || e)}</option>`).join('')}</select>
-      <p class="mk-caption">Start with a sandbox. Use a dedicated integration user with read-only permissions, never an administrator login.</p>
+      <p class="mk-caption">${escape(chosen.help || 'Start with a sandbox. Use a dedicated integration user with read-only permissions, never an administrator login.')}</p>
       <label for="connection-label">Name</label><input id="connection-label" name="label" maxlength="80" required placeholder="e.g. NetSuite sandbox (Wave 2)">
       ${chosen.credentialFields.map(f => `<label for="connection-${escape(f.name)}">${escape(f.label)}</label><input id="connection-${escape(f.name)}" name="cred-${escape(f.name)}" ${f.secret ? 'type="password" autocomplete="off"' : 'autocomplete="off"'} required>`).join('')}
       <p class="mk-caption">Relay checks these with the system, then stores them encrypted. You won’t see them again.</p>

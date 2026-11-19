@@ -50,7 +50,8 @@ async function start() {
     if (!existsSync(connectionKeyPath)) writeFileSync(connectionKeyPath, JSON.stringify({ encryptionKey: require('node:crypto').randomBytes(32).toString('hex') }), { mode: 0o600 });
     if (statSync(connectionKeyPath).mode & 0o077) throw new Error('Connection key file must be private (chmod 600).');
     const connectionVault = require('../../connectors/src/vault.cjs').createVault(JSON.parse(readFileSync(connectionKeyPath, 'utf8')).encryptionKey);
-    const connectionProviders = [require('../../connectors/src/erp-fixture.cjs').createSampleErp()];
+    const readers = require('../../connectors/src/saas-readers.cjs');
+    const connectionProviders = [require('../../connectors/src/erp-fixture.cjs').createSampleErp(), readers.createGitHubReader(), readers.createHubSpotReader(), readers.createAttioReader()];
     const store = await createUnifiedLocalStore({ connectionVault, connectionProviders, attioProvider, driveProvider, objectStore, fileScanner, authDb, applicationDb, repository: native?.repository, storage: native ? 'postgres' : 'sqlite', localExecution: true, scopingProvider, paymentProvider, paymentRecoveryUserIds: (process.env.RELAY_PAYMENT_RECOVERY_USER_IDS || '').split(',').filter(Boolean) });
     const runtimeManager = createLocalRuntimeManager(origin);
     const paymentWebhookVerifier = paymentProvider && process.env.RELAY_STRIPE_WEBHOOK_SECRET
