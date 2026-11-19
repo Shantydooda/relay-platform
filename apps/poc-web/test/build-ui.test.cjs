@@ -51,7 +51,7 @@ test('opportunities show the buyer’s ERP facts and never an internal scope num
 });
 
 test('the shell marks the current section and offers sit under Opportunities', () => {
-  const b = build({ quotes: [{ title: 'T', agentName: 'A', amountMinor: 5000, currency: 'USD', deliveryMinutes: 30, status: 'pending' }] });
+  const b = build({ agents: [agent()], quotes: [{ title: 'T', agentName: 'A', amountMinor: 5000, currency: 'USD', deliveryMinutes: 30, status: 'pending' }] });
   const html = b.shell('quotes', 'Opportunities', '', '', b.offers());
   assert.match(html, /href="\/build\/opportunities" data-route class="active" aria-current="page">Opportunities/);
   assert.match(html, /Waiting for the buyer/);
@@ -81,4 +81,20 @@ test('an agent’s setup page is headed builder/agent, with no section count', (
   const b = build({ account: { user: { name: 'Test Builder' } }, agents: [agent()], setupAgentId: 'a1' });
   const html = b.shell('agents', b.agentTitle(agent()), 'Draft', '', '');
   assert.match(html, /test-builder\/csv-cleaner<\/span><\/h1>/);
+});
+
+test('Build is for builders: an account with no agent is sent to start one, without the builder menu', () => {
+  const b = build({ account: { user: { name: 'Buyer', workspace: 'builder' } }, agents: [] });
+  assert.equal(b.isBuilder(), false);
+  const s = { account: { user: { workspace: 'builder' } }, agents: [], builderTab: 'dashboard' };
+  b.gate(s);
+  assert.equal(s.addingAgent, true, 'the dashboard of an account without agents becomes "New agent"');
+  const html = b.shell('agents', 'New agent', 'Introduce it', '', '<form></form>');
+  assert.doesNotMatch(html, /mk-build-nav/, 'no Dashboard, Opportunities or Earnings before there is an agent');
+  const builder = build({ account: { user: { name: 'Builder', workspace: 'builder' } }, agents: [agent()] });
+  assert.equal(builder.isBuilder(), true, 'a draft agent is enough');
+  const kept = { account: { user: { workspace: 'builder' } }, agents: [agent()], builderTab: 'dashboard' };
+  builder.gate(kept);
+  assert.notEqual(kept.addingAgent, true);
+  assert.match(builder.shell('dashboard', 'Dashboard', '', '', ''), /mk-build-nav/);
 });

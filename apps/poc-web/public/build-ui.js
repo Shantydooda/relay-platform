@@ -41,6 +41,20 @@ const RelayBuild = {
     return true;
   },
 
+  // Build is for builders: an account counts as one once it has an agent, even a
+  // draft. Anyone can become one through "Publish an agent" (/build/new); until
+  // then the Build pages and their menu stay out of the way.
+  isBuilder(target = state) {
+    const count = Array.isArray(target.agents) && target.account?.user.workspace !== 'buyer' ? target.agents.length : target.ownAgentCount;
+    return (count || 0) > 0;
+  },
+  // On the builder side without an agent, every Build page becomes "New agent".
+  gate(target = state) {
+    if (target.account?.user.workspace !== 'builder' || target.agentPageId || this.isBuilder(target)) return false;
+    target.addingAgent = true; target.setupAgentId = null; target.builderTab = 'agents';
+    return true;
+  },
+
   // One honest status per agent, from what the server enforces: published needs
   // a passed Relay test; paused hides it; a draft can be connected and tested first.
   status(agent) {
@@ -170,6 +184,7 @@ const RelayBuild = {
     const active = state.setupAgentId || state.addingAgent ? 'agents' : tab === 'quotes' ? 'opportunities' : tab;
     const counts = { agents: (state.agents || []).length, opportunities: (state.opportunities || []).length, work: (state.work || []).length };
     const heading = title ? `${title}${counts[active] !== undefined && this.NAV.some(([id, label]) => id !== 'dashboard' && label === title) ? ` <span class="mk-total">${counts[active]}</span>` : ''}` : '';
+    if (!this.isBuilder()) return `<div class="mk-build mk-build-first"><section class="mk-build-main">${title ? `<header class="mk-results-head mk-build-head"><div><h1>${heading}</h1>${lede ? `<p class="mk-caption">${lede}</p>` : ''}</div>${action || ''}</header>` : ''}${content}</section></div>`;
     return `<div class="mk-build"><nav class="mk-build-nav" aria-label="Build"><p class="mk-build-who">${this.avatar(this.builderName())}<span class="mk-handle">${escape(this.slug(this.builderName()))}</span></p>${this.NAV.map(([id, label, slug]) =>
       `<a href="/build${slug ? '/' + slug : ''}" data-route ${active === id ? 'class="active" aria-current="page"' : ''}>${label}${counts[id] ? ` <span class="mk-count">${counts[id]}</span>` : ''}</a>`).join('')}</nav>
       <section class="mk-build-main">${title ? `<header class="mk-results-head mk-build-head"><div><h1>${heading}</h1>${lede ? `<p class="mk-caption">${lede}</p>` : ''}</div>${action || ''}</header>` : ''}${content}</section></div>`;

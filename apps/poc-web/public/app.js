@@ -287,7 +287,10 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   if(state.account.user.workspace==='builder'&&(state.features?.unifiedBackend||state.authMode==='local')){
     const [a,o,w,q]=await Promise.all([api('/api/agents'),api('/api/opportunities'),api('/api/work'),api('/api/quotes')]);
     state.agents=a.agents;state.opportunities=o.tasks;state.work=w.tasks;state.quotes=q.offers;state.detail=null;state.offers=[];
+    state.ownAgentCount=a.agents.length;state.ownAgentsUser=state.account.user.id;if(typeof RelayBuild==='object')RelayBuild.gate(state);
   }else{
+    // Whether to show Build in the top bar: only accounts that have an agent.
+    if(state.ownAgentsUser!==state.account.user.id&&(state.features?.unifiedBackend||state.authMode==='local')){state.ownAgentCount=(await api('/api/agents')).agents.length;state.ownAgentsUser=state.account.user.id;}
     if(id){state.detail=await api(`/api/tasks/${id}`);if(state.tenantId!==state.detail.task.tenantId){state.tenantId=state.detail.task.tenantId;if(state.features?.workspaceApps)state.workspaceApps=await api('/api/workspace-apps?tenantId='+encodeURIComponent(state.tenantId));state.tasks=(await api('/api/tasks?tenantId='+encodeURIComponent(state.tenantId))).tasks;}}else state.detail=null;
     const taskMember = state.account.memberships.find(member => member.id === state.tenantId);
     state.attioReceipts = id && state.features?.attioDelivery && taskMember?.role === 'owner'
@@ -788,6 +791,7 @@ root.addEventListener('click',event=>{
     else if(action==='add-agent'){state.setupAgentId=null;state.addingAgent=true;state.agentIntroPart='profile';location.hash='agent-new';try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}render();}
     else if(action==='continue-capabilities'){const form=document.getElementById('agent');if(!form.reportValidity())return;captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();}
     else if(action==='edit-introduction'){state.agentIntroPart='profile';render();}
+    else if((action==='stop-agent'||action==='close-agent')&&typeof RelayBuild==='object'&&typeof RelayMarketplace==='object'&&!RelayBuild.isBuilder()){state.addingAgent=false;await RelayMarketplace.go('/');}
     else if(action==='stop-agent'||action==='close-agent'){state.addingAgent=false;state.setupAgentId=null;state.builderTab='agents';location.hash='';render();}
     else if(action==='readiness-account'){state.returnAgentId=button.dataset.id;state.setupAgentId=null;state.builderTab='settings';location.hash='';render();}
     else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);location.hash=`agent=${a.id}&step=${state.setupStage}`;if(action==='open-agent')await refresh(null);render();}

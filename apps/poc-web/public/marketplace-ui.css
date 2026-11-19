@@ -524,6 +524,7 @@ html[data-appearance] body.market-open #app .mk-price-track input[type=range] { 
    project details, earnings) are flattened to the same cards, buttons and fields. */
 body.market-open .workspace-content.mk-shell > .canvas:has(.mk-build) { max-width: none; padding: 0; }
 .mk-build { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100dvh - 65px); }
+.mk-build.mk-build-first { grid-template-columns: minmax(0, 1fr); }
 .mk-build-nav { display: flex; flex-direction: column; gap: 2px; padding: 28px 20px; border-right: 1px solid var(--mk-border); background: var(--mk-rail); font-size: 15px; }
 .mk-build-who { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; padding: 0 8px; }
 .mk-build-who .mk-handle { font-size: 14px; }
@@ -579,6 +580,10 @@ html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-f
   color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-row-border); border-radius: 12px; padding: 16px 18px; box-shadow: none; transform: none; }
 html[data-appearance] body.market-open #app .mk-build-main :is(.blocked-note, .delivery-placeholder) { background: var(--mk-rail); }
 html[data-appearance] body.market-open #app .mk-build-main .panel .panel { background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards label { background: var(--mk-bg); border: 1px solid var(--mk-row-border); border-radius: 12px; color: var(--mk-text); box-shadow: none; }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards label:has(input:checked) { border-color: var(--mk-ink); background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards :is(strong, small) { color: inherit; }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards small { color: var(--mk-muted); }
 html[data-appearance] body.market-open #app .mk-build-main :is(h2, h3) { color: var(--mk-text); letter-spacing: 0; }
 html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-form, .readiness) h2 { font-size: 18px; font-weight: 600; margin: 4px 0 8px; }
 html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-form, .readiness) h3 { font-size: 15px; font-weight: 600; }
