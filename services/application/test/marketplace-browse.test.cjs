@@ -53,8 +53,9 @@ test('repeat buyers accepted work at least twice in the window', () => {
 });
 
 test('"works with" lists only connectors that are configured here', () => {
-  assert.deepEqual(workingConnectors({ capabilities: { driveConnections: true, attioDelivery: true } }), []);
-  assert.deepEqual(workingConnectors({ capabilities: { driveConnections: true, attioDelivery: false }, driveProvider: {}, attioProvider: {} }), ['Google Drive']);
+  assert.deepEqual(workingConnectors({ capabilities: { driveConnections: true, attioDelivery: true } }), ['CSV upload'], 'every request takes a CSV');
+  assert.deepEqual(workingConnectors({ capabilities: { driveConnections: true, attioDelivery: false }, driveProvider: {}, attioProvider: {} }), ['Google Drive', 'CSV upload']);
+  assert.deepEqual(workingConnectors({ capabilities: {}, connectionProviders: [{ kind: 'sample-erp', label: 'Sample ERP' }, { kind: 'github', label: 'GitHub' }] }), ['GitHub', 'CSV upload'], 'the labelled sample is never advertised');
   const r = row([], { tools: ['Google Drive', 'Salesforce'], connectors: ['Google Drive'] });
   assert.deepEqual(r.worksWith, ['Google Drive'], 'a declared tool without a working connector is not shown');
   assert.deepEqual(r.declaredTools, ['Google Drive', 'Salesforce']);

@@ -26,7 +26,7 @@ test('the marketplace lists real agents with the evidence Relay recorded, and pa
       assert.equal(row.evidence.runs, 0);
       assert.equal(row.version, '1');
     }
-    assert.deepEqual(market.connectors, [], 'no connector is configured in this test environment');
+    assert.deepEqual(market.connectors, ['CSV upload'], 'only CSV input works in this test environment');
 
     // One accepted run moves that agent to the top of "most verified runs".
     const taskId = await f.postTask();

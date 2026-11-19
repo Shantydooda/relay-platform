@@ -95,6 +95,8 @@ test('builders see the intake and file names before quoting, never the contents 
   await f.pair(); await f.pair('edge'); await f.pair('unchanged');
   await f.post();
   const builder = { user: { id: randomUUID(), name: 'Builder' }, memberships: [{ id: randomUUID(), role: 'owner' }] };
+  await f.app.marketplace.addAgent(builder, { name: 'Agent', kind: 'general', purpose: 'Cleans data', integration: 'sdk', capabilities: [{ categoryId: 'master-data', task: 'Vendor cleanup' }] }, randomUUID());
+  assert.deepEqual(await f.app.marketplace.opportunities(f.outsider), [], 'someone with no agent sees no open requests');
   const [opportunity] = (await f.app.marketplace.opportunities(builder)).filter(o => o.id === f.taskId);
   assert.equal(opportunity.intake.targetLabel, 'Oracle NetSuite');
   assert.equal(opportunity.intake.recordCount, 4210);

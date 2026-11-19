@@ -21,11 +21,15 @@ const MAX_ROWS = 500;
 // Connectors this environment can really use: the capability is on and a
 // provider is configured. An agent appears under "Works with" only when it
 // declares one of these; declaring a tool grants no access.
-function workingConnectors({ capabilities, driveProvider, attioProvider }) {
-  return [
+// Only systems that really work in this environment: delivery integrations,
+// buyer connections (never the labelled sample) and CSV input, which every request takes.
+function workingConnectors({ capabilities, driveProvider, attioProvider, connectionProviders = [] }) {
+  return [...new Set([
     ...(capabilities.driveConnections && driveProvider ? ['Google Drive'] : []),
     ...(capabilities.attioDelivery && attioProvider ? ['Attio'] : []),
-  ];
+    ...connectionProviders.filter(p => p.kind !== 'sample-erp').map(p => p.label),
+    'CSV upload',
+  ])];
 }
 
 function buyersFor(history, agent, now) {

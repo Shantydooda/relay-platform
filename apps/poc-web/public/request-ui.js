@@ -93,10 +93,10 @@ const RelayRequestPage = {
     const t = detail.task;
     if (state.editing) return this.editor(t);
     const editable = detail.mine !== false && ['posted', 'selected'].includes(t.status) && !detail.execution && !t.package;
-    return `<section class="mk-desc" aria-label="The request">
-      <header class="mk-desc-head"><span class="mk-org-avatar mk-org-avatar-sm" aria-hidden="true">${escape((detail.postedBy || '?').slice(0, 1).toUpperCase())}</span><strong>${escape(detail.postedBy || 'Requester')}</strong><span class="mk-caption">posted ${escape(RelayMarketplace.ago(t.createdAt))} · scope v${t.scopeVersion}</span>
+    return `<section class="mk-req-desc" aria-label="The request">
+      <header class="mk-req-desc-head"><span class="mk-org-avatar mk-org-avatar-sm" aria-hidden="true">${escape((detail.postedBy || '?').slice(0, 1).toUpperCase())}</span><strong>${escape(detail.postedBy || 'Requester')}</strong><span class="mk-caption">posted ${escape(RelayMarketplace.ago(t.createdAt))} · scope v${t.scopeVersion}</span>
         ${editable ? '<button type="button" class="mk-link-button" data-action="edit">Edit</button>' : ''}</header>
-      <div class="mk-desc-body"><p class="mk-brief">${escape(t.brief)}</p>
+      <div class="mk-req-desc-body"><p class="mk-brief">${escape(t.brief)}</p>
         ${typeof RelayAcceptance === 'object' ? RelayAcceptance.scope(t) : ''}
 </div></section>`;
   },

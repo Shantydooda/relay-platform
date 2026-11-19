@@ -26,6 +26,8 @@ const RelayMarketplace = {
     const task = /^\/tasks\/([0-9a-f-]{36})$/.exec(pathname)?.[1] || /^#(?:task|chat)=([0-9a-f-]{36})$/.exec(hash)?.[1];
     if (task) return { page: 'task', id: task };
     if (pathname === '/post') return { page: 'post', id: null };
+    if (pathname === '/requests') return { page: 'requests', id: null };
+    if (pathname === '/builders') return { page: 'builders', id: null };
     if (pathname === '/evidence') return { page: 'docs', id: 'evidence' };
     const doc = /^\/docs\/([a-z-]+)$/.exec(pathname)?.[1];
     if (doc && this.DOCS.some(item => item.slug === doc)) return { page: 'docs', id: doc };
@@ -41,6 +43,7 @@ const RelayMarketplace = {
     if (target.buyerTab === 'org' || target.buyerTab === 'enterprise') target.projectId = null;
     if (route.page === 'agent') { target.buyerTab = 'market'; target.agentPageId = route.id; target.agentTab ||= 'card'; target.detail = null; }
     else if (route.page === 'post') { target.buyerTab = 'request'; target.detail = null; }
+    else if (route.page === 'requests' || route.page === 'builders') { target.buyerTab = route.page; target.detail = null; }
     else if (route.page === 'docs') { target.buyerTab = 'evidence'; target.docPage = route.id; target.detail = null; }
     return route.page === 'task' ? route.id : null;
   },
@@ -50,6 +53,8 @@ const RelayMarketplace = {
     if (current.detail) return `/tasks/${current.detail.task.id}`;
     if (current.buyerTab === 'market' && current.agentPageId) return `/agents/${current.agentPageId}`;
     if (current.buyerTab === 'request') return '/post';
+    if (current.buyerTab === 'requests') return '/requests';
+    if (current.buyerTab === 'builders') return '/builders';
     if (current.buyerTab === 'evidence') return `/docs/${current.docPage || 'evidence'}`;
     const org = typeof RelayOrg === 'object' ? RelayOrg.path(current) : null;
     if (org) return org;
@@ -94,7 +99,8 @@ const RelayMarketplace = {
   async load(target = state) {
     const buyer = target.account?.user.workspace === 'buyer';
     if (!buyer && !target.agentPageId) return;
-    if (buyer && target.buyerTab === 'market' && !target.agentPageId) {
+    if (buyer && target.buyerTab === 'requests') target.openRequests = (await api('/api/opportunities')).tasks;
+    if (buyer && ((target.buyerTab === 'market' && !target.agentPageId) || target.buyerTab === 'builders')) {
       target.market = await api('/api/marketplace?sort=' + encodeURIComponent(target.marketSort || 'runs'));
     }
     if (buyer && typeof RelayOrg === 'object') await RelayOrg.load(target);
@@ -163,6 +169,7 @@ const RelayMarketplace = {
   topbar(user) {
     const active = state.detail || ['tasks'].includes(state.buyerTab) ? 'work'
       : state.buyerTab === 'activity' ? 'activity' : state.buyerTab === 'evidence' ? 'evidence' : state.buyerTab === 'market' ? 'agents'
+      : state.buyerTab === 'requests' ? 'requests' : state.buyerTab === 'builders' ? 'builders'
       : ['org', 'enterprise', 'business'].includes(state.buyerTab) ? 'org' : '';
     const companies = (state.account?.memberships || []).filter(m => m.company);
     const link = (id, href, label, attrs = '') => `<a class="${active === id ? 'active' : ''}" href="${href}" ${active === id ? 'aria-current="page"' : ''} ${attrs}>${label}</a>`;
@@ -174,7 +181,7 @@ const RelayMarketplace = {
     return `<a class="skip-workspace" href="#workspace-main">Skip to content</a><header class="mk-topbar">
       <a class="mk-brand" href="/" data-route aria-label="Relay home">relay</a>
       <form class="mk-search" id="market-search" role="search"><label class="sr-only" for="market-search-input">Search agents</label><span aria-hidden="true">⌕</span><input id="market-search-input" name="q" type="search" placeholder="Search agents, builders, outcomes" value="${escape(state.marketFilters?.q || '')}" autocomplete="off"></form>
-      <nav class="mk-nav" aria-label="Main">${link('agents', '/', 'Agents', 'data-route')}${link('work', '/#tasks', 'Your work', 'data-route data-tab="tasks"')}${link('activity', '/#activity', 'Activity', 'data-route data-tab="activity"')}${link('evidence', '/docs/evidence', 'Docs', 'data-route')}${companies.length === 1 ? link('org', `/org/${companies[0].id}`, escape(companies[0].name), 'data-route') : link('org', '/enterprise', 'Enterprise', 'data-route')}</nav>
+      <nav class="mk-nav" aria-label="Main">${link('agents', '/', 'Agents', 'data-route')}${link('requests', '/requests', 'Requests', 'data-route')}${link('builders', '/builders', 'Builders', 'data-route')}${link('work', '/#tasks', 'Your work', 'data-route data-tab="tasks"')}${link('activity', '/#activity', 'Activity', 'data-route data-tab="activity"')}${link('evidence', '/docs/evidence', 'Docs', 'data-route')}${companies.length === 1 ? link('org', `/org/${companies[0].id}`, escape(companies[0].name), 'data-route') : link('org', '/enterprise', 'Enterprise', 'data-route')}</nav>
       <div class="mk-account">
         <div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>
         <details class="mk-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span class="sr-only">Account and workspace for ${escape(user.name)}</span></summary>
@@ -190,7 +197,8 @@ const RelayMarketplace = {
 
   // ---- Browse ------------------------------------------------------------
   filters() {
-    state.marketFilters ||= { q: '', categories: [], ways: [], works: [], evidence: [], railTab: 'main', allCategories: false };
+    state.marketFilters ||= { q: '', categories: [], ways: [], works: [], evidence: [], railTab: 'main', allCategories: false, price: [0, this.PRICE_STOPS.length - 1] };
+    state.marketFilters.price ||= [0, this.PRICE_STOPS.length - 1];
     return state.marketFilters;
   },
   matches(agent, f = this.filters()) {
@@ -202,6 +210,7 @@ const RelayMarketplace = {
     if (f.categories.length && !f.categories.some(value => value.startsWith('field:')
       ? (agent.fieldIds || []).includes(value.slice(6)) : (agent.categoryIds || []).includes(value) || agent.categories.includes(value))) return false;
     if (f.ways.length && !f.ways.some(way => agent.waysToBuy.includes(way))) return false;
+    if (!this.priceMatches(agent, f)) return false;
     if (f.works.length && !f.works.every(name => agent.worksWith.includes(name))) return false;
     const evidence = { tested: agent.relayTest.passed, runs20: agent.evidence.runs >= this.MIN_RATE_SAMPLE, repeat: agent.buyers.repeat > 0, hosted: agent.hostedOnRelay };
     return f.evidence.every(key => evidence[key]);
@@ -211,6 +220,40 @@ const RelayMarketplace = {
     const counts = new Map();
     for (const agent of state.market?.agents || []) for (const item of agent.categories) counts.set(item, (counts.get(item) || 0) + 1);
     return [...counts.entries()].sort((a, b) => Number(this.SEED.test(b[0])) - Number(this.SEED.test(a[0])) || b[1] - a[1] || a[0].localeCompare(b[0]));
+  },
+  // Main tab: the busiest tasks as flat chips, seed field first, then "+N" to the
+  // full grouped list under Categories.
+  categoryChips(f) {
+    const fields = state.market?.taxonomy || [], agents = state.market?.agents || [];
+    const tasks = fields.flatMap(field => field.tasks.map(t => ({ ...t, seed: !!field.seed, n: agents.filter(a => (a.categoryIds || []).includes(t.id)).length })))
+      .filter(t => t.n || f.categories.includes(t.id)).sort((a, b) => Number(b.seed) - Number(a.seed) || b.n - a.n || a.label.localeCompare(b.label));
+    if (!tasks.length) return '<section><h2>Categories</h2><p class="mk-empty-note">No categories yet.</p></section>';
+    const shown = tasks.slice(0, this.RAIL_CATEGORY_LIMIT), rest = fields.reduce((n, field) => n + field.tasks.length, 0) - shown.length;
+    return `<section><h2>Categories</h2><div class="mk-chips">${shown.map(t => this.chip('categories', t.id, `${this.dot(t.label)}${escape(t.label)}`, f.categories.includes(t.id), { count: t.n })).join('')}
+      ${rest > 0 ? `<button type="button" class="mk-chip" data-action="market-rail-tab" data-tab="categories" title="All categories">+ ${rest}</button>` : ''}</div></section>`;
+  },
+  // Price: two handles over fixed stops, like the design reference. Agents with
+  // no listed price are quoted per request, so a narrowed range hides them.
+  PRICE_STOPS: [['< $10', 0], ['$50', 5000], ['$250', 25000], ['$1k', 100000], ['$5k', 500000], ['> $5k', Infinity]],
+  priceMatches(agent, f) {
+    const [lo, hi] = f.price || [0, this.PRICE_STOPS.length - 1];
+    if (lo === 0 && hi === this.PRICE_STOPS.length - 1) return true;
+    const amount = agent.fromPrice?.amountMinor;
+    if (amount === undefined || amount === null) return false;
+    return amount >= this.PRICE_STOPS[lo][1] && amount <= this.PRICE_STOPS[hi][1];
+  },
+  priceRange(agents) {
+    const f = this.filters(), [lo, hi] = f.price, last = this.PRICE_STOPS.length - 1, narrowed = lo !== 0 || hi !== last;
+    const unpriced = agents.filter(a => !a.fromPrice).length;
+    // With no listed prices a slider would filter nothing; say so instead.
+    if (!agents.some(a => a.fromPrice)) return '<h2>Price</h2><p class="mk-empty-note">No package prices yet. Agents quote per request, and you approve the price before any work starts.</p>';
+    return `<div class="mk-price">
+      <div class="mk-price-head"><h2>Price</h2>${narrowed ? '<button type="button" class="mk-chip mk-reset" data-action="market-price-reset">Reset</button>' : ''}</div>
+      <div class="mk-price-stops" aria-hidden="true">${this.PRICE_STOPS.map(([label], i) => `<span class="${i === lo || i === hi ? 'mk-price-on' : ''}">${escape(label)}</span>`).join('')}</div>
+      <div class="mk-price-track"><span class="mk-price-bar" aria-hidden="true">${Array.from({ length: last }, (_, i) => `<span class="${i >= lo && i < hi ? 'mk-price-fill' : ''}"></span>`).join('')}</span>
+        <input type="range" min="0" max="${last}" step="1" value="${lo}" data-price-range="lo" aria-label="Lowest price: ${escape(this.PRICE_STOPS[lo][0])}">
+        <input type="range" min="0" max="${last}" step="1" value="${hi}" data-price-range="hi" aria-label="Highest price: ${escape(this.PRICE_STOPS[hi][0])}"></div>
+      <p class="mk-empty-note">${narrowed && unpriced ? `${this.plural(unpriced, 'agent')} without a listed price ${unpriced === 1 ? 'is' : 'are'} hidden while a range is set. ` : ''}Custom work is quoted per request.</p></div>`;
   },
   // Hugging Face's task list pattern: fields as headings, tasks as chips with
   // counts. Tasks nobody covers yet stay behind "Show all categories".
@@ -245,23 +288,17 @@ const RelayMarketplace = {
     const tabs = [['main', 'Main'], ['categories', 'Categories'], ['works', 'Works with'], ['evidence', 'Evidence']];
     return `<aside class="${this.railClass()}" aria-label="Filters">
       <div class="mk-rail-tabs" role="group" aria-label="Filter sections">${tabs.map(([id, label]) => `<button type="button" data-action="market-rail-tab" data-tab="${id}" aria-pressed="${tab === id}">${label}</button>`).join('')}</div>
-      ${show('categories') ? this.categoryRail(f) : ''}
+      ${tab === 'categories' ? this.categoryRail(f) : tab === 'main' ? this.categoryChips(f) : ''}
       ${show('main') ? `<section><h2>Ways to buy</h2><div class="mk-chips">
         ${this.chip('ways', 'use', '<strong>Use it</strong>&nbsp;· self-serve', false, { disabled: true, title: 'Self-serve runs are not available yet' })}
         ${this.chip('ways', 'hire', '<strong>Hire it</strong>&nbsp;· package', f.ways.includes('hire'), { count: count(a => a.waysToBuy.includes('hire')), disabled: !count(a => a.waysToBuy.includes('hire')), title: count(a => a.waysToBuy.includes('hire')) ? '' : 'No agent offers a package yet' })}
         ${this.chip('ways', 'commission', '<strong>Commission</strong>&nbsp;· custom', f.ways.includes('commission'), { count: count(a => a.waysToBuy.includes('commission')) })}
       </div><p class="mk-empty-note">Self-serve runs aren’t available yet. Packages have a fixed price and checklist; anything else is quoted per request.</p></section>
-      <section><h2>Price</h2>${this.priceRange(all)}</section>` : ''}
+      <section>${this.priceRange(all)}</section>` : ''}
       ${show('works') ? `<section><h2>Works with</h2>${connectors.length ? `<div class="mk-chips">${connectors.map(name => this.chip('works', name, escape(name), f.works.includes(name), { count: count(a => a.worksWith.includes(name)) })).join('')}</div><p class="mk-empty-note">Declared by builders. Access is only granted per task, with your approval.</p>` : '<p class="mk-empty-note">No connectors are set up in this environment yet.</p>'}</section>` : ''}
       ${show('evidence') ? `<section><h2>Evidence</h2><div class="mk-chips">${this.EVIDENCE_FILTERS.map(([id, label]) => this.chip('evidence', id, escape(label), f.evidence.includes(id), { count: evidenceCounts[id] })).join('')}</div></section>` : ''}
       <p class="mk-rail-note">Rankings can’t be bought. The order comes from the sort you choose and results Relay verified, including failures.</p>
     </aside>`;
-  },
-  priceRange(agents) {
-    const priced = agents.filter(a => a.fromPrice?.currency === 'USD');
-    if (!agents.some(a => a.fromPrice)) return '<p class="mk-empty-note">No package prices yet. Agents quote per request, and you approve the price before any work starts.</p>';
-    const low = Math.min(...priced.map(a => a.fromPrice.amountMinor)), high = Math.max(...priced.map(a => a.fromPrice.amountMinor));
-    return `<p class="mk-empty-note">${priced.length ? `Packages from ${this.money(low)}${high > low ? ` to ${this.money(high)}` : ''}` : 'Packages are priced in their builder’s currency'}. Sort by price to compare. Custom work is quoted per request.</p>`;
   },
   row(agent, describe) {
     const evidence = this.evidenceLine(agent);
@@ -568,6 +605,45 @@ const RelayMarketplace = {
       notice.textContent = intake ? 'Request saved. Add the files below; offers open once the intake is complete.' : 'Request posted. Offers appear here as agents quote.';
       await this.go('/tasks/' + taskId);
     } finally { state.postingRequest = false; if (root.querySelector('#post-request')) render(); }
+  },
+
+  // ---- Requests (open to builders) --------------------------------------
+  // Open requests agents can quote on. Shown only to people who have an agent:
+  // the server returns nothing to anyone else, so briefs aren't public.
+  requestsPage() {
+    const rows = state.openRequests;
+    const side = this.side(`<a class="mk-side-button mk-side-primary" href="/post" data-route>+ Post a request</a><button type="button" class="mk-side-button" data-action="switch">Publish an agent</button>
+      <p class="mk-side-note">Agents that passed a Relay test for the work quote a price and delivery time. The buyer chooses; nothing starts until they do.</p>`);
+    const list = !rows ? '<p role="status">Loading requests…</p>'
+      : !rows.length ? `<div class="mk-empty"><h2>No open requests to show</h2><p>Open requests are shown to builders with an agent on Relay, so they can quote. Publish an agent to see them, or post your own request.</p></div>`
+      : `<ul class="mk-threads">${rows.map(r => {
+        const intake = r.intake ? [r.intake.targetLabel, r.intake.objectLabel, r.intake.recordCount ? `${Number(r.intake.recordCount).toLocaleString()} records` : null].filter(Boolean).join(' · ') : null;
+        const meta = [r.categoryLabel, intake, r.acceptanceCriteria?.length ? this.plural(r.acceptanceCriteria.length, 'checklist item') : null, r.checks?.length ? this.plural(r.checks.length, 'automatic check') : null,
+          r.input ? `input ${r.input.filename}` : null, r.myOffers?.length ? 'You quoted' : null].filter(Boolean).map(escape);
+        return `<li><div class="mk-thread mk-thread-none"><span class="mk-thread-icon">${this.ICONS.request}</span>
+          <span class="mk-thread-body"><span class="mk-row-title"><span class="mk-work-title">${escape(r.title)}</span>${r.intake ? '<span class="mk-tag">ERP data</span>' : ''}</span>
+          <span class="mk-meta">${meta.join('<span class="mk-sep" aria-hidden="true">·</span>')}</span><span class="mk-desc">${escape(r.brief)}</span></span>
+          <button type="button" class="mk-next mk-link-button" data-action="switch">Quote →</button></div></li>`; }).join('')}</ul>`;
+    return `<div class="mk-cols">${side}<section class="mk-results" aria-labelledby="mk-requests-title">
+      <header class="mk-page-head"><h1 id="mk-requests-title">Requests <span class="mk-total">${rows?.length || 0}</span></h1></header>
+      <p class="mk-caption">Briefs, checklists and file names only. Files and the buyer’s systems open to an agent after the buyer starts the work.</p>${list}</section></div>`;
+  },
+
+  // ---- Builders ----------------------------------------------------------
+  // Builders with published agents, from the same listings as the Agents page.
+  buildersPage() {
+    if (!state.market) return '<section class="mk-page" aria-busy="true"><p role="status">Loading builders…</p></section>';
+    const groups = new Map();
+    for (const agent of state.market.agents) { if (!groups.has(agent.builder)) groups.set(agent.builder, []); groups.get(agent.builder).push(agent); }
+    const builders = [...groups.entries()].map(([name, agents]) => ({ name, agents, runs: agents.reduce((n, a) => n + (a.evidence?.runs || 0), 0),
+      categories: [...new Set(agents.map(a => a.categoryLabel).filter(Boolean))] })).sort((a, b) => b.runs - a.runs || a.name.localeCompare(b.name));
+    const cards = builders.length ? `<ul class="mk-list">${builders.map(b => `<li class="mk-row"><div class="mk-row-link">
+        <span class="mk-row-title">${this.avatar({ builder: b.name })}<span class="mk-handle">${escape(this.slug(b.name))}</span></span>
+        <span class="mk-meta">${[this.plural(b.agents.length, 'agent'), b.runs ? `${this.plural(b.runs, 'verified run')} · ${state.market.windowDays}d` : 'No verified runs yet', ...b.categories.slice(0, 3)].map(escape).join('<span class="mk-sep" aria-hidden="true">·</span>')}</span>
+        <span class="mk-builder-agents">${b.agents.map(a => `<a href="/agents/${escape(a.id)}" data-route class="mk-handle">${escape(this.handle(a))}</a>`).join('')}</span></div></li>`).join('')}</ul>`
+      : '<div class="mk-empty"><h2>No builders yet</h2><p>Builders appear here once one of their agents passes a Relay test and is published.</p></div>';
+    return `<section class="mk-results mk-page"><header class="mk-results-head"><h1>Builders <span class="mk-total">${builders.length}</span></h1></header>
+      <p class="mk-caption">Counts come from work Relay recorded in this environment. Builder identity and business checks aren’t shown yet.</p>${cards}</section>`;
   },
 
   // ---- Your work -------------------------------------------------------
