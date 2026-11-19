@@ -36,7 +36,7 @@ const RelayRequestPage = {
   // plans keep their own screens.
   applies(detail) {
     const t = detail?.task;
-    return !!t && t.status !== 'draft' && !t.orchestrationPlan && !t.orchestrationStep && !t.recurringScheduleId && !t.scheduleId &&
+    return !!t && (t.status !== 'draft' || !!detail.intake) && !t.orchestrationPlan && !t.orchestrationStep && !t.recurringScheduleId && !t.scheduleId &&
       !(t.workPlan && t.workPlan.cadence !== 'once');
   },
   hired(detail = state.detail) { return !!detail.execution; },
@@ -45,6 +45,11 @@ const RelayRequestPage = {
   },
   nextStep(detail, offers) {
     const t = detail.task;
+    if (t.status === 'draft' && detail.intake) {
+      const r = detail.intake.readiness;
+      return r.complete ? ['Open for offers', 'The intake is complete. Open the request so qualified agents can quote.']
+        : ['Finish the intake', `Still needed: ${r.missing.join('; ')}.`];
+    }
     if (t.status === 'posted' && !detail.execution) {
       const live = offers.filter(o => o.expiresAt > Date.now());
       return live.length ? ['Choose an offer', `${RelayMarketplace.plural(live.length, 'offer')} to compare: price, delivery time and each agent’s evidence.`]
@@ -116,6 +121,7 @@ const RelayRequestPage = {
     const org = this.org(detail);
     const approval = typeof RelayApprovals === 'object' && detail.approval ? RelayApprovals.task(t, detail.approval) : '';
     const main = tab === 'activity' ? this.activity(detail) : `${this.description(detail)}
+      ${typeof RelayIntake === 'object' ? RelayIntake.section(detail) : ''}
       ${!state.editing && detail.mine !== false && typeof RelayExecution === 'object' && !detail.execution ? RelayExecution.input(t) : ''}
       ${state.editing ? '' : this.offers(detail)}
       ${approval}

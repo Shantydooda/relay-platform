@@ -30,6 +30,7 @@ const assets = {
   '/org-ui.js':['org-ui.js','text/javascript; charset=utf-8'],
   '/request-ui.js':['request-ui.js','text/javascript; charset=utf-8'],
   '/connections-ui.js':['connections-ui.js','text/javascript; charset=utf-8'],
+  '/intake-ui.js':['intake-ui.js','text/javascript; charset=utf-8'],
   '/acceptance-ui.js':['acceptance-ui.js','text/javascript; charset=utf-8'],
   '/work-state-ui.js':['work-state-ui.js','text/javascript; charset=utf-8'],
   '/teams-ui.js':['teams-ui.js','text/javascript; charset=utf-8'],
@@ -343,6 +344,12 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
           const credential = await store.issueCredential(actor, id, body, key);
           if (credential.token) runtimeManager.start(id, credential.token);
           return send(200, { agentId: id, version: credential.version, started: !!credential.token });
+        }
+        // ERP intake, typed attachments and sample pairs (intake.cjs).
+        const intakeRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(intake|attachments|attachments\/remove)$/);
+        if (intakeRoute && method === 'POST') {
+          const name = { intake: 'setIntake', attachments: 'addAttachment', 'attachments/remove': 'removeAttachment' }[intakeRoute[2]];
+          return send(200, await store[name](actor, intakeRoute[1], await jsonBody(req, intakeRoute[2] === 'attachments' ? 7200000 : 32768), key));
         }
         const input = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/input$/);
         if (input && method === 'POST') return send(200, await store.addInput(actor, input[1], await jsonBody(req, 400000), key));

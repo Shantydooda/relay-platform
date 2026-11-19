@@ -468,6 +468,7 @@ const RelayMarketplace = {
       <p class="mk-lead">Describe the outcome you need. Qualified agents quote a price and delivery time, and nothing starts until you approve an offer.</p>${context}
       <form id="post-request" class="mk-form">
         ${this.postTargetField()}
+        ${typeof RelayIntake === 'object' ? RelayIntake.postFields() : ''}
         <label for="post-title">Title</label><input id="post-title" name="title" maxlength="120" required value="${escape(draft.title || '')}" placeholder="e.g. Clean and deduplicate our contact export">
         <label for="post-brief">What do you need done?</label><textarea id="post-brief" name="brief" rows="7" maxlength="10000" required placeholder="The outcome, the inputs you'll provide, the format you want back and any deadline.">${escape(draft.brief ?? state.prompt ?? '')}</textarea>
         <label for="post-criteria">Acceptance checklist <span class="mk-optional">optional</span></label><textarea id="post-criteria" name="criteria" rows="4" placeholder="One per line, up to 12. e.g. Every duplicate row is removed">${escape(draft.criteria || '')}</textarea>
@@ -500,7 +501,9 @@ const RelayMarketplace = {
     const [targetTenant, targetProject] = String(data.get('target') || this.postTargetValue()).split('|');
     state.postTarget = { tenantId: targetTenant, projectId: targetProject || null };
     const criteria = String(data.get('criteria') || '').split('\n').map(line => line.trim()).filter(Boolean);
-    state.postDraft = { title, brief, criteria: criteria.join('\n') };
+    const erp = data.get('kind') === 'erp' && typeof RelayIntake === 'object';
+    const intake = erp ? RelayIntake.intakeFromForm(data, state.account) : null;
+    state.postDraft = { title, brief, criteria: criteria.join('\n'), intake };
     if (criteria.length > 12) { notice.textContent = 'Use at most 12 checklist items.'; return; }
     // Read the file before re-rendering: the file field doesn't survive a render.
     const file = form.elements.input?.files?.[0];
@@ -532,9 +535,16 @@ const RelayMarketplace = {
         await command(`/api/tasks/${taskId}/acceptance-criteria`, 'PUT', { expectedVersion: detail.task.version, criteria });
         detail = await api('/api/tasks/' + taskId);
       }
-      if (detail.task.status === 'draft') await command(`/api/tasks/${taskId}/post`, 'POST', { expectedVersion: detail.task.version });
+      // An ERP data request opens for offers only once its intake is complete:
+      // the files are added on the request page, which then opens it.
+      if (intake && !detail.intake) {
+        await command(`/api/tasks/${taskId}/intake`, 'POST', { expectedVersion: detail.task.version, intake });
+        detail = await api('/api/tasks/' + taskId);
+      }
+      if (detail.task.status === 'draft' && (!detail.intake || detail.intake.readiness.complete)) await command(`/api/tasks/${taskId}/post`, 'POST', { expectedVersion: detail.task.version });
       state.postDraft = null; state.postTaskId = null; state.postFile = null; state.postTarget = null; state.preferredAgent = null; state.retryFrom = null; state.prompt = '';
-      notice.textContent = 'Request posted. Offers appear here as agents quote.';
+      state.postKind = null;
+      notice.textContent = intake ? 'Request saved. Add the files below; offers open once the intake is complete.' : 'Request posted. Offers appear here as agents quote.';
       await this.go('/tasks/' + taskId);
     } finally { state.postingRequest = false; if (root.querySelector('#post-request')) render(); }
   },

@@ -465,3 +465,9 @@ html[data-appearance='dark'] body.market-open #app .mk-danger { color: #f97066; 
 /* Organization tabs without a side column get the same page gutter. */
 .mk-org-body > :not(.mk-cols) { max-width: 1100px; margin-left: auto; margin-right: auto; padding: 28px clamp(16px, 4vw, 48px) 0; box-sizing: border-box; }
 .mk-org-body > :last-child:not(.mk-cols) { padding-bottom: 64px; }
+
+/* ---- ERP intake readiness ---- */
+.mk-readiness { border: 1px solid var(--mk-border); border-left: 3px solid #b54708; border-radius: 10px; padding: 12px 16px; margin: 16px 0; background: var(--mk-rail); display: grid; gap: 8px; justify-items: start; }
+.mk-readiness.mk-ready { border-left-color: var(--mk-good); }
+.mk-readiness .mk-bullets { margin: 0; }
+.mk-kind { display: flex; flex-wrap: wrap; gap: 4px 20px; }

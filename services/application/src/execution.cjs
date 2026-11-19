@@ -193,7 +193,10 @@ function createExecution(context) {
       return { ...result, leaseToken: token, leaseUntil: task.assignment.leaseUntil, deadlineAt: task.assignment.deadlineAt || null, title: task.title, brief: task.assignment.agreement.brief, handoffs: task.assignment.agreement.handoffs || [], input, revisionNotes: task.assignment.revisionNotes || null,
         acceptanceCriteria: task.assignment.agreement.acceptanceCriteria || [], unmetCriteria: task.submissions.findLast(item => item.status === 'revision_requested')?.unmetCriteria || [],
         // Read access the buyer granted for this assignment. Never credentials: reads go through Relay.
-        accessGrants: context.connections ? await context.connections.grantsForAgent(repo, task) : [] };
+        accessGrants: context.connections ? await context.connections.grantsForAgent(repo, task) : [],
+        // The ERP intake and its files, released now that the buyer has authorized the work.
+        intake: task.intake ? require('./intake.cjs').intakeView(task) : null,
+        attachments: context.intake ? await context.intake.forAgent(repo, task) : [] };
     });
   }
   async function assignmentsWithin(repo, principal) {
