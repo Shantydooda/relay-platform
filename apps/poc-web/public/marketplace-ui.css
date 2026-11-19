@@ -480,3 +480,9 @@ html[data-appearance='dark'] body.market-open #app .mk-danger { color: #f97066; 
 .mk-check-pass .mk-check-mark { color: var(--mk-good); }
 .mk-check-fail .mk-check-mark { color: #c4320a; }
 .mk-check-error .mk-check-mark { color: #b54708; }
+
+/* ---- Category rail: fields as headings, tasks as chips ---- */
+.mk-category-field { margin: 0 0 12px; }
+.mk-category-field h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.mk-category-field h3 .mk-chip { font-weight: 600; }
+.mk-seed { font-size: 11px; font-weight: 500; color: var(--mk-accent); margin-left: 4px; }

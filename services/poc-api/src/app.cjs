@@ -274,6 +274,8 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         const budgetRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/budget$/);
         if (budgetRoute && method === 'GET') return send(200, await store.companyBudget(actor, budgetRoute[1], url.searchParams.get('after') || ''));
         if (budgetRoute && method === 'POST') return send(200, await store.configureBudget(actor, budgetRoute[1], await jsonBody(req), key));
+        // The fixed agent category list (packages/domain/src/categories.cjs).
+        if (path === '/api/categories' && method === 'GET') return send(200, { fields: require('../../../packages/domain/src/categories.cjs').taxonomy() });
         // Buyer connections and access grants (docs/specs/Buyer-Connections.md).
         if (path === '/api/connections' && method === 'GET') return send(200, await store.connections(actor, url.searchParams.get('tenantId') || ''));
         if (path === '/api/connections' && method === 'POST') return send(201, await store.connect(actor, await jsonBody(req), key));

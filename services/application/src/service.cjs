@@ -50,7 +50,7 @@ function taskView(task, now) {
   const status = task.recurringScheduleId ? 'scheduled' : task.assignment?.status || (offer && offer.expiresAt > now ? 'selected' : task.status);
   const { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, input } = task;
   const approvalStatus = require('./approvals.cjs').approvalView(task, now)?.status || null;
-  return { id, tenantId, projectId: task.projectId || null, title, brief, version, scopeVersion, createdAt, updatedAt, status,
+  return { id, tenantId, projectId: task.projectId || null, categoryId: task.categoryId || null, title, brief, version, scopeVersion, createdAt, updatedAt, status,
     // Phase, whose move it is, why, and how a finished run ended. See packages/domain/src/work-state.cjs.
     work: workState(task, now, { approvalStatus, retryAvailable: retryAvailable(task) }),
     waitingForPermission: waitingForPermission(task.assignment),
@@ -100,8 +100,8 @@ function listingView(agent, time) {
   return { id: agent.id, name: agent.name, kind: agent.kind, purpose: agent.purpose,
     domain: agent.domain, operatorName: agent.operatorName, listingStatus: listingState(agent),
     availability: capabilities.some(item => item.qualification === 'qualified') ? 'available' : 'qualification_pending',
-    capabilities: capabilities.map(({ id, category, task, qualification, assessment, metadata }) =>
-      ({ id, category, task, qualification, metadata, evidence: assessment?.evidence || null })),
+    capabilities: capabilities.map(({ id, category, categoryId, task, qualification, assessment, metadata }) =>
+      ({ id, category, categoryId: require('../../../packages/domain/src/categories.cjs').categoryOf({ categoryId, category, task }), task, qualification, metadata, evidence: assessment?.evidence || null })),
     packages: publicPackages(agent, (item, capability) => capabilityView(item, capability, time).qualification) };
 }
 function agentView(agent, now) {
@@ -174,7 +174,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const agentFor = async (repo, actor, id) => owner(actor, await repo.get('agent', id, true));
 
   async function createTask(actor, body, key) {
-    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion', 'projectId']);
+    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion', 'projectId', 'categoryId']);
+    if (body.categoryId !== undefined && !require('../../../packages/domain/src/categories.cjs').taskById(body.categoryId)) fail(400, 'INVALID_INPUT', 'Choose a category from the list.');
     membership(actor, body.tenantId, true);
     const repeating = body.repeatFromTaskId !== undefined;
     const retrying = body.retryFromTaskId !== undefined;
@@ -236,6 +237,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       }
       const task = newTask({ id, actor, tenantId: body.tenantId, title, brief, time, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf });
       if (body.projectId !== undefined) task.projectId = (await context.projects.checkFiling(repo, actor, body.tenantId, body.projectId)).id;
+      if (body.categoryId !== undefined) task.categoryId = body.categoryId;
       event(task, actor.user.id, 'task.created', time);
       await saveTask(repo, task);
       return { taskId: id, version: 1 };
@@ -333,9 +335,22 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     const domain = body.domain ? text(body.domain, 'Domain', 1, 150) : '';
     if (body.kind === 'specialist' && !domain) fail(400, 'INVALID_INPUT', 'Describe the specialist domain.');
     if (!Array.isArray(body.capabilities) || body.capabilities.length < 1 || body.capabilities.length > 50) fail(400, 'INVALID_INPUT', 'Add 1–50 capabilities.');
+    const categories = require('../../../packages/domain/src/categories.cjs');
     const capabilities = body.capabilities.map(item => {
-      exactKeys(item, ['category', 'task', 'metadata']);
-      return { id: randomUUID(), metadata: require('./capability-matching.cjs').metadata(item.metadata), category: text(item.category, 'Category', 1, 100), task: text(item.task, 'Capability', 1, 1000), qualification: 'unverified' };
+      exactKeys(item, ['category', 'categoryId', 'task', 'metadata']);
+      const task = text(item.task, 'Capability', 1, 1000);
+      // Builders pick a task from the category list; "other" carries their
+      // suggestion. Older clients send free text, which is mapped onto the list.
+      let categoryId = item.categoryId, category;
+      if (categoryId !== undefined) {
+        const picked = categories.taskById(categoryId);
+        if (!picked) fail(400, 'INVALID_INPUT', 'Choose a category from the list, or Other with a suggestion.');
+        category = categoryId === 'other' ? text(item.category, 'Suggested category', 2, 100) : picked.label;
+      } else {
+        category = text(item.category, 'Category', 1, 100);
+        categoryId = categories.classify(`${category} ${task}`) || 'other';
+      }
+      return { id: randomUUID(), metadata: require('./capability-matching.cjs').metadata(item.metadata), category, categoryId, task, qualification: 'unverified' };
     });
     return command(actor.user.id, key, ['agent', body], async () => {
       if (!actor.memberships.length || actor.recoveryRequired) notFound();
@@ -481,6 +496,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) return null;
     return { id: task.id, title: task.title, brief: task.brief, version: task.version, scopeVersion: task.scopeVersion, acceptanceCriteria: task.acceptanceCriteria || [],
       input: task.input ? { filename: task.input.filename, size: task.input.size, sha256: task.input.sha256, notes: task.input.notes, operation: task.input.operation } : null,
+      categoryId: task.categoryId || null, categoryLabel: task.categoryId ? require('../../../packages/domain/src/categories.cjs').taskById(task.categoryId).label : null,
       intake: context.intake.forBidders(task), checks: (task.checks || []).map(require('./checks.cjs').checkView),
       context: [], myOffers: task.offers.filter(offer => offer.operatorId === actor.user.id).map(offer => ({ id: offer.id, agentId: offer.agentId, taskVersion: offer.taskVersion, scopeVersion: offer.scopeVersion, expiresAt: offer.expiresAt })) };
   }

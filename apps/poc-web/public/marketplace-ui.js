@@ -198,7 +198,9 @@ const RelayMarketplace = {
     const text = [agent.builder, agent.name, this.handle(agent), agent.purpose, agent.domain, ...agent.categories,
       ...agent.capabilities.map(item => item.task)].join(' ').toLowerCase();
     if (q && !q.split(/\s+/).every(word => text.includes(word))) return false;
-    if (f.categories.length && !agent.categories.some(item => f.categories.includes(item))) return false;
+    // Category filters are task ids, or "field:<id>" for a whole field.
+    if (f.categories.length && !f.categories.some(value => value.startsWith('field:')
+      ? (agent.fieldIds || []).includes(value.slice(6)) : (agent.categoryIds || []).includes(value) || agent.categories.includes(value))) return false;
     if (f.ways.length && !f.ways.some(way => agent.waysToBuy.includes(way))) return false;
     if (f.works.length && !f.works.every(name => agent.worksWith.includes(name))) return false;
     const evidence = { tested: agent.relayTest.passed, runs20: agent.evidence.runs >= this.MIN_RATE_SAMPLE, repeat: agent.buyers.repeat > 0, hosted: agent.hostedOnRelay };
@@ -209,6 +211,22 @@ const RelayMarketplace = {
     const counts = new Map();
     for (const agent of state.market?.agents || []) for (const item of agent.categories) counts.set(item, (counts.get(item) || 0) + 1);
     return [...counts.entries()].sort((a, b) => Number(this.SEED.test(b[0])) - Number(this.SEED.test(a[0])) || b[1] - a[1] || a[0].localeCompare(b[0]));
+  },
+  // Hugging Face's task list pattern: fields as headings, tasks as chips with
+  // counts. Tasks nobody covers yet stay behind "Show all categories".
+  categoryRail(f) {
+    const fields = state.market?.taxonomy || [], agents = state.market?.agents || [];
+    if (!fields.length) return '<section><h2>Categories</h2><p class="mk-empty-note">No categories yet.</p></section>';
+    const count = id => agents.filter(a => (a.categoryIds || []).includes(id)).length;
+    const fieldCount = id => agents.filter(a => (a.fieldIds || []).includes(id)).length;
+    return `<section class="mk-category-rail"><h2>Categories</h2>${fields.map(field => {
+      const tasks = field.tasks.map(t => ({ ...t, n: count(t.id) })).filter(t => f.allCategories || t.n || f.categories.includes(t.id));
+      const n = fieldCount(field.id);
+      if (!tasks.length && !n && !f.allCategories) return '';
+      return `<div class="mk-category-field"><h3>${this.chip('categories', 'field:' + field.id, `${escape(field.label)}${field.seed ? ' <span class="mk-seed">focus</span>' : ''}`, f.categories.includes('field:' + field.id), { count: n })}</h3>
+        <div class="mk-chips">${tasks.map(t => this.chip('categories', t.id, `${this.dot(t.label)}${escape(t.label)}`, f.categories.includes(t.id), { count: t.n, disabled: !t.n && !f.categories.includes(t.id), title: t.n ? '' : 'No agents for this yet' })).join('')}</div></div>`;
+    }).join('')}
+      <button type="button" class="mk-link-button" data-action="market-more-categories">${f.allCategories ? 'Show only categories with agents' : 'Show all categories'}</button></section>`;
   },
   chip(group, value, label, selected, { disabled = false, count = null, title = '' } = {}) {
     const hint = title || (count !== null ? `${count} ${count === 1 ? 'agent' : 'agents'}` : '');
@@ -227,7 +245,7 @@ const RelayMarketplace = {
     const tabs = [['main', 'Main'], ['categories', 'Categories'], ['works', 'Works with'], ['evidence', 'Evidence']];
     return `<aside class="${this.railClass()}" aria-label="Filters">
       <div class="mk-rail-tabs" role="group" aria-label="Filter sections">${tabs.map(([id, label]) => `<button type="button" data-action="market-rail-tab" data-tab="${id}" aria-pressed="${tab === id}">${label}</button>`).join('')}</div>
-      ${show('categories') ? `<section><h2>Categories</h2>${cats.length ? `<div class="mk-chips">${shown.map(([name, n]) => this.chip('categories', name, `${this.dot(name)}${escape(name)}`, f.categories.includes(name), { count: n })).join('')}${cats.length > shown.length ? `<button type="button" class="mk-chip" data-action="market-more-categories">+ ${cats.length - shown.length}</button>` : ''}</div>` : '<p class="mk-empty-note">No categories yet.</p>'}</section>` : ''}
+      ${show('categories') ? this.categoryRail(f) : ''}
       ${show('main') ? `<section><h2>Ways to buy</h2><div class="mk-chips">
         ${this.chip('ways', 'use', '<strong>Use it</strong>&nbsp;· self-serve', false, { disabled: true, title: 'Self-serve runs are not available yet' })}
         ${this.chip('ways', 'hire', '<strong>Hire it</strong>&nbsp;· package', f.ways.includes('hire'), { count: count(a => a.waysToBuy.includes('hire')), disabled: !count(a => a.waysToBuy.includes('hire')), title: count(a => a.waysToBuy.includes('hire')) ? '' : 'No agent offers a package yet' })}
@@ -247,7 +265,7 @@ const RelayMarketplace = {
   },
   row(agent, describe) {
     const evidence = this.evidenceLine(agent);
-    const meta = [escape(agent.category || 'Uncategorised'), escape(this.ways(agent)), escape(this.price(agent)),
+    const meta = [escape(agent.categoryLabel || agent.category || 'Uncategorised'), escape(this.ways(agent)), escape(this.price(agent)),
       `<span class="${evidence.strong ? 'mk-good' : ''}">${escape(evidence.text)}</span>`, escape(this.updated(agent))];
     return `<li class="mk-row"><a href="/agents/${escape(agent.id)}" data-route class="mk-row-link">
       <span class="mk-row-title">${this.avatar(agent)}<span class="mk-handle">${escape(this.handle(agent))}</span>${agent.isNew ? '<span class="mk-new">New</span>' : ''}${agent.own ? '<span class="mk-tag">Yours</span>' : ''}</span>
@@ -469,6 +487,7 @@ const RelayMarketplace = {
       <form id="post-request" class="mk-form">
         ${this.postTargetField()}
         ${typeof RelayIntake === 'object' ? RelayIntake.postFields() : ''}
+        ${(state.taxonomy || []).length ? `<label for="post-category">Category <span class="mk-optional">optional</span></label><select id="post-category" name="categoryId"><option value="">Choose the closest fit</option>${state.taxonomy.map(f => `<optgroup label="${escape(f.label)}">${f.tasks.map(t => `<option value="${escape(t.id)}" ${draft.categoryId === t.id ? 'selected' : ''}>${escape(t.label)}</option>`).join('')}</optgroup>`).join('')}</select><p class="mk-caption">Helps builders who work in this category find your request.</p>` : ''}
         <label for="post-title">Title</label><input id="post-title" name="title" maxlength="120" required value="${escape(draft.title || '')}" placeholder="e.g. Clean and deduplicate our contact export">
         <label for="post-brief">What do you need done?</label><textarea id="post-brief" name="brief" rows="7" maxlength="10000" required placeholder="The outcome, the inputs you'll provide, the format you want back and any deadline.">${escape(draft.brief ?? state.prompt ?? '')}</textarea>
         <label for="post-criteria">Acceptance checklist <span class="mk-optional">optional</span></label><textarea id="post-criteria" name="criteria" rows="4" placeholder="One per line, up to 12. e.g. Every duplicate row is removed">${escape(draft.criteria || '')}</textarea>
@@ -503,7 +522,8 @@ const RelayMarketplace = {
     const criteria = String(data.get('criteria') || '').split('\n').map(line => line.trim()).filter(Boolean);
     const erp = data.get('kind') === 'erp' && typeof RelayIntake === 'object';
     const intake = erp ? RelayIntake.intakeFromForm(data, state.account) : null;
-    state.postDraft = { title, brief, criteria: criteria.join('\n'), intake };
+    const categoryId = String(data.get('categoryId') || '') || null;
+    state.postDraft = { title, brief, criteria: criteria.join('\n'), intake, categoryId };
     if (criteria.length > 12) { notice.textContent = 'Use at most 12 checklist items.'; return; }
     // Read the file before re-rendering: the file field doesn't survive a render.
     const file = form.elements.input?.files?.[0];
@@ -519,6 +539,7 @@ const RelayMarketplace = {
         const created = await command('/api/tasks', 'POST', {
           tenantId: targetTenant || state.tenantId || state.account.memberships[0].id, title, brief,
           ...(targetProject ? { projectId: targetProject } : {}),
+          ...(categoryId ? { categoryId } : {}),
           ...(state.retryFrom && !preferred ? { retryFromTaskId: state.retryFrom.taskId, expectedSourceVersion: state.retryFrom.expectedSourceVersion } : {}),
           ...(preferred?.repeatFromTaskId ? { repeatFromTaskId: preferred.repeatFromTaskId, expectedSourceVersion: preferred.expectedSourceVersion } : {}),
           ...(preferred && !preferred.repeatFromTaskId ? { preferredAgentId: preferred.id, preferenceMode: preferred.preferenceMode || 'agent', discoverySource: preferred.discoverySource || 'storefront' } : {}),

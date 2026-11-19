@@ -246,6 +246,8 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   const state=nextState;
   state.filePreview=null;
   state.account=await api('/api/me');
+  // The fixed category list, for the browse rail, the builder's picker and Post a request.
+  if(!state.taxonomy&&!state.account.recoveryRequired)try{state.taxonomy=(await api('/api/categories')).fields;}catch{state.taxonomy=[];}
   if(typeof RelayAgentMarket === 'object' && RelayAgentMarket.storefrontId() && state.account.user.workspace === 'buyer') state.buyerTab='market';
   if(state.account.recoveryRequired){state.auth='reset';state.tasks=[];state.detail=null;return;}
   if(state.features?.notifications&&!background)try{await RelayNotifications.load();}catch{state.notificationError='Updates could not load. Try Refresh.';}
@@ -518,7 +520,7 @@ root.addEventListener('submit',event=>{
     }else if(form.id==='agent'){
       if(state.agentIntroPart!=='capabilities'){captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();return;}
       const rows=[...form.querySelectorAll('.capability-row')];
-      const result=await command('/api/agents','POST',{name:data.get('name'),purpose:data.get('purpose'),domain:data.get('domain'),kind:data.get('kind'),integration:'api',capabilities:rows.map(r=>({category:r.querySelector('[name=category]').value,task:r.querySelector('[name=capability]').value,metadata:capabilityMetadata(r)}))});
+      const result=await command('/api/agents','POST',{name:data.get('name'),purpose:data.get('purpose'),domain:data.get('domain'),kind:data.get('kind'),integration:'api',capabilities:rows.map(r=>{const pick=r.querySelector('[name=categoryId]')?.value;return {...(pick?{categoryId:pick}:{}),...(!pick||pick==='other'?{category:r.querySelector('[name=category]')?.value||''}:{}),task:r.querySelector('[name=capability]').value,metadata:capabilityMetadata(r)};})});
       state.addingAgent=false;state.agentDraft=null;sessionStorage.removeItem(agentDraftKey());state.setupAgentId=result.agentId;state.setupStage=2;location.hash=`agent=${result.agentId}&step=2`;await refresh();render();notice.textContent='Profile saved. Choose how your runtime will connect.';
     }else if(['agent-connection','agent-rules','agent-profile'].includes(form.id)){
       const agent = state.agents.find(item => item.id === form.dataset.id);
@@ -1028,7 +1030,7 @@ setInterval(pollWorkspace,2000);
 
 function agentDraftKey(){return `relay-agent-draft:${state.account?.user.id||'visitor'}`;}
 function captureAgentDraft(form){
- const data=new FormData(form);state.agentDraft={name:data.get('name'),kind:data.get('kind'),purpose:data.get('purpose'),domain:data.get('domain'),part:state.agentIntroPart,capabilities:form.querySelectorAll('.capability-row').length?[...form.querySelectorAll('.capability-row')].map(row=>({category:row.querySelector('[name=category]').value,task:row.querySelector('[name=capability]').value,metadata:capabilityMetadata(row)})):state.agentDraft?.capabilities||[]};
+ const data=new FormData(form);state.agentDraft={name:data.get('name'),kind:data.get('kind'),purpose:data.get('purpose'),domain:data.get('domain'),part:state.agentIntroPart,capabilities:form.querySelectorAll('.capability-row').length?[...form.querySelectorAll('.capability-row')].map(row=>({categoryId:row.querySelector('[name=categoryId]')?.value||'',category:row.querySelector('[name=category]')?.value||'',task:row.querySelector('[name=capability]').value,metadata:capabilityMetadata(row)})):state.agentDraft?.capabilities||[]};
  try{sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));}catch{notice.textContent='Draft cannot be saved in this browser. Keep the page open until you save the agent.';}
  document.querySelector('#agent-preview')?.replaceChildren();const preview=document.querySelector('#agent-preview');if(preview)preview.innerHTML=agentPreview(state.agentDraft);
  const domain=form.querySelector('[name=domain]');if(domain)domain.required=data.get('kind')==='specialist';
@@ -1038,7 +1040,7 @@ root.addEventListener('change',event=>{if(event.target.name==='integration'&&eve
 
 root.addEventListener('change',event=>{if(event.target.id==='registry-agent'){if(typeof RelaySupplier==='object')RelaySupplier.clear();const id=event.target.value;if(!id){state.setupAgentId=null;state.addingAgent=true;state.agentIntroPart='profile';location.hash='agent-new';}else{state.addingAgent=false;state.setupAgentId=id;state.setupStage=state.agents.find(a=>a.id===id)?.setupStage||2;location.hash=`agent=${id}&step=${state.setupStage}`;}render();}});
 
-root.addEventListener('change',event=>{if(event.target.matches?.('[data-post-kind]')){const form=event.target.form;state.postDraft={...(state.postDraft||{}),title:form.elements.title?.value||'',brief:form.elements.brief?.value||'',criteria:form.elements.criteria?.value||''};state.postKind=event.target.value;render();return;}if(event.target.matches?.('[data-check-type]')){state.checkType=event.target.value;render();return;}if(event.target.matches?.('[data-attach-role]')){state.attachRole=event.target.value;render();return;}if(event.target.matches?.('[data-connect-provider]')){state.connectProvider=event.target.value;render();return;}if(event.target.id==='team-workspace')run(async()=>{state.tenantId=event.target.value;state.budgetAfter='';state.teamInviteLink=null;await refresh(null);render();});});
+root.addEventListener('change',event=>{if(event.target.matches?.('[data-category-pick]')){const form=event.target.closest('form#agent');const needs=event.target.value==='other',has=!!event.target.closest('.capability-row')?.querySelector('[name=category]');if(form&&needs!==has){captureAgentDraft(form);render();}return;}if(event.target.matches?.('[data-post-kind]')){const form=event.target.form;state.postDraft={...(state.postDraft||{}),title:form.elements.title?.value||'',brief:form.elements.brief?.value||'',criteria:form.elements.criteria?.value||''};state.postKind=event.target.value;render();return;}if(event.target.matches?.('[data-check-type]')){state.checkType=event.target.value;render();return;}if(event.target.matches?.('[data-attach-role]')){state.attachRole=event.target.value;render();return;}if(event.target.matches?.('[data-connect-provider]')){state.connectProvider=event.target.value;render();return;}if(event.target.id==='team-workspace')run(async()=>{state.tenantId=event.target.value;state.budgetAfter='';state.teamInviteLink=null;await refresh(null);render();});});
 
 root.addEventListener('change', event => {
   if (event.target.form?.id === 'schedule-create') RelayRecurring.preview(event.target.form);

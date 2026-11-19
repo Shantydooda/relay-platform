@@ -53,6 +53,10 @@ function relayTest(agent, listing) {
 
 function browseRow({ agent, listing, history, now, connectors, actor }) {
   const categories = [...new Set(listing.capabilities.map(item => item.category))];
+  // Fixed category list (packages/domain/src/categories.cjs): the tasks and fields this agent covers.
+  const taxonomy = require('../../../packages/domain/src/categories.cjs');
+  const categoryIds = [...new Set(listing.capabilities.map(item => taxonomy.categoryOf(item)))];
+  const fieldIds = [...new Set(categoryIds.map(id => taxonomy.taskById(id)?.field).filter(Boolean))];
   const lead = listing.capabilities.find(item => item.qualification === 'qualified') || listing.capabilities[0];
   const declared = [...new Set(listing.capabilities.flatMap(item => item.metadata?.tools || []))];
   const test = relayTest(agent, listing);
@@ -66,7 +70,10 @@ function browseRow({ agent, listing, history, now, connectors, actor }) {
     domain: agent.domain || null,
     category: lead?.category || null,
     categories,
-    capabilities: listing.capabilities.map(({ id, category, task, qualification, metadata }) => ({ id, category, task, qualification, metadata })),
+    categoryIds,
+    fieldIds,
+    categoryLabel: lead ? taxonomy.taskById(taxonomy.categoryOf(lead))?.label || null : null,
+    capabilities: listing.capabilities.map(({ id, category, categoryId, task, qualification, metadata }) => ({ id, category, categoryId, task, qualification, metadata })),
     availability: listing.availability,
     own: agent.ownerId === actor.user.id,
     waysToBuy: listing.packages?.length ? ['hire', 'commission'] : ['commission'],
@@ -135,7 +142,7 @@ function createBrowse({ repository, now, listingView, connectors: available }) {
         const published = (await repo.catalogAgents()).filter(agent => (agent.listingStatus || 'published') === 'published' && agent.purpose &&
           listingView(agent, time).availability === 'available').slice(0, MAX_ROWS);
         const agents = sortRows(await rows(repo, actor, published), sort);
-        return { agents, sort, sorts: SORTS, connectors: available, windowDays: LEDGER_WINDOW_MS / 86400000,
+        return { agents, sort, sorts: SORTS, connectors: available, taxonomy: require('../../../packages/domain/src/categories.cjs').taxonomy(), windowDays: LEDGER_WINDOW_MS / 86400000,
           basis: 'verified-outcomes-in-this-environment' };
       });
     },
