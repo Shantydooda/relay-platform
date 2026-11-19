@@ -491,8 +491,8 @@ html[data-appearance='dark'] body.market-open #app .mk-danger { color: #f97066; 
 .mk-price-head { display: flex; align-items: center; justify-content: space-between; }
 .mk-price-head h2 { margin: 0; }
 .mk-reset { padding: 3px 10px; font-size: 13px; }
-.mk-price-stops { display: flex; justify-content: space-between; font-size: 12px; color: var(--mk-muted); margin-top: 12px; }
-.mk-price-stops span { padding: 2px 5px; border-radius: 5px; }
+.mk-price-stops { display: flex; justify-content: space-between; font-size: 11px; gap: 2px; color: var(--mk-muted); margin-top: 12px; }
+.mk-price-stops span { padding: 2px 3px; white-space: nowrap; border-radius: 5px; }
 .mk-price-stops .mk-price-on { background: var(--mk-ink); color: var(--mk-on-ink); }
 .mk-price-track { position: relative; height: 22px; margin: 6px 7px 0; }
 .mk-price-bar { position: absolute; left: 0; right: 0; top: 9px; height: 3px; display: flex; background: var(--mk-border); border-radius: 2px; }

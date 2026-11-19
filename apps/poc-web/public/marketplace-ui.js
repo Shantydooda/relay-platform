@@ -234,13 +234,18 @@ const RelayMarketplace = {
   },
   // Price: two handles over fixed stops, like the design reference. Agents with
   // no listed price are quoted per request, so a narrowed range hides them.
-  PRICE_STOPS: [['< $10', 0], ['$50', 5000], ['$250', 25000], ['$1k', 100000], ['$5k', 500000], ['> $5k', Infinity]],
+  PRICE_STOPS: [['< $10', 0], ['$50', 5000], ['$250', 25000], ['$1k', 100000], ['$5k', 500000], ['$25k', 2500000], ['$100k', 10000000], ['$100k+', Infinity]],
   priceMatches(agent, f) {
     const [lo, hi] = f.price || [0, this.PRICE_STOPS.length - 1];
     if (lo === 0 && hi === this.PRICE_STOPS.length - 1) return true;
     const amount = agent.fromPrice?.amountMinor;
     if (amount === undefined || amount === null) return false;
-    return amount >= this.PRICE_STOPS[lo][1] && amount <= this.PRICE_STOPS[hi][1];
+    // The end stops are open: "< $10" as the upper handle means up to $10, and
+    // "$100k+" as the lower handle means from $100k.
+    const last = this.PRICE_STOPS.length - 1;
+    const min = lo === last ? this.PRICE_STOPS[last - 1][1] : this.PRICE_STOPS[lo][1];
+    const max = hi === 0 ? 1000 : this.PRICE_STOPS[hi][1];
+    return amount >= min && amount <= max;
   },
   priceRange(agents) {
     const f = this.filters(), [lo, hi] = f.price, last = this.PRICE_STOPS.length - 1, narrowed = lo !== 0 || hi !== last;

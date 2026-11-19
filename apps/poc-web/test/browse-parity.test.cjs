@@ -30,6 +30,14 @@ test('the price range filters by from-price; unpriced agents hide only while a r
   assert.deepEqual([cheap, mid, quoted].map(a => m.priceMatches(a, f)), [true, true, true]);
   f.price = [1, 2];
   assert.deepEqual([cheap, mid, quoted].map(a => m.priceMatches(a, f)), [false, true, false]);
+  const erp = agent('erp', 'B', 4000000);
+  f.price = [5, 6];
+  assert.equal(m.priceMatches(erp, f), true, 'a $40k ERP package falls in $25k–$100k: the scale is not capped at $5k');
+  f.price = [7, 7];
+  assert.equal(m.priceMatches({ ...erp, fromPrice: { amountMinor: 50000000, currency: 'USD' } }, f), true, '$100k+ is open-ended');
+  f.price = [0, 0];
+  assert.equal(m.priceMatches(cheap, f), true, '"< $10" alone keeps a $9 package');
+  f.price = [1, 2];
   const html = m.priceRange([cheap, mid, quoted]);
   assert.match(html, /data-action="market-price-reset"/);
   assert.match(html, /1 agent without a listed price is hidden/);
