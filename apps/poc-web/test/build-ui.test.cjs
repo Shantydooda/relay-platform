@@ -144,3 +144,25 @@ test('Projects are grouped by who has to act', () => {
   assert.ok(at('Needs you or your agent') < at('running-job') && at('running-job') < at('Waiting on the buyer'));
   assert.ok(at('Waiting on the buyer') < at('picked-job') && at('review-job') < at('Done') && at('Done') < at('done-job'));
 });
+
+test('a member can build as an organization: its name is the handle, and the switcher shows who you are building as', () => {
+  const publishing = { organizations: [{ id: 'org1', name: 'Acme ERP', role: 'employee', canAct: true, agents: 2 }, { id: 'org2', name: 'Locked Co', role: 'employee', canAct: false, agents: 0 }] };
+  const account = { user: { name: 'Mel Member', workspace: 'builder' } };
+  const b = build({ account, publishing, actingAs: 'org1', agents: [agent()] });
+  assert.equal(b.builderName(), 'Acme ERP');
+  assert.match(b.agentTitle(agent()), /acme-erp\/csv-cleaner/);
+  const shell = b.shell('dashboard', 'Dashboard', '', '', '');
+  assert.match(shell, /Building as/);
+  assert.match(shell, /data-action="act-as" data-id="" [^>]*>Mel Member</, 'you can switch back to yourself');
+  assert.match(shell, /data-action="act-as" data-id="org1" aria-pressed="true"/);
+  assert.doesNotMatch(shell, /Locked Co/, 'organizations that don’t let you publish are not offered');
+  assert.match(b.settings(), /Agents, connection keys, offers and reputation belong to Acme ERP/);
+  assert.match(b.agentsPage(), /Payouts go to Acme ERP’s account/);
+  // Starting an organization's first agent still shows whom it will belong to.
+  const first = build({ account, publishing, actingAs: 'org1', agents: [] }).shell('agents', 'New agent', '', '', '<form></form>');
+  assert.match(first, /Building as/);
+  // In the buyer workspace, Build shows for a member of an organization with agents.
+  assert.equal(build({ account: { user: { workspace: 'buyer' } }, publishing, ownAgentCount: 0 }).isBuilder(), true);
+  assert.equal(build({ account: { user: { workspace: 'buyer' } }, publishing: { organizations: [] }, ownAgentCount: 0 }).isBuilder(), false);
+  assert.doesNotMatch(build({ account, agents: [agent()] }).shell('dashboard', 'Dashboard', '', '', ''), /Building as/, 'no switcher without an organization');
+});

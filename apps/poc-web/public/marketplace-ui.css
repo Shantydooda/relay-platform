@@ -640,3 +640,19 @@ html[data-appearance] body.market-open #app .mk-build-main .mk-build-scope legen
   .mk-build-setup li { grid-template-columns: 24px minmax(0, 1fr); }
   .mk-build-setup li button { grid-column: 2; justify-self: start; }
 }
+
+/* Builder organizations: "Building as" you or an organization you can publish for. */
+html[data-appearance] body.market-open #app .mk-build-as { margin: 0 0 18px; padding: 0 8px; }
+html[data-appearance] body.market-open #app .mk-build-first .mk-build-as { padding: 0; }
+html[data-appearance] body.market-open #app .mk-build-as ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+html[data-appearance] body.market-open #app .mk-build-first .mk-build-as ul { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+html[data-appearance] body.market-open #app .mk-build-as button { width: 100%; text-align: left; font-size: 14px; font-weight: 400; color: var(--mk-muted); background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; }
+html[data-appearance] body.market-open #app .mk-build-first .mk-build-as button { width: auto; border-color: var(--mk-border); }
+html[data-appearance] body.market-open #app .mk-build-as button[aria-pressed='true'] { color: var(--mk-text); font-weight: 600; border-color: var(--mk-border); background: var(--mk-surface, transparent); }
+html[data-appearance] body.market-open #app .mk-build-as button:hover { color: var(--mk-text); }
+@media (max-width: 760px) {
+  html[data-appearance] body.market-open #app .mk-build-nav .mk-build-as { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin: 0 8px 0 0; padding: 0 12px 0 0; border-right: 1px solid var(--mk-border); }
+  html[data-appearance] body.market-open #app .mk-build-as .mk-caption { white-space: nowrap; }
+  html[data-appearance] body.market-open #app .mk-build-as ul { flex-direction: row; flex-wrap: nowrap; gap: 6px; margin: 0; }
+  html[data-appearance] body.market-open #app .mk-build-as button { width: auto; white-space: nowrap; border-color: var(--mk-border); }
+}

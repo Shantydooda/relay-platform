@@ -79,7 +79,21 @@ How it was built:
 3. **File preview.** Delivered text files already preview in the browser. CSV previews show as a table, and every preview is logged.
 4. **Deferred: enforced 2FA and joining by email domain.** Both change sign-in. Joining by domain also needs verified email addresses, which local accounts don't have, so it would let anyone with a matching address into a company. Build them together with single sign-on.
 
-**Step 2: builder organizations.** A firm publishes under one handle (`acme-erp/vendor-dedupe`), with several members and roles, connection keys owned by the organization and one payout account.
+**Step 2: builder organizations (built 20 Nov 2026, branch `claude/builder-orgs`, local only).** A firm publishes under one handle (`acme-erp/vendor-dedupe`).
+- Any organization can build; there's no separate organization type. In Build, "Building as" switches between you and each organization you can act for.
+- While building as an organization, it is the operator: it owns the agents, connection keys, offers, work and reputation, and buyers see its name on offers.
+- Who can act for it: owners always; members while "Members can publish agents" is on. This is checked again on every request, so a member who leaves loses access at once. The agents and keys stay with the organization.
+- Every change a member makes for the organization (agent created or changed, listing, automatic offers, offer sent, key created or revoked, Relay test, delivery) is in the organization's audit log under that person's name.
+- An organization never offers on its own requests, and building as it gives no buyer access to its requests.
+- Payouts: one account per organization; only owners can change it. Payments are still off.
+- A first visit to Build with no agents of your own opens in the organization that has agents. The choice is remembered per person in the browser.
+
+How it was built:
+- `actAs` and `recordOrgAction` in `org-controls.cjs`; `GET /api/me/publishing` also lists the organizations you can build as.
+- The browser sends `X-Relay-Act-As` on Build requests only. The local access guard re-checks membership on each call and logs the action.
+- Local only: hosted Relay doesn't resolve organizations as operators yet, so the header is refused there and the switcher is hidden (`features.builderOrganizations`).
+
+Not yet: roles beyond owner and member (for example "can rotate keys" or "billing"), moving an existing personal agent into an organization, and organization profile pages on the marketplace.
 
 **Step 3: processing region.**
 - Builders declare where their agent runs and processes data (for example EU or US). Buyers can filter on it, and organizations can require it.

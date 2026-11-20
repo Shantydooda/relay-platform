@@ -56,10 +56,21 @@ const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&
 const date=value=>new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const examples=['Find 20 UK SaaS companies with websites and source links. Deliver a CSV.','Create a 30-second launch video for my product.','Build a landing page for my new business.'];
 const ApiError=RelayRequest.ApiError;
+// Builder organizations: Build requests made while building as an organization
+// carry it. Account, team and buyer requests always stay personal.
+const ACTING_PATH=/^\/api\/(agents|opportunities|work|quotes|portfolio)(\/|\?|$)|^\/api\/tasks\/[0-9a-f-]{36}\/(supplier-message|offer-exposure)$|^\/api\/payments\/(operator|status)/;
+function actingFor(path,method){
+  if(state.account?.user?.workspace!=='builder'||!state.actingAs)return null;
+  return ACTING_PATH.test(path)||(method==='POST'&&/^\/api\/tasks\/[0-9a-f-]{36}\/offers$/.test(path))?state.actingAs:null;
+}
+function actingKey(){return 'relay.buildingAs.'+(state.account?.user?.id||'');}
+function storedActing(){try{const value=localStorage.getItem(actingKey());return value===null?undefined:value;}catch{return undefined;}}
+function storeActing(id){try{localStorage.setItem(actingKey(),id||'');}catch{}}
 async function api(path,{method='GET',body,key}={}) {
   let waiting=false;
+  const acting=actingFor(path,method);
   try {
-    return await RelayRequest.request(path,{method,managed:state.authMode==='managed',onSlow(){waiting=true;notice.textContent=`${state.features?.pilotConnections?'Relay':'Staging'} is taking a little longer. Free hosting may be waking up. Please keep this tab open.`;},credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{}),...(state.account?.csrf?{'X-CSRF-Token':state.account.csrf}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});
+    return await RelayRequest.request(path,{method,managed:state.authMode==='managed',onSlow(){waiting=true;notice.textContent=`${state.features?.pilotConnections?'Relay':'Staging'} is taking a little longer. Free hosting may be waking up. Please keep this tab open.`;},credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{}),...(state.account?.csrf?{'X-CSRF-Token':state.account.csrf}:{}),...(key?{'Idempotency-Key':key}:{}),...(acting?{'X-Relay-Act-As':acting}:{})},...(body?{body:JSON.stringify(body)}:{})});
   } finally {if(waiting)notice.textContent='';}
 }
 async function command(path,method,body) {
@@ -286,10 +297,20 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   state.tasks=tenant?(await api(`/api/tasks?tenantId=${encodeURIComponent(tenant.id)}`)).tasks:[];
   // An organization can stop its members publishing agents (org Settings).
   if(!background&&state.features?.unifiedBackend)try{state.publishing=await api('/api/me/publishing');}catch{state.publishing=null;}
+  // Which organization, if any, this person is building as (remembered per person).
+  const actingOrgs=state.features?.builderOrganizations?(state.publishing?.organizations||[]).filter(org=>org.canAct):[];
+  if(state.actingAsUser!==state.account.user.id){state.actingAsUser=state.account.user.id;state.actingAs=storedActing();}
+  if(state.actingAs&&!actingOrgs.some(org=>org.id===state.actingAs))state.actingAs=null;
   if(state.account.user.workspace==='builder'&&(state.features?.unifiedBackend||state.authMode==='local')){
+    // First visit without agents of your own: start in the organization that has them.
+    if(state.actingAs===undefined){
+      const org=actingOrgs.find(item=>item.agents>0);
+      state.actingAs=org&&!(await api('/api/agents')).agents.length?org.id:null;
+    }
     const [a,o,w,q]=await Promise.all([api('/api/agents'),api('/api/opportunities'),api('/api/work'),api('/api/quotes')]);
     state.agents=a.agents;state.opportunities=o.tasks;state.work=w.tasks;state.quotes=q.offers;state.detail=null;state.offers=[];
-    state.ownAgentCount=a.agents.length;state.ownAgentsUser=state.account.user.id;if(typeof RelayBuild==='object')RelayBuild.gate(state);
+    if(!state.actingAs){state.ownAgentCount=a.agents.length;state.ownAgentsUser=state.account.user.id;}
+    if(typeof RelayBuild==='object')RelayBuild.gate(state);
   }else{
     // Whether to show Build in the top bar: only accounts that have an agent.
     if(state.ownAgentsUser!==state.account.user.id&&(state.features?.unifiedBackend||state.authMode==='local')){state.ownAgentCount=(await api('/api/agents')).agents.length;state.ownAgentsUser=state.account.user.id;}
@@ -798,6 +819,11 @@ root.addEventListener('click',event=>{
     else if((action==='stop-agent'||action==='close-agent')&&typeof RelayBuild==='object'&&typeof RelayMarketplace==='object'&&!RelayBuild.isBuilder()){state.addingAgent=false;await RelayMarketplace.go('/');}
     else if(action==='stop-agent'||action==='close-agent'){state.addingAgent=false;state.setupAgentId=null;state.builderTab='agents';location.hash='';render();}
     else if(action==='readiness-account'){state.returnAgentId=button.dataset.id;state.setupAgentId=null;state.builderTab='settings';location.hash='';render();}
+    else if(action==='act-as'){
+      state.actingAs=button.dataset.id||null;storeActing(state.actingAs);
+      state.setupAgentId=null;state.addingAgent=false;state.builderTab='dashboard';state.agents=[];
+      if(typeof RelayMarketplace==='object')await RelayMarketplace.go('/build');else{await refresh();render();}
+    }
     else if(action==='agent-tab'){state.setupAgentId=button.dataset.id;state.agentTab=button.dataset.tab;render();root.querySelector('#workspace-main')?.focus({preventScroll:true});}
     else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);if(typeof RelayBuild==='object')state.agentTab=action==='agent-step'?RelayBuild.STEP_TAB[state.setupStage]:RelayBuild.defaultTab(a);location.hash=`agent=${a.id}&step=${state.setupStage}`;if(action==='open-agent')await refresh(null);render();}
     else if(action==='add-capability'){document.querySelector('#capability-rows').insertAdjacentHTML('beforeend',capabilityRow());captureAgentDraft(document.getElementById('agent'));}

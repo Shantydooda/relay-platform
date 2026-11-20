@@ -191,7 +191,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         const actor=await store.principal(result.raw,{allowRecovery:true});
         return send(200,{user:actor.user,memberships:actor.memberships,csrf:actor.csrf,recoveryRequired:result.recoveryRequired});
       }
-      const actor=await store.principal(raw,{allowRecovery:['/api/me','/api/auth/reset','/api/auth/logout'].includes(path)});
+      let actor=await store.principal(raw,{allowRecovery:['/api/me','/api/auth/reset','/api/auth/logout'].includes(path)});
       if(method==='GET'&&path==='/api/me') return send(200,{user:actor.user,memberships:actor.memberships,csrf:actor.csrf,recoveryRequired:!!actor.recoveryRequired});
       if(mutation) store.csrf(actor,req.headers['x-csrf-token']);
       if(method==='POST'&&path==='/api/auth/logout') {
@@ -205,6 +205,14 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       }
       if (store.features?.unifiedBackend) {
         const key = req.headers['idempotency-key'];
+        // Builder organizations: the Build area sends the organization a member
+        // is acting for. Account, team and organization pages stay personal.
+        const actingFor = req.headers['x-relay-act-as'];
+        if (actingFor && !/^\/api\/(me|teams)(\/|$)/.test(path)) {
+          if (!store.actAs || !/^[0-9a-f-]{36}$/.test(actingFor)) fail(400, 'ACT_AS_UNAVAILABLE', 'Publishing as an organization is not available here.');
+          actor = await store.actAs(actor, actingFor);
+          if (mutation && path.startsWith('/api/payments') && actor.onBehalfOf.role !== 'owner') fail(403, 'OWNER_REQUIRED', `Only an owner of ${actor.user.name} can manage its payouts.`);
+        }
         if (path === '/api/notifications' && method === 'GET') return send(200, await store.notifications(actor));
         if (path === '/api/notifications/read' && method === 'POST') return send(200, await store.readNotifications(actor, await jsonBody(req)));
 

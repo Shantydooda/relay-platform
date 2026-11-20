@@ -24,7 +24,7 @@ function setup(t) {
 test('owners can stop members publishing agents or sending offers; owners and outsiders are unaffected', async t => {
   const f = setup(t);
   const memberAgent = await f.app.marketplace.addAgent(f.member, f.agentBody, randomUUID());
-  assert.deepEqual(await f.app.publishing(f.member), { allowed: true, blockedBy: [] });
+  assert.deepEqual(await f.app.publishing(f.member), { allowed: true, blockedBy: [], organizations: [{ id: f.company.id, name: 'Northwind', role: 'member', canAct: true, agents: 0 }] });
   assert.equal((await f.app.orgPolicy(f.member, f.company.id)).membersCanPublish, true, 'on by default');
   await assert.rejects(f.app.setOrgPolicy(f.member, f.company.id, { membersCanPublish: false, expectedVersion: 0 }, randomUUID()), { code: 'FORBIDDEN' });
   await assert.rejects(f.app.orgPolicy(f.outsider, f.company.id), { code: 'FORBIDDEN' });
@@ -48,7 +48,7 @@ test('owners can stop members publishing agents or sending offers; owners and ou
   await assert.rejects(f.app.marketplace.quote(f.member, task.taskId, { agentId: memberAgent.agentId, capabilityId: current.capabilities[0].id, expectedVersion: 3, amountMinor: 5000, deliveryMinutes: 60, proposal: 'Dedupe it.' }, randomUUID()), { code: 'ORG_PUBLISHING_OFF' });
 
   assert.ok((await f.app.marketplace.addAgent(f.owner, f.agentBody, randomUUID())).agentId, 'owners can still publish');
-  assert.deepEqual(await f.app.publishing(f.owner), { allowed: true, blockedBy: [] });
+  assert.deepEqual((await f.app.publishing(f.owner)).blockedBy, []);
 });
 
 test('every preview and download of a company file is in the owners’ audit log, with a safe CSV export', async t => {

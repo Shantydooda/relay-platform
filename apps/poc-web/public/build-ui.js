@@ -46,6 +46,7 @@ const RelayBuild = {
   // then the Build pages and their menu stay out of the way.
   isBuilder(target = state) {
     const count = Array.isArray(target.agents) && target.account?.user.workspace !== 'buyer' ? target.agents.length : target.ownAgentCount;
+    if (target.account?.user.workspace === 'buyer' && (target.publishing?.organizations || []).some(org => org.canAct && org.agents > 0)) return true;
     return (count || 0) > 0;
   },
   // On the builder side without an agent, every Build page becomes "New agent".
@@ -70,7 +71,18 @@ const RelayBuild = {
 
   // ---- Shared parts: the same cards and rows the buyer pages use ----------
   slug(value) { return typeof RelayMarketplace === 'object' ? RelayMarketplace.slug(value) : String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'agent'; },
-  builderName() { return state.account?.user?.name || 'you'; },
+  builderName() { return this.actingOrg()?.name || state.account?.user?.name || 'you'; },
+  // Builder organizations: a member can build as an organization it lets them
+  // publish for. Its agents, keys, offers and reputation belong to it.
+  organizations() { return (state.publishing?.organizations || []).filter(org => org.canAct); },
+  actingOrg() { return state.actingAs ? this.organizations().find(org => org.id === state.actingAs) || null : null; },
+  switcher() {
+    const orgs = this.organizations();
+    if (!orgs.length) return '';
+    const me = state.account?.user?.name || 'You';
+    const option = (id, name) => `<li><button type="button" data-action="act-as" data-id="${escape(id)}" aria-pressed="${(state.actingAs || '') === id}">${escape(name)}</button></li>`;
+    return `<div class="mk-build-as"><span class="mk-caption">Building as</span><ul>${option('', me)}${orgs.map(org => option(org.id, org.name)).join('')}</ul></div>`;
+  },
   avatar(name) {
     let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360;
     return `<span class="mk-avatar mk-hue-${Math.round(h / 30) % 12}" aria-hidden="true">${escape(String(name).slice(0, 1).toUpperCase())}</span>`;
@@ -113,7 +125,10 @@ const RelayBuild = {
     const agents = state.agents || [];
     if (!agents.length) return '<div class="mk-empty"><h2>No agents yet</h2><p>Add your first agent. Its capabilities can span any category.</p><a class="mk-primary" href="/build/new" data-route>New agent</a></div>';
     const builder = this.builderName();
-    const unpaid = agents.some(agent => !this.payable(agent)) ? '<p class="mk-caption mk-build-caption">Paid work needs payout setup first. <a href="/build/settings" data-route>Payout setup →</a></p>' : '';
+    const org = this.actingOrg();
+    const unpaid = !agents.some(agent => !this.payable(agent)) ? '' : org
+      ? `<p class="mk-caption mk-build-caption">Payouts go to ${escape(org.name)}’s account, which an owner sets up. <a href="/build/settings" data-route>Payout setup →</a></p>`
+      : '<p class="mk-caption mk-build-caption">Paid work needs payout setup first. <a href="/build/settings" data-route>Payout setup →</a></p>';
     return `${unpaid}<ul class="mk-list">${agents.map(agent => {
       const s = this.status(agent);
       const categories = [...new Set((agent.capabilities || []).map(item => item.category).filter(Boolean))];
@@ -189,8 +204,9 @@ const RelayBuild = {
     return `${back}${this.section('Builder account', null, '', `<div class="mk-table-wrap"><table class="mk-table"><tbody>
       <tr><th scope="row">Name</th><td>${escape(this.builderName())}</td><td></td></tr>
       <tr><th scope="row">Public handle</th><td><code>${escape(this.slug(this.builderName()))}</code></td><td class="mk-empty-note">Shown before each agent name.</td></tr>
+      ${this.actingOrg() ? `<tr><th scope="row">Organization</th><td>${escape(this.actingOrg().name)}</td><td class="mk-empty-note">Agents, connection keys, offers and reputation belong to ${escape(this.actingOrg().name)}. Its owners, and members while “Members can publish agents” is on, manage them. Each change is in the organization’s audit log.</td></tr>` : ''}
       <tr><th scope="row">Operator verification</th><td><span class="mk-status">Not started</span></td><td class="mk-empty-note">The identity check isn’t connected yet. Signing up doesn’t verify you.</td></tr>
-      <tr><th scope="row">Payouts</th><td><span class="mk-status">Not set up</span></td><td class="mk-empty-note">Payout setup isn’t available yet. Relay never asks for bank details or wallet keys here.</td></tr></tbody></table></div>`)}`;
+      <tr><th scope="row">Payouts</th><td><span class="mk-status">Not set up</span></td><td class="mk-empty-note">${this.actingOrg() ? `One payout account for ${escape(this.actingOrg().name)}, set up by an owner. ` : ''}Payout setup isn’t available yet. Relay never asks for bank details or wallet keys here.</td></tr></tbody></table></div>`)}`;
   },
 
   // The agent's own setup page is headed like its public page: builder/agent.
@@ -199,8 +215,8 @@ const RelayBuild = {
     const active = state.setupAgentId || state.addingAgent ? 'agents' : tab === 'quotes' ? 'opportunities' : tab;
     const counts = { agents: (state.agents || []).length, opportunities: this.fresh(typeof quoteForm === 'function' ? quoteForm : () => '').length, work: (state.work || []).length };
     const heading = title ? `${title}${counts[active] !== undefined && this.NAV.some(([id, label]) => id !== 'dashboard' && label === title) ? ` <span class="mk-total">${counts[active]}</span>` : ''}` : '';
-    if (!this.isBuilder()) return `<div class="mk-build mk-build-first"><section class="mk-build-main">${title ? `<header class="mk-results-head mk-build-head"><div><h1>${heading}</h1>${lede ? `<p class="mk-caption">${lede}</p>` : ''}</div>${action || ''}</header>` : ''}${content}</section></div>`;
-    return `<div class="mk-build"><nav class="mk-build-nav" aria-label="Build"><p class="mk-build-who">${this.avatar(this.builderName())}<span class="mk-handle">${escape(this.slug(this.builderName()))}</span></p>${this.NAV.map(([id, label, slug]) =>
+    if (!this.isBuilder()) return `<div class="mk-build mk-build-first"><section class="mk-build-main">${this.switcher()}${title ? `<header class="mk-results-head mk-build-head"><div><h1>${heading}</h1>${lede ? `<p class="mk-caption">${lede}</p>` : ''}</div>${action || ''}</header>` : ''}${content}</section></div>`;
+    return `<div class="mk-build"><nav class="mk-build-nav" aria-label="Build"><p class="mk-build-who">${this.avatar(this.builderName())}<span class="mk-handle">${escape(this.slug(this.builderName()))}</span></p>${this.switcher()}${this.NAV.map(([id, label, slug]) =>
       `<a href="/build${slug ? '/' + slug : ''}" data-route ${active === id ? 'class="active" aria-current="page"' : ''}>${label}${counts[id] ? ` <span class="mk-count">${counts[id]}</span>` : ''}</a>`).join('')}</nav>
       <section class="mk-build-main">${title ? `<header class="mk-results-head mk-build-head"><div><h1>${heading}</h1>${lede ? `<p class="mk-caption">${lede}</p>` : ''}</div>${action || ''}</header>` : ''}${content}</section></div>`;
   },

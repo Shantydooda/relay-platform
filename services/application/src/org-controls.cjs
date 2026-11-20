@@ -10,6 +10,12 @@
 //   against the task's workspace, so company owners can see who opened what.
 // - Organization audit log: task events plus file access for one company, for
 //   owners, newest first, exportable as CSV.
+// - Builder organizations (step 2): a member acts for the organization from the
+//   Build area. The organization is then the operator: it owns the agents,
+//   connection keys, offers, work and reputation. Owners can always act for it;
+//   members can when "Members can publish agents" is on. Access is checked
+//   again on every request, so leaving the organization ends it at once, and
+//   each change is logged against the person who made it.
 
 const { randomUUID } = require('node:crypto');
 const { fail, exactKeys } = require('../../../packages/contracts/src/input.cjs');
@@ -29,6 +35,16 @@ const EVENT_LABELS = {
   'attachment.added': 'File attached', 'attachment.removed': 'File removed', 'intake.updated': 'ERP details updated', 'checks.updated': 'Automatic checks changed',
   'execution.blocked_by_buyer': 'Work paused by the buyer', 'approval.granted': 'Approved', 'approval.declined': 'Approval declined',
   'file.scan_requested': 'File scan requested', 'file.previewed': 'File previewed', 'file.downloaded': 'File downloaded', 'policy.changed': 'Organization setting changed',
+  'builder.agent_created': 'Agent created', 'builder.agent_changed': 'Agent changed', 'builder.listing_changed': 'Listing changed', 'builder.offer_rules_changed': 'Automatic offers changed',
+  'builder.offer_sent': 'Offer sent', 'builder.key_created': 'Connection key created', 'builder.key_revoked': 'Connection key revoked', 'builder.test_started': 'Relay test started',
+  'builder.portfolio_changed': 'Portfolio changed', 'builder.package_changed': 'Package changed', 'builder.work_updated': 'Work updated', 'builder.message_sent': 'Builder message',
+};
+// Commands a member can run for an organization, and how the log names them.
+const ORG_ACTIONS = {
+  addAgent: 'builder.agent_created', updateAgent: 'builder.agent_changed', updateListing: 'builder.listing_changed', configure: 'builder.offer_rules_changed', quote: 'builder.offer_sent',
+  issueCredential: 'builder.key_created', issueSupplierCredential: 'builder.key_created', revokeCredential: 'builder.key_revoked', startQualification: 'builder.test_started',
+  addPortfolio: 'builder.portfolio_changed', decidePortfolio: 'builder.portfolio_changed', savePackage: 'builder.package_changed', setPackageStatus: 'builder.package_changed',
+  claim: 'builder.work_updated', progress: 'builder.work_updated', submit: 'builder.work_updated', failExecution: 'builder.work_updated', supplierMessage: 'builder.message_sent',
 };
 
 function createOrgControls(context) {
@@ -70,15 +86,57 @@ function createOrgControls(context) {
     });
   }
 
+  const lookup = id => Promise.resolve().then(() => resolveOperator?.(id)).catch(() => null);
+  const orgName = async m => m.name || (await lookup(m.id))?.user?.name || 'your organization';
+
   // Companies whose policy stops this account publishing (owners are exempt).
   async function blockers(repo, actor) {
+    if (actor.organization) return [];
     const memberships = ((await current(actor)).memberships || []).filter(m => m.company && m.role !== 'owner');
     const blocked = [];
-    for (const m of memberships) if (!(await policyOf(repo, m.id)).membersCanPublish) blocked.push({ id: m.id, name: m.name || 'your organization' });
+    for (const m of memberships) if (!(await policyOf(repo, m.id)).membersCanPublish) blocked.push({ id: m.id, name: await orgName(m) });
     return blocked;
   }
+  // What this account may publish as: itself, and each organization it can act for.
   async function publishing(actor) {
-    return repository.read(async repo => { const blockedBy = await blockers(repo, actor); return { allowed: !blockedBy.length, blockedBy }; });
+    const companies = ((await current(actor)).memberships || []).filter(m => m.company);
+    return repository.read(async repo => {
+      const blockedBy = await blockers(repo, actor);
+      const organizations = [];
+      for (const m of companies) organizations.push({ id: m.id, name: await orgName(m), role: m.role,
+        canAct: m.role === 'owner' || (await policyOf(repo, m.id)).membersCanPublish, agents: (await repo.list('agent', 'owner_id', m.id, 1000)).length });
+      return { allowed: !blockedBy.length, blockedBy, organizations };
+    });
+  }
+
+  // The identity a member uses to act for an organization. Recomputed on every
+  // request from current membership, so a removed member is refused at once.
+  async function actAs(actor, orgId) {
+    const person = await current(actor);
+    if (person.organization) fail(403, 'FORBIDDEN', 'Act for an organization from your own account.');
+    const m = (person.memberships || []).find(item => item.id === orgId && item.company);
+    if (!m) fail(403, 'FORBIDDEN', 'You are not a member of this organization.');
+    const org = await lookup(orgId);
+    if (!org?.organization) fail(403, 'FORBIDDEN', 'This organization is unavailable.');
+    if (m.role !== 'owner' && !(await repository.read(repo => policyOf(repo, orgId))).membersCanPublish) {
+      fail(403, 'ORG_PUBLISHING_OFF', `${org.user.name} lets only its owners publish agents and send offers.`);
+    }
+    return { user: { id: orgId, name: org.user.name }, memberships: [], organization: true, csrf: actor.csrf,
+      onBehalfOf: { id: person.user.id, name: person.user.name, role: m.role } };
+  }
+
+  // Records who did what for an organization. Called after the command succeeded.
+  async function recordOrgAction(orgActor, method, args) {
+    const type = ORG_ACTIONS[method];
+    if (!type || !orgActor?.organization || !orgActor.onBehalfOf) return;
+    const time = now(), body = args.find(arg => arg && typeof arg === 'object' && !Array.isArray(arg)) || {};
+    const id = args.find(arg => typeof arg === 'string' && /^[0-9a-f-]{36}$/.test(arg)) || null;
+    await repository.transaction(`audit:${orgActor.user.id}`, async repo => {
+      const task = id && await repo.get('task', id);
+      const agent = id && !task && await repo.get('agent', id);
+      await repo.save('audit-entry', { id: entryId(time), ownerId: orgActor.onBehalfOf.id, tenantId: orgActor.user.id, at: time, actorId: orgActor.onBehalfOf.id, type,
+        taskId: task ? task.id : null, taskTitle: task ? task.title : '', detail: agent ? agent.name : method === 'addAgent' ? String(body.name || '').slice(0, 120) : '' });
+    });
   }
   async function assertCanPublish(repo, actor) {
     const blocked = await blockers(repo, actor);
@@ -111,7 +169,7 @@ function createOrgControls(context) {
     });
   }
 
-  return { orgPolicy, setOrgPolicy, publishing, assertCanPublish, recordFileAccess, orgAudit, auditCsv };
+  return { orgPolicy, setOrgPolicy, publishing, assertCanPublish, recordFileAccess, orgAudit, auditCsv, actAs, recordOrgAction };
 }
 
 function auditCsv(audit) {
@@ -121,4 +179,4 @@ function auditCsv(audit) {
     return lines.join('\n') + '\n';
 }
 
-module.exports = { createOrgControls, auditCsv, EVENT_LABELS };
+module.exports = { createOrgControls, auditCsv, EVENT_LABELS, ORG_ACTIONS };
