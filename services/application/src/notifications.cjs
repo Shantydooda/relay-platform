@@ -56,7 +56,40 @@ const supplierTypes = new Set([
   'access.declined',
   'access.revoked',
 ]);
-function createNotifications({ repository, now, resolveActor }) {
+const MATCH_WINDOW_MS = 7 * 86400000;
+
+// Match alerts: posted requests this builder can still offer on that were sent
+// to them directly or fit one of their active agents. Derived on each read, so
+// nothing goes stale: offering, a buyer choosing someone, or a week passing
+// removes the alert. The buyer's workspace is never included.
+async function matchAlerts(repo, actor, current, { now, opportunityView }) {
+  const agents = await repo.list('agent', 'owner_id', actor.user.id);
+  if (!agents.length || typeof opportunityView !== 'function') return [];
+  const { agentFits } = require('./capability-matching.cjs');
+  const viewer = { ...actor, memberships: current.memberships || [] };
+  const items = [];
+  for (const task of await repo.list('task', 'status', 'posted')) {
+    const postedAt = [...(task.events || [])].reverse().find(event => event.type === 'task.posted')?.createdAt || task.createdAt;
+    if (now() - postedAt > MATCH_WINDOW_MS || !opportunityView(task, viewer)) continue;
+    if ((task.offers || []).some(offer => offer.operatorId === actor.user.id)) continue;
+    let agent = null, direct = false;
+    if (task.preferredAgentId) {
+      agent = agents.find(item => item.id === task.preferredAgentId);
+      direct = !!agent;
+    } else {
+      agent = agents.find(item => item.listingStatus !== 'paused' && agentFits(item, task));
+    }
+    if (!agent) continue;
+    items.push({
+      id: createHash('sha256').update(`match:${task.id}:${task.scopeVersion}`).digest('hex'),
+      title: direct ? `Sent to you directly: ${agent.name}` : `New request that fits ${agent.name}`,
+      taskTitle: task.title, taskId: task.id, tenantId: null, side: 'builder', destination: 'opportunity', createdAt: postedAt,
+    });
+  }
+  return items;
+}
+
+function createNotifications({ repository, now, resolveActor, opportunityView }) {
   async function collect(repo, actor) {
     if (!actor?.user?.id || actor.recoveryRequired)
       fail(403, 'FORBIDDEN', 'Sign in to view notifications.');
@@ -131,6 +164,7 @@ function createNotifications({ repository, now, resolveActor }) {
         });
       }
     }
+    items.push(...await matchAlerts(repo, actor, current, { now, opportunityView }));
     items.sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
     return items.slice(0, 100);
   }

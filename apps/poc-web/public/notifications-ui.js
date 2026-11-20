@@ -60,12 +60,14 @@ const RelayNotifications = {
           method: 'PATCH',
           body: { workspace: item.side },
         });
-      state.tenantId = item.tenantId;
+      if (item.tenantId) state.tenantId = item.tenantId;
       state.setupAgentId = null;
       state.addingAgent = false;
       state.reviewOffer = null;
       if (item.side === 'builder') {
-        state.builderTab = 'work';
+        // Match alerts open the request on Opportunities; other builder updates open Projects.
+        state.builderTab = item.destination === 'opportunity' ? 'opportunities' : 'work';
+        if (item.destination === 'opportunity' && typeof history === 'object') history.pushState(null, '', '/build/opportunities');
         await refresh(null);
         location.hash = '';
       } else if (item.destination === 'business') {
