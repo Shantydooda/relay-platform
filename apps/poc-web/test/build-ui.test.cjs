@@ -40,7 +40,7 @@ test('agent status says what is true: Draft, Testing, Ready to publish, Live, Pa
   assert.doesNotMatch(html, /Setup incomplete|Continue setup/, 'a live agent is never shown as unfinished');
   assert.match(html, />Manage</);
   assert.match(html, /href="\/agents\/a1"/);
-  assert.match(html, /not set up for paid work yet/);
+  assert.match(html, /Paid work needs payout setup first/, 'said once above the list, not on every card');
 });
 
 test('opportunities show the buyer’s ERP facts and never an internal scope number', () => {
@@ -97,4 +97,50 @@ test('Build is for builders: an account with no agent is sent to start one, with
   builder.gate(kept);
   assert.notEqual(kept.addingAgent, true);
   assert.match(builder.shell('dashboard', 'Dashboard', '', '', ''), /mk-build-nav/);
+});
+
+test('a set-up agent opens on its overview; a draft opens on its next setup step', () => {
+  const passed = [{ id: 'c1', task: 'Clean CSV', qualification: 'qualified' }];
+  const live = agent({ capabilities: passed, listingStatus: 'published', runtime: { connected: true, connectedAt: Date.now() - 120000 }, rules: { automaticRequested: true, automaticEnabled: true, automaticScope: 'limited', automaticLimitMinor: 50000, minimumPayout: 100, currency: 'USD' } });
+  const b = build({ agents: [live], account: { user: { name: 'Builder', workspace: 'builder' } } });
+  assert.equal(b.defaultTab(live), 'overview');
+  assert.equal(b.defaultTab(agent()), 'connection', 'a described draft goes straight to connecting');
+  assert.equal(b.defaultTab(agent({ readiness: {} })), 'profile');
+  const html = b.manage(live, { tests: () => 'TESTS' });
+  assert.match(html, /aria-current="page">Overview</);
+  assert.match(html, /Ready for work/);
+  assert.match(html, /last check-in 2 min ago/);
+  assert.match(html, /Small requests only: up to USD 500, never ERP data/);
+  assert.doesNotMatch(html, /TESTS/);
+  assert.match(build({ agents: [agent()] }).manage(agent(), { connection: () => 'CONNECT' }), /CONNECT/);
+  const draftHtml = build({ agents: [agent()], agentTab: 'overview' }).manage(agent(), {});
+  assert.match(draftHtml, /Get it ready for work/);
+  assert.match(draftHtml, /data-tab="connection">Connect</, 'the next step has the one primary button');
+});
+
+test('Opportunities lists only new requests; chosen offers move to Projects and old ones fold away', () => {
+  const quotes = [
+    { taskId: 't1', title: 'Offered one', agentName: 'A', amountMinor: 100, currency: 'USD', deliveryMinutes: 5, status: 'pending', runtimeBid: true },
+    { taskId: 't2', title: 'Chosen one', agentName: 'A', amountMinor: 100, currency: 'USD', deliveryMinutes: 5, status: 'selected' },
+    { taskId: 't3', title: 'Old one', agentName: 'A', amountMinor: 100, currency: 'USD', deliveryMinutes: 5, status: 'expired' }];
+  const b = build({ agents: [agent()], quotes, opportunities: [
+    { id: 't1', title: 'Offered one', brief: 'x', myOffers: [{ agentId: 'a1' }] },
+    { id: 't4', title: 'Fresh one', brief: 'y', postedAt: Date.now() - 3 * 3600000, direct: true }] });
+  const html = b.opportunities(() => '');
+  const fresh = html.slice(html.indexOf('New for you'), html.indexOf('Your offers'));
+  assert.match(fresh, /Fresh one/);
+  assert.match(fresh, /Sent to you directly · Posted 3 h ago/);
+  assert.doesNotMatch(fresh, /Offered one/, 'already offered on: listed under Your offers instead');
+  const offers = html.slice(html.indexOf('Your offers'));
+  assert.match(offers, /Offered one[\s\S]*sent automatically/);
+  assert.doesNotMatch(offers, /Chosen one/);
+  assert.match(offers, /<summary>Past offers \(1\)<\/summary>[\s\S]*Old one/);
+});
+
+test('Projects are grouped by who has to act', () => {
+  const w = (id, status) => ({ id, status, title: id, agentName: 'A', updatedAt: Date.now() });
+  const html = build({ work: [w('running-job', 'running'), w('picked-job', 'selected'), w('review-job', 'buyer_review'), w('done-job', 'accepted')] }).projects();
+  const at = text => html.indexOf(text);
+  assert.ok(at('Needs you or your agent') < at('running-job') && at('running-job') < at('Waiting on the buyer'));
+  assert.ok(at('Waiting on the buyer') < at('picked-job') && at('review-job') < at('Done') && at('Done') < at('done-job'));
 });

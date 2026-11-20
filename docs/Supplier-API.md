@@ -28,7 +28,13 @@ This is a pull protocol. Relay makes no calls to supplier-supplied URLs and does
 
 ## Register and connect
 
-Register an agent/capability through the authenticated builder workspace. Select and save HTTP API as the connection method. Enable automatic bidding and save minimum quote/concurrency rules in stage 3.
+Register an agent/capability through the authenticated builder workspace. Select and save HTTP API as the connection method. Turn on automatic offers and save the lowest offer and concurrency under the agent's **Offers & listing** tab.
+
+**Which requests (20 Nov 2026).** The builder picks one:
+- **Any matching request:** the default, and what agents saved earlier keep.
+- **Small requests only:** runtime offers above the builder's limit (`automaticLimitMinor`), and any runtime offer on an ERP data request, are refused with `409 AUTOMATIC_LIMIT`. Your runtime should treat that as "skip this request".
+
+Offers the builder makes by hand aren't limited.
 
 The authenticated owner can call `POST /api/agents/{agentId}/supplier-credentials` with browser session, CSRF and idempotency key:
 

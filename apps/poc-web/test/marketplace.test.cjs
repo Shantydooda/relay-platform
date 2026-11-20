@@ -21,8 +21,8 @@ test('already quoted agents are excluded by scope version, not by informational 
 });
 test('three-stage setup separates connection preference, assessments and operator readiness',()=>{
  const {state,ctx}=ui();const a={id:'agent',name:'Agent',kind:'general',purpose:'Research',integration:'api',setupStage:2,capabilities:[{task:'Any task',category:'Any category'}],readiness:{profile:true},rules:{automaticRequested:true,minimumPayout:1000,concurrency:1}};state.agents=[a];state.setupAgentId=a.id;state.setupStage=2;
- let html=vm.runInContext('builder()',ctx);assert.match(html,/01<\/small> Introduce/);assert.match(html,/02<\/small> Connect/);assert.match(html,/03<\/small> Demonstrate/);assert.match(html,/HTTP API/);assert.match(html,/SDK/);assert.match(html,/MCP/);assert.match(html,/Optional connection diagnostic/);assert.match(html,/Not ready for paid work/);
- state.setupStage=3;html=vm.runInContext('builder()',ctx);assert.match(html,/Automatic bidding inactive/);assert.match(html,/Test CSV normalization/);assert.match(html,/Connect your runtime in step 2/);assert.doesNotMatch(html,/Mark as passed|data-action="start"/);
+ let html=vm.runInContext('builder()',ctx);assert.match(html,/01<\/small> Introduce/);assert.match(html,/02<\/small> Connect/);assert.match(html,/03<\/small> Demonstrate/);assert.match(html,/HTTP API/);assert.match(html,/SDK/);assert.doesNotMatch(html,/value="mcp"/,'MCP is not offered as a choice while it cannot connect');assert.match(html,/What counts as connected/);assert.match(html,/Not ready for paid work/);
+ state.setupStage=3;html=vm.runInContext('builder()',ctx);assert.match(html,/Automatic offers start once your agent is connected/);assert.match(html,/Test CSV normalization/);assert.match(html,/Connect your agent under Connection/);assert.doesNotMatch(html,/Mark as passed|data-action="start"/);
 });
 test('start review preserves approval, funding, inputs and authorization as separate blockers',()=>{
  const {state,ctx}=ui();state.detail.task.status='selected';const html=vm.runInContext('startReview(state.detail.task)',ctx);assert.match(html,/Company approval/);assert.match(html,/Funding/);assert.match(html,/Required inputs/);assert.match(html,/Work has not started/);assert.doesNotMatch(html,/data-action="start"|data-action="pay"/);
@@ -66,7 +66,7 @@ test('supplier setup keeps the one-time key out of rendered content and separate
  state.features={localExecution:true};ctx.agent={id:'agent',integration:'api',runtime:{transport:'supplier-api',connected:true,expiresAt:Date.now()+3600000}};
  vm.runInContext("RelaySupplier.issued={agentId:'agent',token:'DO_NOT_RENDER_THIS_KEY'}",ctx);
  const html=vm.runInContext('RelaySupplier.connection(agent)',ctx);
- assert.match(html,/Save connection file/);assert.match(html,/supplier heartbeat received/);assert.doesNotMatch(html,/DO_NOT_RENDER_THIS_KEY/);assert.match(html,/not qualification/);
+ assert.match(html,/Save connection file/);assert.match(html,/Connected · last check-in/);assert.doesNotMatch(html,/DO_NOT_RENDER_THIS_KEY/);assert.match(html,/not qualification/);
  vm.runInContext('RelaySupplier.clear()',ctx);assert.doesNotMatch(vm.runInContext('RelaySupplier.connection(agent)',ctx),/Save connection file/);
 });
 
@@ -201,7 +201,7 @@ test('SDK setup exposes a real local connection while MCP remains explicitly una
   ctx.agent = { id: 'agent', integration: 'sdk', runtime: {} };
   const html = vm.runInContext('RelaySupplier.connection(agent)', ctx);
   assert.match(html, /Connect with the JavaScript SDK/);
-  assert.match(html, /Create supplier API key/);
+  assert.match(html, /Create connection key/);
   assert.match(html, /not a published npm package/);
   assert.doesNotMatch(html, /SDK and MCP adapters are not implemented/);
   ctx.agent.integration = 'mcp';
@@ -363,15 +363,14 @@ test('existing API onboarding exposes persisted quoting rules without claiming a
   ctx.agent = {id:'agent',name:'Research API',integration:'api',capabilities:[],rules:{automaticRequested:true,minimumPayout:2575,concurrency:2},readiness:{}};
   state.setupStage = 2;
   const html = vm.runInContext('agentSetup(agent)',ctx);
-  assert.match(html,/Connect your existing service/);
+  assert.match(html,/How it connects/);
   assert.match(html,/Already have an API/);
   assert.match(html,/no-code endpoint connector is not available/);
   assert.equal((html.match(/id="agent-rules"/g)||[]).length,1);
   assert.match(html,/data-setup-stage="2"/);
   assert.match(html,/value="25.75"/);
   assert.match(html,/name="concurrency"[^>]*value="2"/);
-  assert.match(html,/Your preference is saved/);
-  assert.match(html,/Automatic bidding inactive/);
+  assert.match(html,/Automatic offers start once your agent is connected/);
   assert.match(html,/Not ready for paid work/);
   state.setupStage = 3;
   const review = vm.runInContext('agentSetup(agent)',ctx);
@@ -403,10 +402,10 @@ test('supplier connection check and assessment handoff reflect real heartbeat st
   ctx.agent = {id:'agent',integration:'api',runtime:{transport:'supplier-api',connected:false}};
   let html=vm.runInContext('RelaySupplier.connection(agent)',ctx);
   assert.match(html,/Check connection/);
-  assert.doesNotMatch(html,/Continue to capability test/);
+  assert.doesNotMatch(html,/Take a Relay test/);
   ctx.agent.runtime.connected=true;
   html=vm.runInContext('RelaySupplier.connection(agent)',ctx);
-  assert.match(html,/Continue to capability test/);
+  assert.match(html,/Take a Relay test/);
   assert.match(html,/data-action="agent-step" data-id="agent" data-step="3"/);
 });
 

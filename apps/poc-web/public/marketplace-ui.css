@@ -616,3 +616,27 @@ html[data-appearance] body.market-open #app .mk-build-main .setup-steps small { 
   .mk-build-opportunity .mk-thread { grid-template-columns: 44px minmax(0, 1fr); }
   .mk-build-project > :not(summary) { padding: 14px 16px !important; }
 }
+
+/* ---- One agent's management page: tabs, setup checklist ------------------- */
+html[data-appearance] body.market-open #app .mk-build-tabs { margin: 0 0 24px; border-bottom: 1px solid var(--mk-border); flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-tabs button { white-space: nowrap; margin-bottom: -1px; font-size: 15px; font-weight: 400; color: var(--mk-muted); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 2px 12px; }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-tabs button[aria-current='page'] { color: var(--mk-text); font-weight: 600; border-bottom-color: var(--mk-text); }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-tabs button:hover { color: var(--mk-text); background: none; }
+.mk-build-tab > .mk-section:first-child, .mk-build-tab > .panel:first-child { margin-top: 0; }
+.mk-build-setup { list-style: none; margin: 0; padding: 0; border: 1px solid var(--mk-row-border); border-radius: 12px; }
+.mk-build-setup li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 18px; border-top: 1px solid var(--mk-row-border); }
+.mk-build-setup li:first-child { border-top: 0; }
+.mk-build-setup li span:nth-child(2) { display: grid; gap: 2px; }
+.mk-build-setup small { color: var(--mk-muted); font-size: 13px; }
+.mk-build-tick { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--mk-border); display: grid; place-items: center; font-size: 13px; color: var(--mk-on-ink); }
+.mk-build-setup li.is-done .mk-build-tick { background: var(--mk-good); border-color: var(--mk-good); }
+.mk-build-setup li.is-next .mk-build-tick { border-color: var(--mk-ink); }
+.mk-build-setup li.is-done strong { color: var(--mk-muted); font-weight: 500; }
+.mk-build-past { margin-top: 12px; }
+html[data-appearance] body.market-open #app .mk-build-past > summary { cursor: pointer; color: var(--mk-muted); font-size: 14px; padding: 6px 0; }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-scope { border: 0; padding: 0; margin: 14px 0; display: grid; gap: 8px; }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-scope legend { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+@media (max-width: 760px) {
+  .mk-build-setup li { grid-template-columns: 24px minmax(0, 1fr); }
+  .mk-build-setup li button { grid-column: 2; justify-self: start; }
+}

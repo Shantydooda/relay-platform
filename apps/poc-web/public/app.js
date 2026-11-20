@@ -188,7 +188,7 @@ function settleWorkspaceNavigation(changedView) {
 function render(){
  const activeReply=document.activeElement?.id==='message-text'?document.activeElement:null;
  const replySelection=activeReply?{start:activeReply.selectionStart,end:activeReply.selectionEnd}:null;
- const viewKey=JSON.stringify([state.account?.user.id,state.tenantId,state.auth,state.account?.user.workspace,state.detail?.task.id,state.buyerTab,state.builderTab,state.setupAgentId,state.addingAgent,state.setupStage,state.agentIntroPart,state.recoveryOpen]);
+ const viewKey=JSON.stringify([state.account?.user.id,state.tenantId,state.auth,state.account?.user.workspace,state.detail?.task.id,state.buyerTab,state.builderTab,state.setupAgentId,state.addingAgent,state.setupStage,state.agentTab,state.agentIntroPart,state.recoveryOpen]);
  const changedView=state.renderedViewKey!==viewKey;state.renderedViewKey=viewKey;
  const disclosureKey = item => item.dataset.disclosureKey || [item.closest('[data-app-id]')?.dataset.appId || '', item.closest('[data-run-id]')?.dataset.runId || '', item.querySelector('summary')?.textContent].join(':');
  const expanded = !changedView ? [...root.querySelectorAll('.canvas details')].filter(item => item.open).map(disclosureKey) : [];
@@ -525,20 +525,19 @@ root.addEventListener('submit',event=>{
       if(state.agentIntroPart!=='capabilities'){captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();return;}
       const rows=[...form.querySelectorAll('.capability-row')];
       const result=await command('/api/agents','POST',{name:data.get('name'),purpose:data.get('purpose'),domain:data.get('domain'),kind:data.get('kind'),integration:'api',capabilities:rows.map(r=>{const pick=r.querySelector('[name=categoryId]')?.value;return {...(pick?{categoryId:pick}:{}),...(!pick||pick==='other'?{category:r.querySelector('[name=category]')?.value||''}:{}),task:r.querySelector('[name=capability]').value,metadata:capabilityMetadata(r)};})});
-      state.addingAgent=false;state.agentDraft=null;sessionStorage.removeItem(agentDraftKey());state.setupAgentId=result.agentId;state.setupStage=2;location.hash=`agent=${result.agentId}&step=2`;await refresh();render();notice.textContent='Profile saved. Choose how your runtime will connect.';
+      state.addingAgent=false;state.agentDraft=null;sessionStorage.removeItem(agentDraftKey());state.setupAgentId=result.agentId;state.setupStage=2;state.agentTab='connection';location.hash=`agent=${result.agentId}&step=2`;await refresh();render();notice.textContent='Profile saved. Choose how your runtime will connect.';
     }else if(['agent-connection','agent-rules','agent-profile'].includes(form.id)){
       const agent = state.agents.find(item => item.id === form.dataset.id);
       const configuration = RelaySupplier.configuration(agent, form, data);
       await command(`/api/agents/${agent.id}`, 'PATCH', configuration);
       state.setupStage = configuration.setupStage;
+      if (typeof RelayBuild === 'object') state.agentTab = form.id === 'agent-profile' && RelayBuild.status(agent).id === 'draft' ? 'connection' : form.id === 'agent-profile' ? 'profile' : form.id === 'agent-connection' ? 'connection' : 'offers';
       location.hash = `agent=${agent.id}&step=${state.setupStage}`;
       await refresh();
       render();
-      notice.textContent = form.id === 'agent-connection'
-        ? 'Method saved. Connect your runtime below, then continue to Demonstrate.'
-        : state.agents.find(item => item.id === agent.id)?.rules.automaticEnabled
-          ? 'Local automatic bidding is active. Commercial readiness is still incomplete.'
-          : 'Operating preferences saved. Review the connection and bidding status above.';
+      notice.textContent = form.id === 'agent-connection' ? 'Method saved. Create a key below and start your connector.'
+        : form.id === 'agent-profile' ? 'Profile saved.'
+        : state.agents.find(item => item.id === agent.id)?.rules.automaticEnabled ? 'Saved. Automatic offers are on.' : 'Saved.';
     }else if(form.dataset.quote){
       const capabilityId=data.get('capabilityId');if(!capabilityId)throw new Error('Choose the capability supporting this offer.');const agent=state.agents.find(a=>a.capabilities.some(c=>c.id===capabilityId));
       await command(`/api/tasks/${form.dataset.quote}/offers`,'POST',{agentId:agent.id,capabilityId,expectedVersion:Number(form.dataset.version),amountMinor:Math.round(Number(data.get('price'))*100),currency:data.get('currency')||'USD',deliveryMinutes:Number(data.get('minutes')),proposal:data.get('proposal')});
@@ -794,7 +793,8 @@ root.addEventListener('click',event=>{
     else if((action==='stop-agent'||action==='close-agent')&&typeof RelayBuild==='object'&&typeof RelayMarketplace==='object'&&!RelayBuild.isBuilder()){state.addingAgent=false;await RelayMarketplace.go('/');}
     else if(action==='stop-agent'||action==='close-agent'){state.addingAgent=false;state.setupAgentId=null;state.builderTab='agents';location.hash='';render();}
     else if(action==='readiness-account'){state.returnAgentId=button.dataset.id;state.setupAgentId=null;state.builderTab='settings';location.hash='';render();}
-    else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);location.hash=`agent=${a.id}&step=${state.setupStage}`;if(action==='open-agent')await refresh(null);render();}
+    else if(action==='agent-tab'){state.setupAgentId=button.dataset.id;state.agentTab=button.dataset.tab;render();root.querySelector('#workspace-main')?.focus({preventScroll:true});}
+    else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);if(typeof RelayBuild==='object')state.agentTab=action==='agent-step'?RelayBuild.STEP_TAB[state.setupStage]:RelayBuild.defaultTab(a);location.hash=`agent=${a.id}&step=${state.setupStage}`;if(action==='open-agent')await refresh(null);render();}
     else if(action==='add-capability'){document.querySelector('#capability-rows').insertAdjacentHTML('beforeend',capabilityRow());captureAgentDraft(document.getElementById('agent'));}
     else if(action==='remove-capability'){if(document.querySelectorAll('.capability-row').length>1){button.closest('.capability-row').remove();captureAgentDraft(document.getElementById('agent'));}else notice.textContent='Keep at least one capability.';}
     else if(action==='connect-runtime'||action==='disconnect-runtime'){

@@ -375,7 +375,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     });
   }
   async function configure(actor, id, body, key) {
-    exactKeys(body, ['integration', 'automaticRequested', 'minimumPayout', 'concurrency', 'expectedVersion', 'setupStage', 'name', 'purpose', 'domain', 'kind', 'currency']);
+    exactKeys(body, ['integration', 'automaticRequested', 'minimumPayout', 'concurrency', 'expectedVersion', 'setupStage', 'name', 'purpose', 'domain', 'kind', 'currency', 'automaticScope', 'automaticLimitMinor']);
+    const automatic = require('./auto-offers.cjs').automaticRules(body);
     if (!['api', 'sdk', 'mcp'].includes(body.integration) || typeof body.automaticRequested !== 'boolean') fail(400, 'INVALID_INPUT', 'Choose method and bidding preference.');
     positive(body.minimumPayout, 'Minimum payout', 10000000); positive(body.concurrency, 'Concurrency', 100); positive(body.setupStage, 'Stage', 3);
     return command(actor.user.id, key, ['configure', id, body], repo => agentFor(repo, actor, id), async repo => {
@@ -394,7 +395,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       agent.integration = body.integration; agent.setupStage = body.setupStage;
       const currency = body.currency === undefined ? (agent.rules.currency || 'USD') : body.currency;
       if (!['USD', 'EUR'].includes(currency)) fail(400, 'CURRENCY_UNSUPPORTED', 'Choose USD or EUR.');
-      agent.rules = { currency, automaticRequested: body.automaticRequested, minimumPayout: body.minimumPayout, concurrency: body.concurrency };
+      agent.rules = { currency, automaticRequested: body.automaticRequested, minimumPayout: body.minimumPayout, concurrency: body.concurrency, ...automatic };
       agent.version++; await repo.save('agent', agent);
       return { agentId: id, version: agent.version, automaticEnabled: agentView(agent, now()).rules.automaticEnabled };
     });
@@ -429,6 +430,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (runtime && (runtime.agentId !== agent.id || runtime.credentialHash !== agent.credentialHash || !agent.rules.automaticRequested)) fail(403, 'BIDDING_DISABLED', 'Automatic bidding is disabled.');
       if (runtime && currency !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'Offer currency must match the agent quoting rules.');
       if (runtime && body.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'Offer is below the configured minimum.');
+      const refusal = runtime && require('./auto-offers.cjs').automaticRefusal(agent.rules, task, body.amountMinor);
+      if (refusal) fail(409, 'AUTOMATIC_LIMIT', refusal);
       if (task.offers.some(offer => offer.agentId === agent.id && offer.scopeVersion === task.scopeVersion && offer.expiresAt > now())) fail(409, 'OFFER_EXISTS', 'This agent already quoted on this scope.');
       const offer = { id: randomUUID(), agentId: agent.id, operatorId: actor.user.id, agentName: agent.name, agentType: agent.kind,
         operatorName: actor.user.name, category: capability.category, capability: capability.task, capabilityId: capability.id,
@@ -498,6 +501,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       input: task.input ? { filename: task.input.filename, size: task.input.size, sha256: task.input.sha256, notes: task.input.notes, operation: task.input.operation } : null,
       categoryId: task.categoryId || null, categoryLabel: task.categoryId ? require('../../../packages/domain/src/categories.cjs').taskById(task.categoryId).label : null,
       intake: context.intake.forBidders(task), checks: (task.checks || []).map(require('./checks.cjs').checkView),
+      postedAt: [...task.events].reverse().find(item => item.type === 'task.posted')?.createdAt || task.createdAt, direct: !!(task.preferredAgentId || task.preferredOperatorId),
       context: [], myOffers: task.offers.filter(offer => offer.operatorId === actor.user.id).map(offer => ({ id: offer.id, agentId: offer.agentId, taskVersion: offer.taskVersion, scopeVersion: offer.scopeVersion, expiresAt: offer.expiresAt })) };
   }
   async function opportunities(actor) {
