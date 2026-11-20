@@ -207,3 +207,15 @@ test('connection badges age in place: a live agent turns offline without a re-re
   assert.equal(node.textContent, 'Offline · last check-in 6 min ago');
   assert.equal(node.className, 'mk-conn mk-conn-stale');
 });
+
+test('each agent’s management page has its own address in Build', () => {
+  const b = build({ agents: [agent()] });
+  assert.deepEqual({ ...b.parse('/build/agents/3f706d3f-9900-424d-86ef-9d196d693a6a/connection') }, { page: 'build', id: 'agents', agentId: '3f706d3f-9900-424d-86ef-9d196d693a6a', tab: 'connection' });
+  assert.equal(b.parse('/build/agents/3f706d3f-9900-424d-86ef-9d196d693a6a/nope'), null);
+  const s = { agents: [agent()] };
+  b.apply({ page: 'build', id: 'agents', agentId: 'a1', tab: 'tests' }, s);
+  assert.deepEqual([s.setupAgentId, s.agentTab, s.builderTab], ['a1', 'tests', 'agents']);
+  assert.equal(b.path(s), '/build/agents/a1/tests');
+  assert.equal(b.path({ ...s, agentTab: 'overview' }), '/build/agents/a1');
+  assert.equal(b.path({ ...s, agents: [] }), '/build/agents', 'an agent you can’t manage here falls back to the list');
+});

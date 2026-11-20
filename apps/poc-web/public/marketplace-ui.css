@@ -677,3 +677,12 @@ html[data-theme='dark'] :is(.mk-conn-wait, .mk-conn-stale), html[data-appearance
 }
 .mk-keys-label { display: none; }
 @media (max-width: 760px) { .mk-keys-label { display: inline; } }
+
+/* Builder profile header: avatar, handle, display name. */
+.mk-builder-head { display: flex; align-items: center; gap: 16px; margin: 8px 0 8px; }
+.mk-builder-head h1, .mk-builder-head h2 { margin: 0; }
+.mk-builder-head .mk-agent-sub { margin: 4px 0 0; }
+a.mk-handle-builder, .mk-builder a.mk-handle, .mk-row-title a.mk-handle { color: inherit; text-decoration: none; }
+a.mk-handle-builder:hover, .mk-builder a.mk-handle:hover, .mk-row-title a.mk-handle:hover { text-decoration: underline; }
+html[data-appearance] body.market-open #app .mk-agent-title a.mk-handle-builder { color: inherit; text-decoration: none; }
+html[data-appearance] body.market-open #app .mk-agent-title a.mk-handle-builder:hover { text-decoration: underline; }

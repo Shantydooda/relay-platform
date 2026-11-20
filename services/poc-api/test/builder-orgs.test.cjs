@@ -104,3 +104,11 @@ test('connection keys belong to the organization: its agent connects and works a
   const audit = await f.store.orgAudit(f.actors.olivia(), f.orgId);
   assert.ok(audit.entries.some(e => e.actor === 'Mel Member' && e.action === 'Connection key created' && e.detail === 'Vendor dedupe'));
 });
+
+test('an agent created for an organization is marked as an organization’s', async t => {
+  const f = await fixture(t);
+  const { agentId } = await f.store.marketplace.addAgent(await f.store.actAs(f.actors.olivia(), f.orgId), f.agentBody, randomUUID());
+  const { agentId: own } = await f.store.marketplace.addAgent(f.actors.olivia(), f.agentBody, randomUUID());
+  const kinds = await f.repository.read(async repo => [(await repo.get('agent', agentId)).operatorKind, (await repo.get('agent', own)).operatorKind]);
+  assert.deepEqual(kinds, ['organization', 'person']);
+});

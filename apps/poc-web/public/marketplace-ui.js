@@ -28,6 +28,8 @@ const RelayMarketplace = {
     if (pathname === '/post') return { page: 'post', id: null };
     if (pathname === '/requests') return { page: 'requests', id: null };
     if (pathname === '/builders') return { page: 'builders', id: null };
+    const builderHandle = /^\/builders\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/.exec(pathname)?.[1];
+    if (builderHandle) return { page: 'builder', id: builderHandle };
     if (pathname === '/evidence') return { page: 'docs', id: 'evidence' };
     const doc = /^\/docs\/([a-z-]+)$/.exec(pathname)?.[1];
     if (doc && this.DOCS.some(item => item.slug === doc)) return { page: 'docs', id: doc };
@@ -46,7 +48,8 @@ const RelayMarketplace = {
     if (target.buyerTab === 'org' || target.buyerTab === 'enterprise') target.projectId = null;
     if (route.page === 'agent') { target.buyerTab = 'market'; target.agentPageId = route.id; target.agentTab ||= 'card'; target.detail = null; }
     else if (route.page === 'post') { target.buyerTab = 'request'; target.detail = null; }
-    else if (route.page === 'requests' || route.page === 'builders') { target.buyerTab = route.page; target.detail = null; }
+    else if (route.page === 'requests' || route.page === 'builders') { target.buyerTab = route.page; target.builderHandle = null; target.detail = null; }
+    else if (route.page === 'builder') { target.buyerTab = 'builders'; target.builderHandle = route.id; target.detail = null; }
     else if (route.page === 'docs') { target.buyerTab = 'evidence'; target.docPage = route.id; target.detail = null; }
     return route.page === 'task' ? route.id : null;
   },
@@ -57,7 +60,7 @@ const RelayMarketplace = {
     if (current.buyerTab === 'market' && current.agentPageId) return `/agents/${current.agentPageId}`;
     if (current.buyerTab === 'request') return '/post';
     if (current.buyerTab === 'requests') return '/requests';
-    if (current.buyerTab === 'builders') return '/builders';
+    if (current.buyerTab === 'builders') return current.builderHandle ? `/builders/${current.builderHandle}` : '/builders';
     if (current.buyerTab === 'evidence') return `/docs/${current.docPage || 'evidence'}`;
     const org = typeof RelayOrg === 'object' ? RelayOrg.path(current) : null;
     if (org) return org;
@@ -498,21 +501,24 @@ const RelayMarketplace = {
     const counts = { packages: (agent.ownerPreview ? agent.ownerPackages || [] : m.packages).length, versions: agent.trackRecord?.versions?.length || 0 };
     const chips = [`${this.dot(m.category || '')}${escape(m.category || 'Uncategorised')}`, ...m.waysToBuy.map(way => ({ commission: 'Commission', use: 'Use it', hire: 'Hire it' }[way])),
       ...m.worksWith.map(name => `Works with ${escape(name)}`), ...(m.hostedOnRelay ? ['Hosted on Relay'] : []), ...(m.version ? [escape(this.version(m.version))] : [])];
-    const body = tab === 'evidence' ? this.evidenceTab(agent, m)
+    const body = tab === 'settings' && agent.ownerPreview ? this.ownerTab(agent)
+      : tab === 'evidence' ? this.evidenceTab(agent, m)
       : tab === 'packages' ? this.packagesTab(agent, m)
       : tab === 'versions' ? `<section class="mk-section"><h2>Results by version</h2>${m.version ? `<p>Current version <code>${escape(this.version(m.version))}</code>${m.versionSince ? `, reported ${escape(this.ago(m.versionSince))}` : ''}.</p>` : ''}${this.versionsTable(agent.trackRecord)}</section>`
       : tab === 'discussion' ? '<div class="mk-empty"><h2>Discussion isn’t open yet</h2><p>Questions about a specific job go in that task’s message thread, where the builder can reply.</p></div>'
       : this.cardTab(agent, m);
-    const builderAgents = (state.market?.agents || []).filter(item => item.builder === m.builder).length;
+    const builderAgents = (state.market?.agents || []).filter(item => (item.builderId || item.builder) === (m.builderId || m.builder)).length;
+    const profile = `/builders/${escape(this.slug(m.builder))}`;
+    const tabs = agent.ownerPreview ? [...this.AGENT_TABS, ['settings', 'Settings']] : this.AGENT_TABS;
     const blocked = m.own || agent.ownerPreview || agent.availability !== 'available';
     return `<article class="mk-agent">
       <header class="mk-agent-head">${back}
-        <div class="mk-agent-title">${this.avatar(m, 'mk-avatar-lg')}<h1><span class="mk-handle-builder">${escape(this.slug(m.builder))}</span> <span aria-hidden="true">/</span> <span class="mk-handle-name">${escape(this.slug(m.name))}</span></h1>
+        <div class="mk-agent-title">${this.avatar(m, 'mk-avatar-lg')}<h1><a class="mk-handle-builder" href="${profile}" data-route>${escape(this.slug(m.builder))}</a> <span aria-hidden="true">/</span> <span class="mk-handle-name">${escape(this.slug(m.name))}</span></h1>
           <button type="button" class="mk-icon" data-action="market-copy-link" data-id="${escape(agent.id)}" aria-label="Copy link to this agent">⧉</button>
           ${agent.ownerPreview ? '' : `<button type="button" class="mk-save" data-action="market-save" data-id="${escape(agent.id)}" data-version="${agent.savedVersion || 0}" data-saved="${!!agent.saved}" aria-pressed="${!!agent.saved}">${agent.saved ? 'Saved' : 'Save'}</button>`}</div>
         <p class="mk-agent-sub">${escape(agent.name)} · by ${escape(m.builder)}</p>
         <ul class="mk-chips mk-agent-chips">${chips.map(chip => `<li class="mk-chip mk-chip-static">${chip}</li>`).join('')}</ul>
-        <nav class="mk-tabs" aria-label="Agent sections">${this.AGENT_TABS.map(([id, label]) => `<button type="button" data-action="market-agent-tab" data-tab="${id}" ${tab === id ? 'aria-current="page"' : ''}>${label}${counts[id] !== undefined ? ` <span class="mk-count">${counts[id]}</span>` : ''}</button>`).join('')}</nav>
+        <nav class="mk-tabs" aria-label="Agent sections">${tabs.map(([id, label]) => `<button type="button" data-action="market-agent-tab" data-tab="${id}" ${tab === id ? 'aria-current="page"' : ''}>${label}${counts[id] !== undefined ? ` <span class="mk-count">${counts[id]}</span>` : ''}</button>`).join('')}</nav>
       </header>
       <div class="mk-agent-layout"><div class="mk-agent-main">${body}</div>
         <aside class="mk-buy" aria-label="Ways to buy">
@@ -520,8 +526,22 @@ const RelayMarketplace = {
           ${this.hireBox(agent, m)}
           <section class="mk-buy-box mk-buy-custom"><h2>Need something custom?</h2><p>Describe the outcome and your checklist. ${escape(m.builder)} quotes, and you approve before work starts.</p>
             ${blocked ? `<p class="mk-caption">${agent.ownerPreview || m.own ? 'This is your agent. You can’t hire your own agent.' : 'Direct requests open once this agent passes a current Relay test.'}</p>` : `<button type="button" class="mk-link-button" data-action="market-quote" data-id="${escape(agent.id)}">Request a quote from ${escape(this.slug(m.builder))}</button>`}</section>
-          <section class="mk-buy-box mk-builder"><h2>Builder</h2><p class="mk-handle">${escape(this.slug(m.builder))}</p><p>${escape(m.builder)}${builderAgents ? ` · ${this.plural(builderAgents, 'agent')} on Relay` : ''}</p><p class="mk-caption">Builder identity and business checks aren’t shown yet.</p></section>
+          <section class="mk-buy-box mk-builder"><h2>Builder</h2><p><a class="mk-handle" href="${profile}" data-route>${escape(this.slug(m.builder))}</a></p><p>${escape(m.builder)}${builderAgents ? ` · ${this.plural(builderAgents, 'agent')} on Relay` : ''}</p><p class="mk-caption">Builder identity and business checks aren’t shown yet.</p></section>
         </aside></div></article>`;
+  },
+
+  // Owner-only: where to change each part of this agent. The forms live in
+  // Build, at their own addresses, so they exist once.
+  ownerTab(agent) {
+    const link = (tab, label, note) => `<tr><th scope="row">${label}</th><td class="mk-empty-note">${note}</td><td><a class="mk-next" href="/build/agents/${escape(agent.id)}/${tab}" data-route>Open →</a></td></tr>`;
+    return `<section class="mk-section"><h2>Settings</h2><p class="mk-caption">Only you see this tab. Changes are made in Build.</p><div class="mk-table-wrap"><table class="mk-table"><tbody>
+      ${link('profile', 'Profile and capabilities', 'Name, description and what it can do. This is what buyers read on the card.')}
+      ${link('connection', 'Connection and keys', 'Where it runs, its connection key and the last check-in.')}
+      ${link('tests', 'Relay tests', 'Passing one lets you publish it and sell packages.')}
+      ${link('offers', 'Listing and automatic offers', 'Publish or pause it, and which requests it offers on by itself.')}
+      ${link('results', 'Results', 'Where its buyers came from and how its offers did.')}
+      <tr><th scope="row">Packages</th><td class="mk-empty-note">Fixed-price offers buyers can buy straight away.</td><td><button type="button" class="mk-link-button" data-action="market-agent-tab" data-tab="packages">Packages tab</button></td></tr>
+    </tbody></table></div></section>`;
   },
 
   // ---- Post a request ----------------------------------------------------
@@ -642,15 +662,38 @@ const RelayMarketplace = {
 
   // ---- Builders ----------------------------------------------------------
   // Builders with published agents, from the same listings as the Agents page.
-  buildersPage() {
-    if (!state.market) return '<section class="mk-page" aria-busy="true"><p role="status">Loading builders…</p></section>';
+  // Builders are grouped by their opaque id, never by display name: two people
+  // can share a name. Their profile is /builders/<handle>.
+  builderGroups(agents = state.market?.agents || []) {
     const groups = new Map();
-    for (const agent of state.market.agents) { if (!groups.has(agent.builder)) groups.set(agent.builder, []); groups.get(agent.builder).push(agent); }
-    const builders = [...groups.entries()].map(([name, agents]) => ({ name, agents, runs: agents.reduce((n, a) => n + (a.evidence?.runs || 0), 0),
-      categories: [...new Set(agents.map(a => a.categoryLabel).filter(Boolean))] })).sort((a, b) => b.runs - a.runs || a.name.localeCompare(b.name));
+    for (const agent of agents) {
+      const key = agent.builderId || agent.builder;
+      if (!groups.has(key)) groups.set(key, { id: key, name: agent.builder, kind: agent.builderKind || 'person', agents: [] });
+      groups.get(key).agents.push(agent);
+    }
+    return [...groups.values()].map(b => ({ ...b, runs: b.agents.reduce((n, a) => n + (a.evidence?.runs || 0), 0),
+      categories: [...new Set(b.agents.map(a => a.categoryLabel).filter(Boolean))] })).sort((a, b) => b.runs - a.runs || a.name.localeCompare(b.name));
+  },
+  builderMeta(b) {
+    return [b.kind === 'organization' ? 'Organization' : '', this.plural(b.agents.length, 'agent'), b.runs ? `${this.plural(b.runs, 'verified run')} · ${state.market.windowDays}d` : 'No verified runs yet', ...b.categories.slice(0, 3)].filter(Boolean).map(escape).join('<span class="mk-sep" aria-hidden="true">·</span>');
+  },
+  builderPage() {
+    const back = '<a class="mk-back" href="/builders" data-route>← All builders</a>';
+    if (!state.market) return '<section class="mk-page" aria-busy="true"><p role="status">Loading builder…</p></section>';
+    const matches = this.builderGroups().filter(b => this.slug(b.name) === state.builderHandle);
+    if (!matches.length) return `<section class="mk-page">${back}<div class="mk-empty"><h1>No builder by that name</h1><p>Builders appear once one of their agents passes a Relay test and is published.</p><a class="mk-primary" href="/builders" data-route>All builders</a></div></section>`;
+    const one = b => `<section class="mk-section"><div class="mk-builder-head">${this.avatar({ builder: b.name }, 'mk-avatar-lg')}<div><h${matches.length > 1 ? 2 : 1}><span class="mk-handle">${escape(this.slug(b.name))}</span></h${matches.length > 1 ? 2 : 1}><p class="mk-agent-sub">${escape(b.name)}</p></div></div>
+      <p class="mk-meta">${this.builderMeta(b)}</p><ul class="mk-list">${b.agents.map(a => this.row(a)).join('')}</ul></section>`;
+    return `<section class="mk-results mk-page">${back}${matches.length > 1 ? `<header class="mk-results-head"><h1><span class="mk-handle">${escape(state.builderHandle)}</span></h1></header><p class="mk-caption">${matches.length} builders use this name. Each one’s agents are listed separately.</p>` : ''}
+      ${matches.map(one).join('')}<p class="mk-caption">Counts come from work Relay recorded in this environment. Builder identity and business checks aren’t shown yet.</p></section>`;
+  },
+  buildersPage() {
+    if (state.builderHandle) return this.builderPage();
+    if (!state.market) return '<section class="mk-page" aria-busy="true"><p role="status">Loading builders…</p></section>';
+    const builders = this.builderGroups();
     const cards = builders.length ? `<ul class="mk-list">${builders.map(b => `<li class="mk-row"><div class="mk-row-link">
-        <span class="mk-row-title">${this.avatar({ builder: b.name })}<span class="mk-handle">${escape(this.slug(b.name))}</span></span>
-        <span class="mk-meta">${[this.plural(b.agents.length, 'agent'), b.runs ? `${this.plural(b.runs, 'verified run')} · ${state.market.windowDays}d` : 'No verified runs yet', ...b.categories.slice(0, 3)].map(escape).join('<span class="mk-sep" aria-hidden="true">·</span>')}</span>
+        <span class="mk-row-title">${this.avatar({ builder: b.name })}<a class="mk-handle" href="/builders/${escape(this.slug(b.name))}" data-route>${escape(this.slug(b.name))}</a></span>
+        <span class="mk-meta">${this.builderMeta(b)}</span>
         <span class="mk-builder-agents">${b.agents.map(a => `<a href="/agents/${escape(a.id)}" data-route class="mk-handle">${escape(this.handle(a))}</a>`).join('')}</span></div></li>`).join('')}</ul>`
       : '<div class="mk-empty"><h2>No builders yet</h2><p>Builders appear here once one of their agents passes a Relay test and is published.</p></div>';
     return `<section class="mk-results mk-page"><header class="mk-results-head"><h1>Builders <span class="mk-total">${builders.length}</span></h1></header>
