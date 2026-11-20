@@ -45,6 +45,8 @@ const RelayRequestPage = {
   },
   nextStep(detail, offers) {
     const t = detail.task;
+    const plan = typeof RelayEngagements === 'object' && RelayEngagements.nextStep(detail);
+    if (plan) return plan;
     if (t.status === 'draft' && detail.intake) {
       const r = detail.intake.readiness;
       return r.complete ? ['Open for offers', 'The intake is complete. Open the request so qualified agents can quote.']
@@ -63,6 +65,7 @@ const RelayRequestPage = {
     return `<nav class="mk-crumbs" aria-label="Where this request belongs"><a href="/org/${escape(org.id)}" data-route>${escape(RelayMarketplace.slug(org.name))}</a>${p ? ` <span aria-hidden="true">/</span> <a href="/org/${escape(org.id)}/projects/${escape(p.id)}" data-route>${escape(p.name)}</a>` : ''}</nav>`;
   },
   status(task) {
+    if (task.engagement && state.detail?.engagement) return `<span class="mk-tag" role="status">${escape({ active: 'Milestone plan', completed: 'Plan completed', ended: 'Plan ended' }[state.detail.engagement.status])}</span>`;
     return typeof RelayWorkState === 'object' && RelayWorkState.known(task)
       ? `<span class="mk-tag mk-tone-${escape(RelayWorkState.tone(task) || 'none')}" role="status">${escape(RelayWorkState.label(task))}</span>`
       : `<span class="mk-tag" role="status">${escape(typeof taskLabel === 'function' ? taskLabel(task) : task.status)}</span>`;
@@ -72,6 +75,7 @@ const RelayRequestPage = {
   offers(detail) {
     const t = detail.task;
     if (t.package) return `<section class="mk-section mk-request-offers" aria-labelledby="mk-offers-title"><h2 id="mk-offers-title">Hired package</h2>${typeof offerCards === 'function' ? offerCards() : ''}</section>`;
+    if ((detail.engagement || detail.milestone) && !detail.execution) return `<section class="mk-section mk-request-offers" aria-labelledby="mk-offers-title"><h2 id="mk-offers-title">${detail.engagement ? 'Milestone plan' : 'This milestone'}</h2>${typeof offerCards === 'function' ? offerCards() : ''}</section>`;
     const count = (state.offers || []).length;
     // Before a choice, every offer is a visible card in the server's order (fair
     // exposure included), each with its own Review and Choose actions.
@@ -92,7 +96,7 @@ const RelayRequestPage = {
   description(detail) {
     const t = detail.task;
     if (state.editing) return this.editor(t);
-    const editable = detail.mine !== false && ['posted', 'selected'].includes(t.status) && !detail.execution && !t.package;
+    const editable = detail.mine !== false && ['posted', 'selected'].includes(t.status) && !detail.execution && !t.package && !detail.milestone;
     return `<section class="mk-req-desc" aria-label="The request">
       <header class="mk-req-desc-head"><span class="mk-org-avatar mk-org-avatar-sm" aria-hidden="true">${escape((detail.postedBy || '?').slice(0, 1).toUpperCase())}</span><strong>${escape(detail.postedBy || 'Requester')}</strong><span class="mk-caption">posted ${escape(RelayMarketplace.ago(t.createdAt))} · scope v${t.scopeVersion}</span>
         ${editable ? '<button type="button" class="mk-link-button" data-action="edit">Edit</button>' : ''}</header>
@@ -122,7 +126,7 @@ const RelayRequestPage = {
     const approval = typeof RelayApprovals === 'object' && detail.approval ? RelayApprovals.task(t, detail.approval) : '';
     const main = tab === 'activity' ? this.activity(detail) : `${this.description(detail)}
       ${typeof RelayIntake === 'object' ? RelayIntake.section(detail) + RelayIntake.checksSection(detail) : ''}
-      ${!state.editing && detail.mine !== false && typeof RelayExecution === 'object' && !detail.execution ? RelayExecution.input(t) : ''}
+      ${!state.editing && detail.mine !== false && typeof RelayExecution === 'object' && !detail.execution && !detail.engagement ? RelayExecution.input(t) : ''}
       ${state.editing ? '' : this.offers(detail)}
       ${approval}
       ${typeof RelayConnections === 'object' ? RelayConnections.taskAccess(detail) : ''}
@@ -136,7 +140,7 @@ const RelayRequestPage = {
     return `<article class="mk-agent mk-request" data-task-id="${escape(t.id)}">
       <header class="mk-agent-head">${this.crumbs(detail)}
         <div class="mk-agent-title"><h1 class="mk-request-title">${escape(t.title)}</h1>${this.status(t)}</div>
-        <p class="mk-agent-sub">${t.package ? 'Hired package' : 'Request'} · posted by ${escape(detail.postedBy || 'a member')} · ${escape(RelayMarketplace.ago(t.createdAt))}${org ? ` · ${escape(org.name)}` : ''}</p>
+        <p class="mk-agent-sub">${t.package ? 'Hired package' : detail.engagement ? `Milestone plan · ${detail.engagement.milestones.length} milestones` : detail.milestone ? `Milestone ${detail.milestone.sequence} of ${detail.milestone.of}` : 'Request'} · posted by ${escape(detail.postedBy || 'a member')} · ${escape(RelayMarketplace.ago(t.createdAt))}${org ? ` · ${escape(org.name)}` : ''}</p>
         <nav class="mk-tabs" aria-label="Request sections">${this.TABS.map(([id, label]) => `<button type="button" data-action="request-tab" data-tab="${id}" ${tab === id ? 'aria-current="page"' : ''}>${label}${id === 'activity' ? ` <span class="mk-count">${(detail.events || []).length}</span>` : ''}</button>`).join('')}</nav></header>
       <div class="mk-agent-layout"><div class="mk-agent-main mk-request-main">${main}</div>
         <aside class="mk-buy" aria-label="Request status">
@@ -144,7 +148,7 @@ const RelayRequestPage = {
           <section class="mk-buy-box"><h2>Details</h2><dl class="mk-facts">
             <dt>Workspace</dt><dd>${org ? `<a href="/org/${escape(org.id)}" data-route>${escape(org.name)}</a>` : 'Personal'}</dd>
             ${detail.project ? `<dt>Project</dt><dd><a href="/org/${escape(org.id)}/projects/${escape(detail.project.id)}" data-route>${escape(detail.project.name)}</a></dd>` : ''}
-            <dt>Offers</dt><dd>${offers.length}</dd>
+            ${detail.engagement || detail.milestone ? '' : `<dt>Offers</dt><dd>${offers.length}</dd>`}
             ${t.acceptanceCriteria?.length ? `<dt>Checklist</dt><dd>${RelayMarketplace.plural(t.acceptanceCriteria.length, 'item')}</dd>` : ''}
             <dt>Scope</dt><dd>v${t.scopeVersion}</dd></dl>
             ${detail.project && !own ? '<p class="mk-caption">You can see this because you’re in the project. Only the person who posted it can change it.</p>' : ''}</section>

@@ -725,12 +725,14 @@ const RelayMarketplace = {
     return state.workFilters;
   },
   workGroup(task) {
+    if (task.engagement && typeof RelayEngagements === 'object') return RelayEngagements.group(task);
     if (typeof RelayWorkState === 'object' && RelayWorkState.known(task)) return RelayWorkState.group(task);
     return ['accepted', 'cancelled', 'failed'].includes(task.status) ? 'Completed' : ['queued', 'running'].includes(task.status) ? 'Under way' : 'Needs you';
   },
   workType(task) { return task.package ? 'package' : 'request'; },
   listedWork() {
-    return (state.tasks || []).filter(task => task.status !== 'draft' && !task.orchestrationStep?.supersededBy)
+    // A milestone plan is listed once; its milestones open from the plan's page.
+    return (state.tasks || []).filter(task => task.status !== 'draft' && !task.orchestrationStep?.supersededBy && !task.milestone)
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   },
   visibleWork() {
@@ -758,12 +760,14 @@ const RelayMarketplace = {
     request: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-7l-4.5 3.5V17H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm1 2v9h3.5v1.4L11.3 15H18V6H6Zm2 2h8v1.6H8V8Zm0 3h5v1.6H8V11Z" fill="currentColor"/></svg>',
   },
   workRow(task) {
-    const offer = task.chosenOffer, served = typeof RelayWorkState === 'object' && RelayWorkState.known(task);
-    const status = served ? RelayWorkState.label(task) : task.status;
-    const tone = served ? RelayWorkState.tone(task) : '';
-    const next = served ? RelayWorkState.action(task) : 'Open';
+    const offer = task.chosenOffer, plan = task.engagement && typeof RelayEngagements === 'object';
+    const step = plan ? RelayEngagements.current(task) : null, shown = step || task;
+    const served = typeof RelayWorkState === 'object' && RelayWorkState.known(shown) && (!plan || step);
+    const status = plan ? RelayEngagements.label(task) : served ? RelayWorkState.label(task) : task.status;
+    const tone = served ? RelayWorkState.tone(shown) : plan && !step ? 'complete' : '';
+    const next = plan ? 'Open plan' : served ? RelayWorkState.action(task) : 'Open';
     const type = this.workType(task);
-    const meta = [type === 'package' ? 'Hired package' : 'Posted request',
+    const meta = [type === 'package' ? 'Hired package' : plan ? `${task.engagement.milestones} milestones` : 'Posted request',
       offer ? `<span class="mk-handle">${escape(this.slug(offer.operatorName))}/${escape(this.slug(offer.agentName))}</span>` : escape(task.offerCount ? this.plural(task.offerCount, 'offer') : 'No offers yet'),
       ...(offer ? [escape(this.money(offer.totalMinor ?? offer.amountMinor, offer.currency))] : []),
       `updated ${escape(this.ago(task.updatedAt))}`];

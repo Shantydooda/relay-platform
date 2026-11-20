@@ -68,6 +68,7 @@ function createExecution(context) {
     return command(actor.user.id, key, ['input', id, { ...body, base64: hash(bytes) }], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
       if (task.orchestrationPlan || task.orchestrationStep?.dependencies.length) require('./orchestration.cjs').fixedScope(task);
+      if (task.engagement) require('./engagements.cjs').assertOpen(task);
       if (task.scheduleId || task.recurringScheduleId) fail(409, 'SCHEDULE_MANAGED', 'Recurring inputs are saved snapshots. Start a new recurring request to change them.');
       if (task.assignment || task.status === 'cancelled') fail(409, 'TASK_ASSIGNED', 'Inputs cannot be replaced after authorization.');
       assertUnfunded(task);
@@ -79,6 +80,7 @@ function createExecution(context) {
       task.scopes.push({ version: task.scopeVersion, title: task.title, brief: task.brief, inputHash: task.input.sha256, inputArtifactId: artifactId, notes, filename, createdAt: now(),
         ...(task.package ? { acceptanceCriteria: task.acceptanceCriteria } : {}) });
       if (task.package) require('./packages.cjs').rebindPackageOffer(task);
+      if (task.milestone) require('./engagements.cjs').rebindMilestoneOffer(task);
       event(task, actor.user.id, 'input.attached', now()); await saveTask(repo, task);
       return { taskId: id, version: task.version, sha256: task.input.sha256 };
     });
@@ -95,6 +97,7 @@ function createExecution(context) {
   }
   async function checkStart(repo, actor, task, mode) {
     require('./orchestration.cjs').ready(task);
+    await require('./engagements.cjs').assertTurn(repo, task);
     if (task.orchestrationStep && mode !== 'local-unpaid') fail(409, 'PLAN_LOCAL_ONLY', 'Orchestration currently supports local unpaid execution only.');
     if (task.workPlan && task.workPlan.cadence !== 'once') fail(409, 'SCHEDULE_REQUIRED', 'Review and enable the recurring schedule. Each run gets its own execution.');
     startAllowed(mode);

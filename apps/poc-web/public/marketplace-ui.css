@@ -694,3 +694,26 @@ html[data-appearance] body.market-open #app .mk-agent-title a.mk-handle-builder:
 .mk-test-card .mk-thread-body { gap: 8px; }
 .mk-test-card textarea { width: 100%; }
 .mk-test-card pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Milestone plans (engagements-ui.js) */
+.milestone-fields { margin: 12px 0; }
+.milestone-fields > summary, .milestone-more > summary { cursor: pointer; font-weight: 600; }
+.milestone-row { border: 1px solid var(--mk-border); border-radius: 8px; padding: 10px 12px; margin: 10px 0; min-width: 0; }
+.milestone-row legend { font-weight: 600; padding: 0 4px; }
+.milestone-row textarea, .milestone-row input { width: 100%; box-sizing: border-box; }
+.milestone-plan { border-top: 1px solid var(--mk-row-border); margin-top: 10px; padding-top: 10px; }
+.milestone-plan h4 { margin: 0 0 6px; }
+.milestone-plan ol { margin: 0; padding-left: 20px; }
+.milestone-plan ol > li { margin-bottom: 6px; }
+.milestone-plan ul { margin: 2px 0 0; color: var(--mk-muted); }
+.milestone-list { list-style: none; margin: 12px 0; padding: 0; border: 1px solid var(--mk-border); border-radius: 8px; overflow: hidden; }
+.milestone-item + .milestone-item { border-top: 1px solid var(--mk-row-border); }
+.milestone-item a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; color: inherit; text-decoration: none; }
+.milestone-item a:hover { background: var(--mk-rail); }
+.milestone-step { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--mk-border); font-family: var(--mk-mono); font-size: 13px; }
+.milestone-accepted .milestone-step { background: var(--mk-good); border-color: var(--mk-good); color: var(--mk-on-ink); }
+.milestone-cancelled .milestone-body { color: var(--mk-muted); text-decoration: line-through; }
+.milestone-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.milestone-body small { color: var(--mk-muted); overflow-wrap: anywhere; }
+.milestone-banner { color: var(--mk-muted); margin: 0 0 8px; }
+@media (max-width: 600px) { .milestone-item .mk-next { display: none; } }

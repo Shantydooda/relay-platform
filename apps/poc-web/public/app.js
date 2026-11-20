@@ -579,8 +579,13 @@ root.addEventListener('submit',event=>{
         : state.agents.find(item => item.id === agent.id)?.rules.automaticEnabled ? 'Saved. Automatic offers are on.' : 'Saved.';
     }else if(form.dataset.quote){
       const capabilityId=data.get('capabilityId');if(!capabilityId)throw new Error('Choose the capability supporting this offer.');const agent=state.agents.find(a=>a.capabilities.some(c=>c.id===capabilityId));
-      await command(`/api/tasks/${form.dataset.quote}/offers`,'POST',{agentId:agent.id,capabilityId,expectedVersion:Number(form.dataset.version),amountMinor:Math.round(Number(data.get('price'))*100),currency:data.get('currency')||'USD',deliveryMinutes:Number(data.get('minutes')),proposal:data.get('proposal')});
-      state.builderTab='quotes';await refresh();render();notice.textContent='Offer sent to the buyer.';
+      // A plan in milestones: the price and delivery time are the milestones' totals.
+      const milestones=typeof RelayEngagements==='object'?RelayEngagements.formMilestones(data):null;
+      const amountMinor=milestones?milestones.reduce((sum,m)=>sum+m.amountMinor,0):Math.round(Number(data.get('price'))*100);
+      const deliveryMinutes=milestones?milestones.reduce((sum,m)=>sum+m.deliveryMinutes,0):Number(data.get('minutes'));
+      if(!milestones&&(!amountMinor||!deliveryMinutes))throw new Error('Set your price and delivery time, or split the work into milestones.');
+      await command(`/api/tasks/${form.dataset.quote}/offers`,'POST',{agentId:agent.id,capabilityId,expectedVersion:Number(form.dataset.version),amountMinor,currency:data.get('currency')||'USD',deliveryMinutes,proposal:data.get('proposal'),...(milestones?{milestones}:{})});
+      state.builderTab='quotes';await refresh();render();notice.textContent=milestones?`Plan with ${milestones.length} milestones sent to the buyer.`:'Offer sent to the buyer.';
     }else if(form.id==='post-request'){
       await RelayMarketplace.submitPost(form);
     }else if(form.id==='package-form'){
@@ -867,6 +872,12 @@ root.addEventListener('click',event=>{
       await refresh();state.scrollTarget='.delivery-submission:last-of-type';render();
     }
     else if(action==='hide-start'){state.reviewStart=false;render();}
+    else if(action==='confirm-end-engagement'||action==='keep-engagement'){state.confirmEndPlan=action==='confirm-end-engagement';render();}
+    else if(action==='end-engagement'){
+      const ended=await command(`/api/tasks/${state.detail.task.id}/engagement/end`,'POST',{expectedVersion:state.detail.task.version});
+      state.confirmEndPlan=false;await refresh();render();
+      notice.textContent=ended.cancelled.length?`Plan ended. ${ended.cancelled.length} milestone${ended.cancelled.length===1?'':'s'} cancelled; nothing more is charged.`:'Plan ended.';
+    }
     else if(action==='review-start'){state.reviewStart=true;state.scrollTarget='.start-review';render();}
     else if(action==='review-offer'||action==='close-review'){
       const reviewing = action === 'review-offer';
@@ -878,8 +889,9 @@ root.addEventListener('click',event=>{
       focusOfferReview(offerId, reviewing);
     }
     else if(action==='accept-offer'){
-      await command(`/api/tasks/${state.detail.task.id}/select`,'POST',{offerId:button.dataset.id,expectedVersion:state.detail.task.version});
+      const chosen=await command(`/api/tasks/${state.detail.task.id}/select`,'POST',{offerId:button.dataset.id,expectedVersion:state.detail.task.version});
       state.reviewOffer=null;await refresh();
+      if(chosen?.status==='engagement'){state.reviewStart=false;render();notice.textContent='Plan accepted. Start milestone 1 when you’re ready; nothing has been charged.';return;}
       const needsApproval=state.detail.approval&&state.detail.approval.status!=='approved';
       state.reviewStart=!needsApproval;state.scrollTarget=needsApproval?'[aria-label="Company approval"]':'.start-review';render();
       root.querySelector('#workspace-main')?.focus({ preventScroll: true });

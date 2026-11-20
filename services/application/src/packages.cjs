@@ -178,9 +178,9 @@ function rebindPackageOffer(task) {
 }
 
 // An offer a runtime has committed to: its own quote, or a package its builder
-// published. The one definition used to start work and shown to the buyer's screen.
+// published, or a milestone of a plan its builder offered. The one definition used to start work and shown to the buyer's screen.
 function runtimeCommitted(offer) {
-  return !!(offer?.runtimeBid || offer?.packageId);
+  return !!(offer?.runtimeBid || offer?.packageId || offer?.milestoneOf);
 }
 
 function assertNotPackage(task) {

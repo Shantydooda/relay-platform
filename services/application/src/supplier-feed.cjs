@@ -72,7 +72,7 @@ function createSupplierFeed({ repository, credentials, opportunityView, now = Da
       const agent = await credentials.runtimeAgent(repo, principal, 'opportunities:read');
       const rows = await repo.page('task', 'status', 'posted', page);
       return { tasks: rows.filter(task =>
-        !task.package &&
+        !task.package && !task.engagement && !task.milestone &&
         (!task.preferredAgentId || task.preferredAgentId === principal.agentId) &&
         task.retryOf?.excludedAgentId !== principal.agentId &&
         require('./processing-region.cjs').allows(task.requiredRegion, agent) &&

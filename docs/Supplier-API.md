@@ -315,3 +315,7 @@ supplier workflow was rerun after the final buffer review. No UI behavior change
 so no new browser walkthrough was performed for this transport-only increment.
 This improves local integration robustness; it does not certify an independently
 operated supplier API. That release gate still needs the builder's own runtime.
+
+## Milestones
+
+A builder offers a plan in milestones from Relay, not through this API: `POST /tasks/{taskId}/offers` with `milestones` returns `400 MILESTONES_UNSUPPORTED`. Once a buyer accepts a plan, each milestone reaches your runtime as an ordinary assignment. Its brief starts with `Milestone N of M: <title>` followed by the plan's request, and its `acceptanceCriteria` are that milestone's checklist. Milestones are never listed as open opportunities.

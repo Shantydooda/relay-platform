@@ -47,7 +47,7 @@ function event(task, actorId, type, now, offerId) {
 function touch(task, now) { task.version++; task.updatedAt = now; }
 function taskView(task, now) {
   const offer = task.offers.find(item => item.id === task.selectedOfferId);
-  const status = task.recurringScheduleId ? 'scheduled' : task.assignment?.status || (offer && offer.expiresAt > now ? 'selected' : task.status);
+  const status = task.engagement ? 'engagement' : task.recurringScheduleId ? 'scheduled' : task.assignment?.status || (offer && offer.expiresAt > now ? 'selected' : task.status);
   const { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, input } = task;
   const approvalStatus = require('./approvals.cjs').approvalView(task, now)?.status || null;
   return { id, tenantId, projectId: task.projectId || null, categoryId: task.categoryId || null, title, brief, version, scopeVersion, createdAt, updatedAt, status,
@@ -66,6 +66,8 @@ function taskView(task, now) {
     // For list rows: who the work is with and the agreed or chosen price, and how many current offers exist.
     chosenOffer: chosenOfferView(task, now),
     offerCount: task.offers.filter(item => item.scopeVersion === task.scopeVersion && item.expiresAt > now).length,
+    engagement: task.engagement ? { milestones: task.engagement.milestoneIds.length, agentName: task.engagement.agentName, endedAt: task.engagement.endedAt } : null,
+    milestone: task.milestone ? { engagementId: task.milestone.engagementId, sequence: task.milestone.sequence, of: task.milestone.of, title: task.milestone.title } : null,
     package: task.package ? { ...task.package, criteria: task.package.criteria.map(item => ({ ...item })), inputs: [...task.package.inputs] } : null,
     input: input ? { filename: input.filename, size: input.size, sha256: input.sha256, notes: input.notes } : null };
 }
@@ -118,6 +120,7 @@ function agentView(agent, now) {
 
 function createApplication({ repository, now = Date.now, localExecution = false, pilotConnections = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], connectionVault = null, connectionProviders = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour, autoAcceptAfterMs = null, pilotUnpaidExecution = false, feeSchedule = '', relayTestReviewerIds = [] }) {
   const pricing = require('./pricing.cjs').createPricing(feeSchedule);
+  const engagementRules = require('./engagements.cjs');
   if (pilotConnections && (localExecution || typeof resolveOperator !== 'function' || typeof resolveActor !== 'function')) {
     throw new Error('PILOT_CONNECTIONS_REQUIRE_MANAGED_IDENTITY');
   }
@@ -292,6 +295,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     return command(actor.user.id, key, [action, id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true);
       expected(task, body.expectedVersion);
+      if (action !== 'messages') engagementRules.assertOpen(task);
       if (task.orchestrationPlan && action !== 'messages') require('./orchestration.cjs').fixedScope(task);
       if (task.orchestrationStep && ['scope','edit'].includes(action)) require('./orchestration.cjs').fixedScope(task);
       if (action === 'post') require('./orchestration.cjs').ready(task);
@@ -415,8 +419,11 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     });
   }
   async function quote(actor, id, body, key, runtime = null) {
-    exactKeys(body, ['agentId', 'capabilityId', 'expectedVersion', 'amountMinor', 'deliveryMinutes', 'proposal', 'currency']);
+    exactKeys(body, ['agentId', 'capabilityId', 'expectedVersion', 'amountMinor', 'deliveryMinutes', 'proposal', 'currency', 'milestones']);
     positive(body.amountMinor, 'Amount', QUOTE_LIMITS.maxAmountMinor); positive(body.deliveryMinutes, 'Estimate', QUOTE_LIMITS.maxDeliveryMinutes);
+    // A plan in milestones is written by the builder, never sent automatically by a runtime.
+    if (body.milestones !== undefined && runtime) fail(400, 'MILESTONES_UNSUPPORTED', 'Offer milestones from Relay, not through the Supplier API.');
+    const milestones = body.milestones === undefined ? null : engagementRules.milestonesInput(body.milestones, { amountMinor: body.amountMinor, deliveryMinutes: body.deliveryMinutes, maxDeliveryMinutes: QUOTE_LIMITS.maxDeliveryMinutes });
     if (!supplierConnections) fail(403, 'COMMERCIAL_NOT_READY', 'Commercial bidding requires connected eligibility and funding services.');
     const currency = body.currency === undefined ? 'USD' : body.currency;
     if (!['USD', 'EUR'].includes(currency)) fail(400, 'CURRENCY_UNSUPPORTED', 'Choose USD or EUR.');
@@ -449,6 +456,9 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (runtime && body.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'Offer is below the configured minimum.');
       const refusal = runtime && require('./auto-offers.cjs').automaticRefusal(agent.rules, task, body.amountMinor);
       if (refusal) fail(409, 'AUTOMATIC_LIMIT', refusal);
+      if (milestones && (task.scheduleId || task.recurringScheduleId || (task.workPlan?.cadence && task.workPlan.cadence !== 'once') || task.retryOf))
+        fail(409, 'MILESTONES_UNAVAILABLE', 'Recurring work and retries are priced as one offer.');
+      if (milestones && milestones.some(item => item.amountMinor < (agent.rules.minimumPayout || 0))) fail(409, 'PRICE_LIMIT', 'Each milestone must be at least your agent’s minimum price.');
       if (task.offers.some(offer => offer.agentId === agent.id && offer.scopeVersion === task.scopeVersion && offer.expiresAt > now())) fail(409, 'OFFER_EXISTS', 'This agent already quoted on this scope.');
       const offer = { id: randomUUID(), agentId: agent.id, operatorId: actor.user.id, agentName: agent.name, agentType: agent.kind,
         operatorName: actor.user.name, category: capability.category, capability: capability.task, capabilityId: capability.id,
@@ -456,6 +466,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         amountMinor: body.amountMinor, deliveryMinutes: body.deliveryMinutes, proposal, currency,
         createdAt: now(), expiresAt: now() + 86400000, runtimeBid: !!runtime, runtimeKind: runtime ? agent.runtimeKind : null };
       pricing.priced(offer);
+      if (milestones) offer.milestones = engagementRules.priceMilestones(milestones, pricing.price);
       task.offers.push(offer); event(task, actor.user.id, 'offer.received', now()); await saveTask(repo, task);
       await repo.save('offer-index', { id: offer.id, ownerId: actor.user.id, taskId: id, offerId: offer.id });
       return { taskId: id, offerId: offer.id };
@@ -465,6 +476,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     exactKeys(body, ['offerId', 'expectedVersion']);
     return command(actor.user.id, key, ['select', id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true); expected(task, body.expectedVersion);
+      engagementRules.assertOpen(task);
       if (task.scheduleId || task.recurringScheduleId) fail(409, 'SCHEDULE_MANAGED', 'This recurring run selects its chosen agent within the saved limits. Start a new recurring request to change the arrangement.');
       assertUnfunded(task);
       if (task.assignment) fail(409, 'TASK_ASSIGNED', 'This task is already assigned.');
@@ -475,8 +487,10 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (offer.expiresAt <= now()) fail(409, 'OFFER_EXPIRED', 'This offer expired.');
       const requiredRegion = await context.org.requiredRegion(repo, task.tenantId);
       if (requiredRegion) require('./processing-region.cjs').assertAllowed(requiredRegion, offer.agentId ? await repo.get('agent', offer.agentId) : null);
-      task.selectedOfferId = offer.id; touch(task, now()); event(task, actor.user.id, 'offer.selected', now(), offer.id); await saveTask(repo, task);
-      return { taskId: id, offerId: offer.id, version: task.version, status: 'selected', executionAuthorized: false };
+      // Choosing a plan accepts it: each milestone becomes its own task, started one at a time.
+      const milestoneIds = offer.milestones ? await engagements.acceptPlan(repo, actor, task, offer) : null;
+      task.selectedOfferId = offer.id; touch(task, now()); event(task, actor.user.id, milestoneIds ? 'engagement.accepted' : 'offer.selected', now(), offer.id); await saveTask(repo, task);
+      return { taskId: id, offerId: offer.id, version: task.version, status: milestoneIds ? 'engagement' : 'selected', executionAuthorized: false, ...(milestoneIds ? { milestoneIds } : {}) };
     });
   }
 
@@ -504,7 +518,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       const postedBy = task.ownerId === actor.user.id ? actor.user.name : poster?.user?.name || task.messages[0]?.authorName || null;
       return { retry, acceptance: acceptanceView(task), postedBy, intake: require('./intake.cjs').intakeView(task),
         checks: (task.assignment?.agreement?.checks || task.checks || []).map(require('./checks.cjs').checkView), access: await context.connections.forTask(repo, task), mine: task.ownerId === actor.user.id,
-        project: project ? { id: project.id, name: project.name, status: project.status, leadId: project.leadId } : null, actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
+        project: project ? { id: project.id, name: project.name, status: project.status, leadId: project.leadId } : null, ...await engagements.view(repo, task), actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
         approval: require('./approvals.cjs').approvalView(task, now()), execution: publicExecution(task), payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), submissions: task.submissions.map(publicSubmission) };
     });
   }
@@ -513,7 +527,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     return repository.read(async repo => (await repo.list('task', 'tenant_id', tenantId)).filter(task => task.ownerId === actor.user.id || actor.memberships.some(member => member.id === tenantId && member.role === 'owner')).map(task => taskView(task, now())));
   }
   function opportunityView(task, actor) {
-    if (task.assignment ||
+    if (task.assignment || task.engagement || task.milestone ||
       (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) ||
       actor.memberships.some(member => member.id === task.tenantId) || task.tenantId === actor.user.id ||
       task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) return null;
@@ -585,8 +599,9 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       const result = [];
       for (const index of indices) {
         const task = await repo.get('task', index.taskId), offer = task?.offers.find(item => item.id === index.offerId);
-        if (!offer) continue;
-        const status = task.assignment ? (task.assignment.offerId === offer.id ? 'accepted' : 'not_selected') : task.status === 'cancelled' ? 'closed' : offer.scopeVersion !== task.scopeVersion ? 'needs_update' : offer.expiresAt <= now() ? 'expired' : task.selectedOfferId === offer.id ? 'selected' : 'pending';
+        // A milestone's offer is part of the builder's plan, listed once on the request.
+        if (!offer || offer.milestoneOf) continue;
+        const status = task.engagement ? (task.engagement.offerId === offer.id ? 'accepted' : 'not_selected') : task.assignment ? (task.assignment.offerId === offer.id ? 'accepted' : 'not_selected') : task.status === 'cancelled' ? 'closed' : offer.scopeVersion !== task.scopeVersion ? 'needs_update' : offer.expiresAt <= now() ? 'expired' : task.selectedOfferId === offer.id ? 'selected' : 'pending';
         result.push({ ...offer, taskId: task.id, title: task.title, status });
       }
       return result;
@@ -603,6 +618,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const { checkFiling, ...projectCommands } = context.projects;
   context.credentials = require('./supplier-credentials.cjs').createCredentials(context);
   const orchestration = require('./orchestration.cjs').createOrchestration(context);
+  const engagements = require('./engagements.cjs').createEngagements(context);
   const portfolio = require('./portfolio.cjs').createPortfolio(context);
   const payments = require('./payments.cjs').createPayments(context, paymentProvider);
   const qualification = require('./qualification.cjs').createQualification(context);
@@ -621,7 +637,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   context.refreshSourceWithin = refreshSourceWithin;
   const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView, org: context.org, pricing,
     connectors: require('./marketplace-browse.cjs').workingConnectors({ capabilities, driveProvider, attioProvider, connectionProviders }) });
-  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps, fees: pricing.charging ? { charging: true, rule: pricing.describe() } : { charging: false } }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, orgPolicy: context.org.orgPolicy, setOrgPolicy: context.org.setOrgPolicy, publishing: context.org.publishing, orgAudit: context.org.orgAudit, actAs: context.org.actAs, recordOrgAction: context.org.recordOrgAction, ...connectionCommands, ...intakeCommands, ...payments, ...qualification, ...require('./relay-tests.cjs').createRelayTests(context), ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
+  return { activity, endEngagement: engagements.endEngagement, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps, fees: pricing.charging ? { charging: true, rule: pricing.describe() } : { charging: false } }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, orgPolicy: context.org.orgPolicy, setOrgPolicy: context.org.setOrgPolicy, publishing: context.org.publishing, orgAudit: context.org.orgAudit, actAs: context.org.actAs, recordOrgAction: context.org.recordOrgAction, ...connectionCommands, ...intakeCommands, ...payments, ...qualification, ...require('./relay-tests.cjs').createRelayTests(context), ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),

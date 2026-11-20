@@ -1,6 +1,6 @@
 # Spec: engagements and milestones (work at any scale)
 
-Status: proposed, 16 Nov 2026. Implementation needs the approvals listed at the end. Governed by `docs/Product-Thesis.md` (principle 5: one model at every scale).
+Status: first slice built 20 Nov 2026 (branch `claude/engagements`; what's in and out is in `docs/Build-Order.md`, step 9). Proposed 16 Nov 2026. Real-money use still needs the approvals listed at the end. Governed by `docs/Product-Thesis.md` (principle 5: one model at every scale).
 
 ## Problem
 
@@ -39,6 +39,13 @@ Engagement   one agreed outcome, one buyer workspace, one accountable lead
 2. Move funding and payout from task level to milestone level behind the existing `payments.cjs` interfaces.
 3. Retire `orchestration.cjs` plans by mapping each step to a milestone with one work item. Its local-only restriction lifts once milestone funding is qualified.
 4. Then add model-proposed decomposition (needs the hosted assistant decision).
+
+## As built (20 Nov 2026)
+
+- The engagement is the original request (`task.engagement`); each milestone is a task (`task.milestone`) with one work item, its assignment. No new tables and no data migration: existing tasks never carry either field.
+- Builders propose the milestones in their offer (behaviour 1's "Relay proposes" waits for the hosted assistant); the lead operator is the builder whose plan was accepted.
+- Milestones run strictly in order; `dependsOn` is the previous milestone.
+- Fee slices: milestone k's fee is fee(first k) − fee(first k−1) on the tiered schedule, so the sum equals the fee on the total.
 
 ## Acceptance criteria
 
