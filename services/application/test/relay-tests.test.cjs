@@ -152,7 +152,7 @@ test('rejection needs a reason, staff can’t approve their own test, and author
   assert.equal((await f.app.relayTestQueue(f.staff)).waiting.filter(x => x.id === second.testId).length, 0);
 });
 
-test('a test only qualifies its category, wrong answers fail, and attempts are limited per day', async t => {
+test('a test only qualifies its category, wrong answers fail, and attempts are limited per builder per day', async t => {
   const f = await fixture(t);
   await f.builder(f.author);
   const { testId } = await f.propose(f.author);
@@ -171,6 +171,9 @@ test('a test only qualifies its category, wrong answers fail, and attempts are l
     assert.equal(result.checks[0].passed, false);
   }
   await assert.rejects(ben.start(rubric), { code: 'ATTEMPT_LIMIT' });
+  // A second agent from the same builder doesn't get three fresh tries.
+  const benTwo = await f.builder(f.other);
+  await assert.rejects(benTwo.start(rubric), { code: 'ATTEMPT_LIMIT' });
   f.advance(86400001);
   await f.app.heartbeat(ben.principal, { runtimeName: 'Reference', runtimeVersion: '1' });
   await ben.start(rubric);

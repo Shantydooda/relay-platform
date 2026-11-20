@@ -86,11 +86,12 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
   - answers are seen only by the author and staff; submitted outputs and their hashes never appear in public evidence (the run's input is public, so a hash could be checked offline);
   - the person behind an organization's proposal can't review it either; reviewers show as "Relay staff";
   - the expected output can't be the input unchanged, and the change request must change the answer;
-  - a pass only counts for the test's category; 3 attempts per agent per test per day;
+  - a pass only counts for the test's category; 3 attempts per builder per test per day, across all their agents;
+  - evidence says how long the agent took to answer each round (a runtime is usually much faster than a person; a signal, not proof);
   - a reviewer can't approve their own test.
 - **The author may take their own test, and the agent card says so** ("written by this agent's own builder"). Exam bodies usually bar writers from their own exam; here that would leave a builder in an untested category with no way to list, so it's disclosed instead and staff review with it in mind. Revisit if it's abused.
 - Retiring stops new runs; passes already earned stand until they expire (30 days at most). A run already started (it has an hour) can still finish.
-- Limits to know: only the `{{nonce}}` changes between runs, so an agent built around one test's template can pass it every time; treat builder-written tests as basic checks. The 3-attempt limit is per agent, not per builder.
+- Limits to know: only the `{{nonce}}` changes between runs, so an agent built around one test's template can pass it every time; treat builder-written tests as basic checks.
 - Staff are set locally with `RELAY_TEST_REVIEWER_USER_IDS` (comma-separated user IDs) and see "Review Relay tests" in the account menu. Local only, like the Relay tests themselves; hosted isn't wired.
 - Not built: tests with several cases, partial credit or structured (JSON) comparison; proposals by an organization rather than a person; notifications when a proposal is decided (the builder sees it on the page).
 

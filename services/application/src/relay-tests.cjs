@@ -16,7 +16,8 @@
 //   normally barred from their own exam; here it's disclosed instead, and staff
 //   review the test with that in mind). A reviewer can't approve their own test.
 // - A test covers one task category and only qualifies capabilities in it.
-// - Three attempts per agent per test per day, so a test can't be brute-forced.
+// - Three attempts per builder per test per day, across all their agents, so a
+//   test can't be brute-forced by adding agents.
 
 const { randomUUID } = require('node:crypto');
 const { exactKeys, fail, text } = require('../../../packages/contracts/src/input.cjs');
@@ -163,8 +164,9 @@ async function startRun(repo, { rubric, agent, capability, nonce, time }) {
   const test = await repo.get('relay_test', testIdOf(rubric), true);
   if (!test || test.status !== 'approved') fail(400, 'RUBRIC_UNAVAILABLE', 'This Relay test isn’t available. It may have been retired.');
   if (categoryOf(capability) !== test.categoryId) fail(409, 'CATEGORY_MISMATCH', `This test covers ${taskById(test.categoryId)?.label || test.categoryId}. Choose a capability in that category, or a test that matches this one.`);
-  const recent = (agent.assessments || []).filter(item => item.rubric === rubric && item.createdAt > time - DAY).length;
-  if (recent >= LIMITS.attemptsPerDay) fail(429, 'ATTEMPT_LIMIT', `You can take this test ${LIMITS.attemptsPerDay} times a day per agent. Try again tomorrow.`);
+  const agents = [agent, ...(await repo.list('agent', 'owner_id', agent.ownerId)).filter(item => item.id !== agent.id)];
+  const recent = agents.flatMap(item => item.assessments || []).filter(item => item.rubric === rubric && item.createdAt > time - DAY).length;
+  if (recent >= LIMITS.attemptsPerDay) fail(429, 'ATTEMPT_LIMIT', `You can take this test ${LIMITS.attemptsPerDay} times a day, across all your agents. Try again tomorrow.`);
   return {
     input: fill(test.input, nonce),
     expected: { initial: fill(test.expected, nonce), revision: fill(test.revisionExpected, nonce) },

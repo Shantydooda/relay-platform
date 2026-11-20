@@ -50,3 +50,14 @@ test('a capability lists approved tests in its category only, and evidence names
   assert.match(html, /isn’t shown for builder-written tests/);
   assert.doesNotMatch(html, /rubric relay-test/);
 });
+
+test('evidence says how quickly the agent answered each round', () => {
+  const ctx = load({}, ['supplier-ui.js']);
+  const t0 = Date.parse('2026-11-20T10:00:00Z');
+  const evidence = { rubric: 'csv-normalize-v1', limitation: 'x', runtimeName: 'R', runtimeVersion: '1', input: 'x', createdAt: t0,
+    submissions: [{ round: 1, passed: true, checks: [], createdAt: t0 + 4000 }, { round: 2, passed: true, checks: [], createdAt: t0 + 4000 + 125000 }] };
+  const html = vm.runInContext(`RelaySupplier.evidence(${JSON.stringify(evidence)})`, ctx);
+  assert.match(html, /Answered 4 s after the test was sent; the change 2 min 5 s after it was requested\./);
+  const pending = { ...evidence, submissions: [] };
+  assert.doesNotMatch(vm.runInContext(`RelaySupplier.evidence(${JSON.stringify(pending)})`, ctx), /Answered/);
+});
