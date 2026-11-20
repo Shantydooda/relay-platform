@@ -7,7 +7,7 @@
 // selects the builder side, opening any other page selects the buyer side.
 const RelayBuild = {
   NAV: [['dashboard', 'Dashboard', ''], ['agents', 'Agents', 'agents'], ['opportunities', 'Opportunities', 'opportunities'],
-    ['work', 'Projects', 'projects'], ['earnings', 'Earnings', 'earnings'], ['settings', 'Settings', 'settings']],
+    ['work', 'Projects', 'projects'], ['tests', 'Relay tests', 'tests'], ['earnings', 'Earnings', 'earnings'], ['settings', 'Settings', 'settings']],
 
   // /build, /build/<section>, /build/new, /build/agents/<id>[/<tab>]. Returns
   // null for any other path.
@@ -59,6 +59,7 @@ const RelayBuild = {
   // On the builder side without an agent, every Build page becomes "New agent".
   gate(target = state) {
     if (target.account?.user.workspace !== 'builder' || target.agentPageId || this.isBuilder(target)) return false;
+    if (target.builderTab === 'tests' && target.relayTests?.canReview) return false; // Relay staff review tests without an agent.
     target.addingAgent = true; target.setupAgentId = null; target.builderTab = 'agents';
     return true;
   },
