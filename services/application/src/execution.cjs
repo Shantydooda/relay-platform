@@ -115,6 +115,7 @@ function createExecution(context) {
     if (!offer || offer.expiresAt <= now() || offer.scopeVersion !== task.scopeVersion || task.status !== 'posted') fail(409, 'OFFER_UNAVAILABLE', 'Select a valid offer for the current scope.');
     require('./orchestration.cjs').withinBudget(task, offer.amountMinor);
     const agent = offer.agentId ? await repo.get('agent', offer.agentId, true) : null;
+    require('./processing-region.cjs').assertAllowed(await context.org.requiredRegion(repo, task.tenantId), agent);
     if (task.package?.inputs.includes('csv') && !task.input) fail(409, 'INPUT_REQUIRED', 'This package needs a CSV file. Attach it before starting.');
     if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !require('./packages.cjs').runtimeCommitted(offer)) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
     if (agent.runtimeKind !== 'supplier-hosted' && (agent.runtimeKind !== 'bounded-csv-automation' || !task.input)) fail(409, 'INPUT_REQUIRED', 'The local CSV runtime requires an attached CSV.');

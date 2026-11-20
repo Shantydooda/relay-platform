@@ -19,6 +19,7 @@
 
 const { randomUUID } = require('node:crypto');
 const { fail, exactKeys } = require('../../../packages/contracts/src/input.cjs');
+const { REGIONS, regionInput } = require('./processing-region.cjs');
 
 const AUDIT_LIMIT = 500;   // rows returned
 const TASK_LIMIT = 100;    // requests read per export
@@ -67,22 +68,44 @@ function createOrgControls(context) {
 
   async function orgPolicy(actor, tenantId) {
     await company(actor, tenantId);
-    return repository.read(async repo => { const p = await policyOf(repo, tenantId); return { tenantId, membersCanPublish: p.membersCanPublish, version: p.version }; });
+    return repository.read(async repo => policyView(await policyOf(repo, tenantId)));
+  }
+
+  const policyView = p => ({ tenantId: p.tenantId, membersCanPublish: p.membersCanPublish, requiredRegion: p.requiredRegion || null, version: p.version });
+  // The region a company requires of the agents its requests use (processing-region.cjs).
+  const requiredRegion = async (repo, tenantId) => (await repo.get('org-policy', tenantId))?.requiredRegion || null;
+
+  async function regionRules(repo, actor) {
+    const rules = [];
+    for (const m of ((await current(actor)).memberships || []).filter(item => item.company)) {
+      const region = (await policyOf(repo, m.id)).requiredRegion;
+      if (region) rules.push({ tenantId: m.id, name: await orgName(m), region });
+    }
+    return rules;
   }
 
   async function setOrgPolicy(actor, tenantId, body, key) {
-    exactKeys(body, ['membersCanPublish', 'expectedVersion']);
-    if (typeof body.membersCanPublish !== 'boolean' || !Number.isSafeInteger(body.expectedVersion)) fail(400, 'INVALID_INPUT', 'Choose whether members can publish agents.');
+    exactKeys(body, ['membersCanPublish', 'requiredRegion', 'expectedVersion']);
+    if (!Number.isSafeInteger(body.expectedVersion)) fail(400, 'INVALID_INPUT', 'Refresh and try again.');
+    if (body.membersCanPublish !== undefined && typeof body.membersCanPublish !== 'boolean') fail(400, 'INVALID_INPUT', 'Choose whether members can publish agents.');
+    const region = body.requiredRegion === undefined ? undefined : regionInput(body.requiredRegion, 'Required region');
+    if (body.membersCanPublish === undefined && region === undefined) fail(400, 'INVALID_INPUT', 'Choose a setting to change.');
     await company(actor, tenantId, ['owner']);
     return command(actor.user.id, key, ['org-policy', tenantId, body], () => company(actor, tenantId, ['owner']), async repo => {
       const policy = await policyOf(repo, tenantId);
       if (policy.version !== body.expectedVersion) fail(409, 'VERSION_CONFLICT', 'This setting changed. Refresh and try again.');
       const time = now();
-      const saved = { ...policy, ownerId: tenantId, tenantId, membersCanPublish: body.membersCanPublish, version: policy.version + 1, updatedAt: time };
+      const saved = { ...policy, ownerId: tenantId, tenantId, version: policy.version + 1, updatedAt: time };
+      const changes = [];
+      if (body.membersCanPublish !== undefined && body.membersCanPublish !== policy.membersCanPublish) {
+        saved.membersCanPublish = body.membersCanPublish; changes.push(`Members can publish agents: ${body.membersCanPublish ? 'on' : 'off'}`);
+      }
+      if (region !== undefined && region !== (policy.requiredRegion || null)) {
+        saved.requiredRegion = region; changes.push(`Agents must process data in: ${region ? REGIONS[region].replace('the ', '') : 'any region'}`);
+      }
       await repo.save('org-policy', saved);
-      await repo.save('audit-entry', { id: entryId(time), ownerId: actor.user.id, tenantId, at: time, actorId: actor.user.id, type: 'policy.changed',
-        detail: `Members can publish agents: ${body.membersCanPublish ? 'on' : 'off'}` });
-      return { tenantId, membersCanPublish: saved.membersCanPublish, version: saved.version };
+      for (const detail of changes) await repo.save('audit-entry', { id: entryId(time), ownerId: actor.user.id, tenantId, at: time, actorId: actor.user.id, type: 'policy.changed', detail });
+      return policyView(saved);
     });
   }
 
@@ -169,7 +192,7 @@ function createOrgControls(context) {
     });
   }
 
-  return { orgPolicy, setOrgPolicy, publishing, assertCanPublish, recordFileAccess, orgAudit, auditCsv, actAs, recordOrgAction };
+  return { orgPolicy, setOrgPolicy, publishing, assertCanPublish, recordFileAccess, orgAudit, auditCsv, actAs, recordOrgAction, requiredRegion, regionRules };
 }
 
 function auditCsv(audit) {

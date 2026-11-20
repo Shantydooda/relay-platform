@@ -69,12 +69,13 @@ function createSupplierFeed({ repository, credentials, opportunityView, now = Da
   async function opportunities(principal, after = '', limit = 50) {
     const page = pageInput(after, limit);
     return repository.read(async repo => {
-      await credentials.runtimeAgent(repo, principal, 'opportunities:read');
+      const agent = await credentials.runtimeAgent(repo, principal, 'opportunities:read');
       const rows = await repo.page('task', 'status', 'posted', page);
       return { tasks: rows.filter(task =>
         !task.package &&
         (!task.preferredAgentId || task.preferredAgentId === principal.agentId) &&
         task.retryOf?.excludedAgentId !== principal.agentId &&
+        require('./processing-region.cjs').allows(task.requiredRegion, agent) &&
         (!task.preferredOperatorId || task.preferredOperatorId === principal.actor.user.id)
       ).map(task => opportunityView(task, principal.actor)).filter(Boolean),
         nextCursor: rows.at(-1)?.id || after, hasMore: rows.length === limit };

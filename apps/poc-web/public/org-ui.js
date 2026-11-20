@@ -176,6 +176,11 @@ const RelayOrg = {
       <form id="org-policy" class="mk-form mk-panel" data-version="${policy.version}">
         <label class="mk-check"><input type="checkbox" name="membersCanPublish" ${policy.membersCanPublish ? 'checked' : ''}> Members can publish agents and send offers</label>
         <p class="mk-caption">While this is on, members can publish agents from their own account and build as this organization in Build, where its agents, connection keys and offers belong to the organization. Turn it off to stop members selling agents, for example one built on company data; then only owners can build as the organization. Members can still post requests, hire agents and approve work.</p>
+        <div class="mk-form-actions"><button class="mk-primary" type="submit">Save</button></div></form></section>
+      <section class="mk-section"><h2>Where agents process data</h2>
+      <form id="org-region" class="mk-form mk-panel" data-version="${policy.version}">
+        <label>Agents must process data in<select name="requiredRegion"><option value="" ${!policy.requiredRegion ? 'selected' : ''}>Any region</option><option value="eu" ${policy.requiredRegion === 'eu' ? 'selected' : ''}>The EU</option><option value="us" ${policy.requiredRegion === 'us' ? 'selected' : ''}>The US</option></select></label>
+        <p class="mk-caption">Applies to every request from this organization. Relay refuses direct requests, packages, offers and starting work with an agent that hasn’t declared this region, including offers already received. Regions are declared by builders, not verified by Relay. Relay’s own storage location isn’t changed by this.</p>
         <div class="mk-form-actions"><button class="mk-primary" type="submit">Save</button></div></form></section>` : '';
     const when = at => new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const log = audit ? `<section class="mk-section"><div class="mk-build-section-head"><h2>Audit log</h2><a class="mk-next" href="/api/teams/${escape(state.orgId)}/audit?format=csv" download>Download CSV →</a></div>
@@ -258,9 +263,10 @@ const RelayOrg = {
     ['Access history and spend export (CSV)', '', 'live', 'live'],
     ['Audit log of request activity and file access (CSV)', '', 'live', 'live'],
     ['Control whether members can publish agents', '', 'live', 'live'],
+    ['Require agents to process data in the EU or the US', '', 'live', 'live'],
     ['Lead approval thresholds', '', '', 'planned'],
     ['Single sign-on (SAML) and SCIM provisioning', '', '', 'planned'],
-    ['Data residency and retention controls', '', '', 'planned'],
+    ['Choosing where Relay stores your data, and retention controls', '', '', 'planned'],
     ['Invoicing, purchase orders and procurement', '', '', 'planned'],
   ],
   enterprise() {

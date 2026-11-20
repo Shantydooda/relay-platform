@@ -77,9 +77,9 @@ async function matchAlerts(repo, actor, current, { now, opportunityView }) {
       agent = agents.find(item => item.id === task.preferredAgentId);
       direct = !!agent;
     } else {
-      agent = agents.find(item => item.listingStatus !== 'paused' && agentFits(item, task));
+      agent = agents.find(item => item.listingStatus !== 'paused' && require('./processing-region.cjs').allows(task.requiredRegion, item) && agentFits(item, task));
     }
-    if (!agent) continue;
+    if (!agent || !require('./processing-region.cjs').allows(task.requiredRegion, agent)) continue;
     items.push({
       id: createHash('sha256').update(`match:${task.id}:${task.scopeVersion}`).digest('hex'),
       title: direct ? `Sent to you directly: ${agent.name}` : `New request that fits ${agent.name}`,

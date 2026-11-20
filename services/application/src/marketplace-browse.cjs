@@ -76,6 +76,7 @@ function browseRow({ agent, listing, history, now, connectors, actor }) {
     purpose: agent.purpose,
     kind: agent.kind,
     domain: agent.domain || null,
+    processingRegion: agent.processingRegion || null,
     category: lead?.category || null,
     categories,
     categoryIds,
@@ -121,7 +122,7 @@ function sortRows(rows, sort) {
   return rows.sort((a, b) => b.evidence.runs - a.evidence.runs || byName(a, b));
 }
 
-function createBrowse({ repository, now, listingView, connectors: available }) {
+function createBrowse({ repository, now, listingView, org = null, connectors: available }) {
   const operatorHistory = require('./fair-exposure.cjs').operatorHistory;
   async function rows(repo, actor, agents) {
     const time = now();
@@ -150,7 +151,9 @@ function createBrowse({ repository, now, listingView, connectors: available }) {
         const published = (await repo.catalogAgents()).filter(agent => (agent.listingStatus || 'published') === 'published' && agent.purpose &&
           listingView(agent, time).availability === 'available').slice(0, MAX_ROWS);
         const agents = sortRows(await rows(repo, actor, published), sort);
-        return { agents, sort, sorts: SORTS, connectors: available, taxonomy: require('../../../packages/domain/src/categories.cjs').taxonomy(), windowDays: LEDGER_WINDOW_MS / 86400000,
+        // The region each of the viewer's companies requires (processing-region.cjs), so pages can say which agents it rules out.
+        const regionRules = org ? await org.regionRules(repo, actor) : [];
+        return { agents, regionRules, sort, sorts: SORTS, connectors: available, taxonomy: require('../../../packages/domain/src/categories.cjs').taxonomy(), windowDays: LEDGER_WINDOW_MS / 86400000,
           basis: 'verified-outcomes-in-this-environment' };
       });
     },
