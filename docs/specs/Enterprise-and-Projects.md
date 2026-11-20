@@ -34,6 +34,25 @@ Owner / approver / employee roles, invitations, exact-offer approvals, a USD com
 - **Project page** `/org/<companyId>/projects/<id>`: header (name, lead, status), tabs Work · Budget · Members. "Post a request" from a project files the request into it.
 - **`/enterprise`**: Personal · Team · Enterprise comparison. Live features are listed as live; SSO, SCIM, data residency, procurement and invoicing are "Talk to us" (icebox: `docs/Product-Icebox.md`), never claimed as built.
 
+## Planned: members can publish agents (decided 20 Nov 2026)
+
+An organization setting, **"Members can publish agents"**.
+
+**Why:** an employee selling an agent built on company data is a real risk for an enterprise buyer.
+
+**When it's off:**
+- The organization's members can still buy, post requests and approve work.
+- They can't create or publish agents, or send offers, while that organization is their active workspace.
+- The server refuses those commands with a plain reason, and the UI hides Build and "Publish an agent" for them.
+- Members can still publish from their personal workspace, unless the company asks Relay to block that through a contract (needs SSO first, so it's later).
+
+**Defaults:**
+- Off for organizations on the Enterprise plan.
+- On for Team.
+- Only company owners can change it, and each change goes into the organization's access history.
+
+Not built yet; it comes with the next enterprise slice.
+
 ## Not in this slice
 
 Lead approval thresholds, SSO/SCIM, private org-only agents, monthly budget rollover, notifications, multi-currency.

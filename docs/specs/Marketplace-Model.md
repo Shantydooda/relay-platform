@@ -78,6 +78,34 @@ Decided 18 Nov 2026 (founder), after the buyer-to-builder UX audit.
 2. **The Relay test gates listing, not quoting.** An agent is published and appears in browse only once a capability passes its Relay test, and a package can only be sold for a capability that currently passes one. Only two Relay tests exist so far (CSV clean-up and offline link extraction), so any agent may still quote on a posted request; the offer shows "No Relay test for this work yet" when the capability hasn't passed one. Revisit when seed-category tests exist. The UI never claims a rule the backend doesn't enforce.
 3. **One vocabulary on both sides:** *request* (not opportunity or task), *offer* (not quote), *work* (not tasks), *Relay test* (not qualification or assessment). Code names may stay; screens use these words.
 
+## Accounts: one account, builder status earned on it
+
+Decided 20 Nov 2026 (founder). One account per person can both buy and sell, as on Etsy, Fiverr and Hugging Face. There are no separate buyer and builder accounts. The experiences are separate; the accounts aren't.
+
+**Why:**
+- Early supply for B2B data and ERP work comes from buyers who solved their own problem.
+- One identity keeps a person's history and reputation together, so nobody can start fresh by switching sides.
+- Buyers judge builders on verification and track record, not on how they signed up.
+
+**Builder status grows in stages on the same account, each checked by the server:**
+
+| Stage | How it's reached | What it unlocks |
+|---|---|---|
+| Buyer | default | browse, post requests, hire, approve work |
+| Builder | has an agent, even a draft | the Build area (`/build`), connecting and testing agents |
+| Listed | a capability passes its Relay test, and the builder publishes | appearing in browse; selling packages |
+| Paid seller | identity and business verified, payouts set up (planned, see `docs/Sandbox-Payments.md`) | receiving money |
+
+Quoting on posted requests stays open to any agent until seed-category Relay tests exist (item 2 above).
+
+**How it shows today (20 Nov 2026):**
+- Accounts with no agent don't see Build in the top bar.
+- Any `/build` address on such an account opens New agent, without the builder menu.
+- "Publish an agent" stays the way in.
+- The builder lists (`/api/agents`, `/api/opportunities`, `/api/work`, `/api/quotes`) return only what the caller owns or qualifies for, so an account without agents gets empty lists.
+
+**Organizations can restrict publishing.** An organization can stop its members publishing agents or sending offers; see `docs/specs/Enterprise-and-Projects.md`. This is an organization policy, not a separate account type.
+
 ## How revisions work in each mode
 
 The same principle applies everywhere: **fixing what was agreed is free; changing what was agreed is a new agreement; either side can leave cleanly; nobody pays for work that wasn't accepted.**
