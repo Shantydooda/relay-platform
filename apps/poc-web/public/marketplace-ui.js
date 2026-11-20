@@ -197,7 +197,7 @@ const RelayMarketplace = {
             ${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}
             <button data-action="toggle-appearance" aria-pressed="${globalThis.document?.documentElement?.dataset.appearance !== 'light'}">Dark mode</button>
             <button data-action="logout">Sign out</button></div></details>
-        <a class="mk-publish" href="/build/new" data-route>Publish an agent</a>
+        ${state.publishing?.allowed === false ? '' : '<a class="mk-publish" href="/build/new" data-route>Publish an agent</a>'}
       </div></header>`;
   },
 

@@ -47,6 +47,11 @@ const RelayOrg = {
         catch (error) { if (error.status !== 404) throw error; }
       }
     }
+    // Owners' Settings: the publishing rule and the audit log.
+    target.orgPolicy = null; target.orgAudit = null;
+    if (target.buyerTab === 'org' && target.orgTab === 'settings' && this.membership(target)?.role === 'owner') {
+      [target.orgPolicy, target.orgAudit] = await Promise.all([api(`/api/teams/${target.orgId}/policy`), api(`/api/teams/${target.orgId}/audit`)]);
+    }
     // Connected systems: the organization tab, and the request page when an agent asks for access.
     target.connections = null;
     const accessTenant = target.buyerTab === 'org' && target.orgTab === 'connections' && this.membership(target) ? target.orgId
@@ -166,7 +171,17 @@ const RelayOrg = {
       <p class="mk-caption">Reservations are spending permissions, not charges. <button type="button" class="mk-link-button" data-action="buyer-nav" data-tab="billing">History &amp; spend export</button></p>`;
   },
   settingsTab() {
-    return `${typeof RelayTeams === 'object' ? RelayTeams.history() : ''}
+    const policy = state.orgPolicy, audit = state.orgAudit;
+    const publishing = policy ? `<section class="mk-section"><h2>Agent publishing</h2>
+      <form id="org-policy" class="mk-form mk-panel" data-version="${policy.version}">
+        <label class="mk-check"><input type="checkbox" name="membersCanPublish" ${policy.membersCanPublish ? 'checked' : ''}> Members can publish agents and send offers</label>
+        <p class="mk-caption">Turn this off to stop members selling agents from their Relay account, for example an agent built on company data. Owners aren’t affected. Members can still post requests, hire agents and approve work.</p>
+        <div class="mk-form-actions"><button class="mk-primary" type="submit">Save</button></div></form></section>` : '';
+    const when = at => new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const log = audit ? `<section class="mk-section"><div class="mk-build-section-head"><h2>Audit log</h2><a class="mk-next" href="/api/teams/${escape(state.orgId)}/audit?format=csv" download>Download CSV →</a></div>
+      <p class="mk-caption">Who did what on your organization’s requests, including every file preview and download. ${escape(audit.limits)}</p>
+      ${audit.entries.length ? `<div class="mk-table-wrap"><table class="mk-table mk-audit"><thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">What</th><th scope="col">Request</th></tr></thead><tbody>${audit.entries.slice(0, 25).map(e => `<tr><td>${escape(when(e.at))}</td><td>${escape(e.actor)}</td><td>${escape(e.action)}${e.filename ? ` · <code>${escape(e.filename)}</code>` : ''}${e.detail ? ` · ${escape(e.detail)}` : ''}</td><td>${escape(e.taskTitle || '')}</td></tr>`).join('')}</tbody></table></div>${audit.entries.length > 25 ? `<p class="mk-caption">Showing the latest 25 of ${audit.entries.length}. The CSV has them all.</p>` : ''}` : '<p class="mk-empty-note">Nothing recorded yet.</p>'}</section>` : '';
+    return `${publishing}${log}${typeof RelayTeams === 'object' ? RelayTeams.history() : ''}
       <section class="mk-section"><h2>Single sign-on and provisioning</h2><p>Not available yet. Members join by invitation and sign in with their own Relay account. <a href="/enterprise" data-route>See what’s planned</a>.</p></section>`;
   },
 
@@ -241,6 +256,8 @@ const RelayOrg = {
     ['Company allowance with reservations', '', 'live', 'live'],
     ['Projects with members, a lead and a budget cap', '', 'live', 'live'],
     ['Access history and spend export (CSV)', '', 'live', 'live'],
+    ['Audit log of request activity and file access (CSV)', '', 'live', 'live'],
+    ['Control whether members can publish agents', '', 'live', 'live'],
     ['Lead approval thresholds', '', '', 'planned'],
     ['Single sign-on (SAML) and SCIM provisioning', '', '', 'planned'],
     ['Data residency and retention controls', '', '', 'planned'],

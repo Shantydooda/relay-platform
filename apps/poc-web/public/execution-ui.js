@@ -109,6 +109,27 @@ const RelayExecution = {
     state.scrollTarget = '.delivery-submission:last-of-type';
     render();
   },
+  // A CSV preview as a table (up to 200 rows, 30 columns). Returns '' when the
+  // text isn't a clean table, so the caller shows plain text instead.
+  csvTable(text, truncated) {
+    const rows = []; let row = [], cell = '', quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (quoted) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') quoted = false; else cell += c; }
+      else if (c === '"' && cell === '') quoted = true;
+      else if (c === ',') { row.push(cell); cell = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += c;
+    }
+    if (quoted && !truncated) return '';
+    if (!truncated && (cell !== '' || row.length)) { row.push(cell); rows.push(row); }
+    const [head, ...body] = rows;
+    if (!head || head.length < 2 || !body.length) return '';
+    const width = Math.min(head.length, 30), shown = body.slice(0, 200);
+    const cells = (r, tag) => r.slice(0, width).map(v => `<${tag}${tag === 'th' ? ' scope="col"' : ''}>${escape(v)}</${tag}>`).join('');
+    const note = truncated || body.length > shown.length ? `Showing the first ${shown.length} rows. Download the file to see it all.` : `${shown.length} ${shown.length === 1 ? 'row' : 'rows'} · ${head.length} columns`;
+    return `<div class="mk-table-wrap delivery-csv" tabindex="0" role="region" aria-label="File contents as a table"><table class="mk-table"><thead><tr>${cells(head, 'th')}</tr></thead><tbody>${shown.map(r => `<tr>${cells(r, 'td')}</tr>`).join('')}</tbody></table></div><p class="hint">${note}${head.length > width ? ` Showing ${width} of ${head.length} columns.` : ''}</p>`;
+  },
   file(taskId, submissionId, file) {
     const key = `${taskId}:${submissionId}:${file.id}`;
     const preview = state.filePreview?.key === key ? state.filePreview : null;
@@ -123,7 +144,7 @@ const RelayExecution = {
       ${
         preview && !blocked
           ? `<section class="delivery-preview" id="delivery-preview-${escape(file.id)}" aria-label="Preview of ${escape(file.filename)}"><div class="row-heading"><h4>File preview</h4><button class="quiet" data-action="close-file-preview">Close preview</button></div>
-        <p class="hint">${escape(preview.notice)}</p><pre tabindex="0" aria-label="File contents">${escape(preview.text)}</pre>
+        <p class="hint">${escape(preview.notice)}</p>${(() => { const table = preview.mime === 'text/csv' ? this.csvTable(preview.text, preview.truncated) : ''; return table ? `${table}<details><summary>Show as plain text</summary><pre tabindex="0" aria-label="File contents">${escape(preview.text)}</pre></details>` : `<pre tabindex="0" aria-label="File contents">${escape(preview.text)}</pre>`; })()}
         ${preview.truncated ? `<p>Showing the first ${preview.limit.toLocaleString()} characters. Download the file to review it in full.</p>` : ''}
         <details><summary>File integrity</summary><p>SHA-256 of the original file</p><code>${escape(preview.sha256)}</code><p>${preview.formatted ? 'JSON is formatted here for readability. The download preserves the original bytes.' : 'The download preserves the original file.'}</p></details></section>`
           : ''

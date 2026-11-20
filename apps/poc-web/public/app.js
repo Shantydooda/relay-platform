@@ -284,6 +284,8 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   state.teamHistory=state.team?.role==='owner'?await api('/api/teams/'+tenant.id+'/history?before='+encodeURIComponent(state.teamHistoryBefore||'')):null;
   state.companyBudget=state.team?await api('/api/teams/'+tenant.id+'/budget?after='+encodeURIComponent(state.budgetAfter||'')):null;
   state.tasks=tenant?(await api(`/api/tasks?tenantId=${encodeURIComponent(tenant.id)}`)).tasks:[];
+  // An organization can stop its members publishing agents (org Settings).
+  if(!background&&state.features?.unifiedBackend)try{state.publishing=await api('/api/me/publishing');}catch{state.publishing=null;}
   if(state.account.user.workspace==='builder'&&(state.features?.unifiedBackend||state.authMode==='local')){
     const [a,o,w,q]=await Promise.all([api('/api/agents'),api('/api/opportunities'),api('/api/work'),api('/api/quotes')]);
     state.agents=a.agents;state.opportunities=o.tasks;state.work=w.tasks;state.quotes=q.offers;state.detail=null;state.offers=[];
@@ -432,6 +434,9 @@ root.addEventListener('submit',event=>{
       await refresh();render();
     }else if(form.id==='execution-retry'){
       await command('/api/tasks/'+state.detail.task.id+'/retry-execution','POST',{expectedVersion:state.detail.task.version,reason:data.get('reason')});await refresh();render();
+    }else if(form.id==='org-policy'){
+      const saved=await command('/api/teams/'+state.orgId+'/policy','POST',{membersCanPublish:data.get('membersCanPublish')==='on',expectedVersion:Number(form.dataset.version)});
+      await refresh(null);render();notice.textContent=saved.membersCanPublish?'Saved. Members can publish agents.':'Saved. Members can no longer publish agents or send offers.';
     }else if(form.id==='project-create'||form.id==='project-edit'){
       const fields={name:String(data.get('name')||'').trim(),description:String(data.get('description')||'').trim(),leadId:data.get('leadId'),memberIds:data.getAll('memberIds'),capMinor:Math.round(Number(data.get('cap'))*100)};
       if(form.id==='project-create'){const created=await command('/api/teams/'+state.orgId+'/projects','POST',fields);state.projectCreateOpen=false;notice.textContent='Project created.';await RelayMarketplace.go('/org/'+state.orgId+'/projects/'+created.projectId);}

@@ -53,6 +53,46 @@ An organization setting, **"Members can publish agents"**.
 
 Not built yet; it comes with the next enterprise slice.
 
+## Enterprise roadmap (decided 20 Nov 2026)
+
+Benchmarked against Hugging Face Enterprise (huggingface.co/enterprise, read 20 Nov 2026). We take its feature list as a checklist, not its prices or plans. Relay earns from transactions, so these features may become a paid organization plan on top of fees; that's part of the open fee decision.
+
+**Step 1: audit and control (built 20 Nov 2026, branch `claude/builder-flow`)**
+
+How it was built:
+- `services/application/src/org-controls.cjs`.
+- Routes:
+  - `GET/POST /api/teams/<id>/policy`;
+  - `GET /api/teams/<id>/audit` (`?format=csv` for the export; spreadsheet formulas are neutralised);
+  - `GET /api/me/publishing`.
+- Organization Settings shows the switch and the latest 25 log rows.
+- A blocked member sees no "Publish an agent" button, and `/build/new` explains why.
+1. **Members can publish agents.**
+   - Owners can switch this off for their organization. Members of that organization then can't create or publish agents, or send offers, from that account; owners can.
+   - The rule is enforced on the account, not just the active workspace, because agents belong to people, not organizations, so the server can't tell which workspace an offer came from.
+   - Existing listings stay visible, but they can't publish again or send new offers.
+   - It's on by default, because there are no plan tiers yet. When an Enterprise plan exists, it defaults to off there.
+2. **Audit log.**
+   - Every preview or download of a task file is recorded: input, attachments and deliveries, with who opened it, when and which file.
+   - Company owners get one log per organization covering task events and file access, exportable as CSV.
+   - Company membership and role changes stay in the existing access history.
+3. **File preview.** Delivered text files already preview in the browser. CSV previews show as a table, and every preview is logged.
+4. **Deferred: enforced 2FA and joining by email domain.** Both change sign-in. Joining by domain also needs verified email addresses, which local accounts don't have, so it would let anyone with a matching address into a company. Build them together with single sign-on.
+
+**Step 2: builder organizations.** A firm publishes under one handle (`acme-erp/vendor-dedupe`), with several members and roles, connection keys owned by the organization and one payout account.
+
+**Step 3: processing region.**
+- Builders declare where their agent runs and processes data (for example EU or US). Buyers can filter on it, and organizations can require it.
+- Storage region alone isn't enough, because the data goes to the builder's agent.
+
+**Step 4: when a real enterprise asks.**
+- Single sign-on and SCIM (automatic user sync from the company's identity system).
+- Private agents visible to one organization only.
+- Central approval and revocation of ERP connector credentials.
+- Invoice and purchase-order billing.
+
+**Not planned:** IP allow-lists, storage quotas per seat, API rate limits by plan, compute options.
+
 ## Not in this slice
 
 Lead approval thresholds, SSO/SCIM, private org-only agents, monthly budget rollover, notifications, multi-currency.

@@ -355,6 +355,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     return command(actor.user.id, key, ['agent', body], async () => {
       if (!actor.memberships.length || actor.recoveryRequired) notFound();
     }, async repo => {
+      await context.org.assertCanPublish(repo, actor);
       const agent = { id: randomUUID(), ownerId: actor.user.id, operatorName: actor.user.name, name, purpose, domain, kind: body.kind,
         integration: body.integration, capabilities, listingStatus: 'draft', status: 'listed', version: 1, setupStage: 2, createdAt: now(),
         rules: { automaticRequested: false, minimumPayout: 100, concurrency: 1 } };
@@ -367,6 +368,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     if (!['draft', 'published', 'paused'].includes(body.status)) fail(400, 'INVALID_INPUT', 'Choose draft, published or paused.');
     return command(actor.user.id, key, ['listing', id, body], repo => agentFor(repo, actor, id), async repo => {
       const agent = await agentFor(repo, actor, id); expected(agent, body.expectedVersion);
+      if (body.status === 'published') await context.org.assertCanPublish(repo, actor);
       if (body.status === 'published' && !hasRelayTest(agent, now())) fail(409, 'RELAY_TEST_REQUIRED', 'Pass a Relay test before publishing this agent.');
       agent.listingStatus = body.status;
       agent.version++;
@@ -409,6 +411,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     const proposal = text(body.proposal, 'Proposal', 1, 3000);
     return command(actor.user.id, key, ['quote', id, body], async repo => { owner(actor, await repo.get('agent', body.agentId)); }, async repo => {
       const task = await repo.get('task', id, true), agent = await agentFor(repo, actor, body.agentId);
+      await context.org.assertCanPublish(repo, actor);
       if (runtime) {
         await context.credentials.runtimeAgent(repo, runtime, 'offers:write');
         if (agent.connectedAt <= now() - 120000) fail(409, 'RUNTIME_REQUIRED', 'Send a fresh heartbeat before bidding.');
@@ -576,6 +579,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const context = { capabilities, supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, taskReader, agentFor, now, localExecution, connectionVault, connectionProviders, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView, autoAcceptAfterMs };
   context.approvals = require('./approvals.cjs').createApprovals(context);
   context.projects = require('./projects.cjs').createProjects(context);
+  context.org = require('./org-controls.cjs').createOrgControls(context);
   context.intake = require('./intake.cjs').createIntake(context);
   const { assertReady, forBidders, forAgent, ...intakeCommands } = context.intake;
   const { checkFiling, ...projectCommands } = context.projects;
@@ -599,7 +603,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   context.refreshSourceWithin = refreshSourceWithin;
   const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView,
     connectors: require('./marketplace-browse.cjs').workingConnectors({ capabilities, driveProvider, attioProvider, connectionProviders }) });
-  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, ...connectionCommands, ...intakeCommands, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
+  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, orgPolicy: context.org.orgPolicy, setOrgPolicy: context.org.setOrgPolicy, publishing: context.org.publishing, orgAudit: context.org.orgAudit, ...connectionCommands, ...intakeCommands, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),

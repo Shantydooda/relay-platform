@@ -286,6 +286,18 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if (accessRoute && method === 'POST') return send(200, await store[accessRoute[2] === 'approve' ? 'approveAccess' : 'declineAccess'](actor, accessRoute[1], await jsonBody(req), key));
         const grantRoute = path.match(/^\/api\/access-grants\/([0-9a-f-]{36})\/revoke$/);
         if (grantRoute && method === 'POST') return send(200, await store.revokeAccess(actor, grantRoute[1], await jsonBody(req), key));
+        // Organization controls: who may publish, and the owners' audit log.
+        if (path === '/api/me/publishing' && method === 'GET') return send(200, await store.publishing(actor));
+        const orgRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/(policy|audit)$/);
+        if (orgRoute && orgRoute[2] === 'policy' && method === 'GET') return send(200, await store.orgPolicy(actor, orgRoute[1]));
+        if (orgRoute && orgRoute[2] === 'policy' && method === 'POST') return send(200, await store.setOrgPolicy(actor, orgRoute[1], await jsonBody(req), key));
+        if (orgRoute && orgRoute[2] === 'audit' && method === 'GET') {
+          const audit = await store.orgAudit(actor, orgRoute[1]);
+          if (url.searchParams.get('format') !== 'csv') return send(200, audit);
+          const csv = Buffer.from(require('../../application/src/org-controls.cjs').auditCsv(audit));
+          res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="relay-audit-log.csv"', 'Content-Length': csv.length, 'Cache-Control': 'no-store' });
+          return res.end(csv);
+        }
         const teamProjectsRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/projects$/);
         if (teamProjectsRoute && method === 'GET') return send(200, await store.projects(actor, teamProjectsRoute[1]));
         if (teamProjectsRoute && method === 'POST') return send(201, await store.createProject(actor, teamProjectsRoute[1], await jsonBody(req), key));

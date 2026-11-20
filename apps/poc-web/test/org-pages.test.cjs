@@ -96,3 +96,15 @@ test('Post a request offers organizations and projects, preselecting the project
   const solo = ui({ account: { user: { id: 'u', name: 'U' }, memberships: [{ id: 'p1', role: 'owner' }] }, postTargets: [] }).m.post();
   assert.doesNotMatch(solo, /Where does this belong/, 'people without an organization see no extra field');
 });
+
+test('owners’ Settings: the publishing switch and an audit log with file access and a CSV download', () => {
+  const entries = [{ at: Date.now(), actor: 'Other Builder', action: 'File downloaded', filename: 'vendors-clean.csv', taskTitle: 'Vendor master dedupe', detail: '' },
+    { at: Date.now() - 60000, actor: 'Sam', action: 'Organization setting changed', filename: '', taskTitle: '', detail: 'Members can publish agents: off' }];
+  const { org } = ui({ account: account('owner'), orgId: ORG, orgPolicy: { membersCanPublish: false, version: 3 }, orgAudit: { entries, limits: 'Up to 100 requests.' } });
+  const html = org.settingsTab();
+  assert.match(html, /<form id="org-policy"[^>]*data-version="3"/);
+  assert.doesNotMatch(html, /name="membersCanPublish" checked/, 'shows the saved setting');
+  assert.match(html, /File downloaded · <code>vendors-clean\.csv<\/code>/);
+  assert.match(html, /Members can publish agents: off/);
+  assert.match(html, new RegExp(`href="/api/teams/${ORG}/audit\\?format=csv" download`));
+});

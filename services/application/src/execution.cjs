@@ -361,7 +361,14 @@ function createExecution(context) {
       return { taskId: id, version: task.version, status: task.assignment.status, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? task.settlement.status : 'not_applicable_local_unpaid' };
     });
   }
+  // Every human preview or download is recorded for the workspace's audit log.
   async function download(actor, id, submissionId, fileId) {
+    const file = await readFile(actor, id, submissionId, fileId);
+    await context.org?.recordFileAccess(actor, file.access, 'download');
+    const { access, ...rest } = file;
+    return rest;
+  }
+  async function readFile(actor, id, submissionId, fileId) {
     return repository.read(async repo => {
       const task = await repo.get('task', id);
       if (!task) fail(404, 'NOT_FOUND', 'File not found.');
@@ -373,7 +380,8 @@ function createExecution(context) {
       const artifact = await repo.get('artifact', file.id);
       if (!artifact || artifact.taskId !== id || artifact.submissionId !== submissionId) fail(409, 'FILE_UNAVAILABLE', 'File is unavailable.');
       const bytes = await verifiedBytes(file, artifact, id);
-      return { filename: file.filename, mime: file.mime, sha256: file.sha256, bytes };
+      return { filename: file.filename, mime: file.mime, sha256: file.sha256, bytes,
+        access: { tenantId: task.tenantId, taskId: id, taskTitle: task.title, filename: file.filename, fileId } };
     });
   }
   async function scanFile(actor, id, submissionId, fileId, body, key) {
@@ -401,8 +409,10 @@ function createExecution(context) {
     });
   }
   async function previewFile(actor, id, submissionId, fileId) {
-    const file = await download(actor, id, submissionId, fileId);
-    return require('./file-preview.cjs').filePreview(file);
+    const { access, ...file } = await readFile(actor, id, submissionId, fileId);
+    const preview = require('./file-preview.cjs').filePreview(file);
+    await context.org?.recordFileAccess(actor, access, 'preview');
+    return preview;
   }
   return { reconcileAutoAccept, executionActions, authorizeWithin, scanFile, previewFile, issueCredential, issueSupplierCredential, revokeCredential, runtimePrincipal, heartbeat, addInput, authorizeLocal, assignments, claim, progress, submit, failExecution, reviewDelivery, download };
 }
