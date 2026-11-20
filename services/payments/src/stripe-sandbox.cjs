@@ -117,7 +117,7 @@ function createStripeSandbox({ secretKey, origin, apiVersion = '2025-02-24.acaci
     },
     async transfer(operation) {
       const charge = sandbox(await request(`/charges/${id(operation.chargeId)}?expand[]=balance_transaction`));
-      if (charge.currency !== currency(operation) || charge.amount !== operation.amountMinor || charge.balance_transaction?.currency !== currency(operation)) {
+      if (charge.currency !== currency(operation) || charge.amount !== (operation.chargeAmountMinor ?? operation.amountMinor) || charge.balance_transaction?.currency !== currency(operation)) {
         fail(409, 'SETTLEMENT_CURRENCY_MISMATCH', 'Charge settlement does not match the agreed currency. Operations review is required; no transfer was created.');
       }
       const t = sandbox(await request('/transfers', { amount: String(operation.amountMinor), currency: currency(operation),

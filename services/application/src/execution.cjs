@@ -113,7 +113,7 @@ function createExecution(context) {
     if (task.assignment) fail(409, 'TASK_ASSIGNED', 'This task is already authorized.');
     const offer = task.offers.find(item => item.id === task.selectedOfferId);
     if (!offer || offer.expiresAt <= now() || offer.scopeVersion !== task.scopeVersion || task.status !== 'posted') fail(409, 'OFFER_UNAVAILABLE', 'Select a valid offer for the current scope.');
-    require('./orchestration.cjs').withinBudget(task, offer.amountMinor);
+    require('./orchestration.cjs').withinBudget(task, require('./pricing.cjs').buyerTotal(offer));
     const agent = offer.agentId ? await repo.get('agent', offer.agentId, true) : null;
     require('./processing-region.cjs').assertAllowed(await context.org.requiredRegion(repo, task.tenantId), agent);
     if (task.package?.inputs.includes('csv') && !task.input) fail(409, 'INPUT_REQUIRED', 'This package needs a CSV file. Attach it before starting.');

@@ -108,7 +108,7 @@ function fromPrice(packages) {
   const counts = new Map();
   for (const item of packages) counts.set(item.currency, (counts.get(item.currency) || 0) + 1);
   const [currency] = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
-  return { amountMinor: Math.min(...packages.filter(item => item.currency === currency).map(item => item.priceMinor)), currency };
+  return { amountMinor: Math.min(...packages.filter(item => item.currency === currency).map(item => item.totalMinor ?? item.priceMinor)), currency };
 }
 
 const CURRENCY_ORDER = ['USD', 'EUR'];
@@ -122,7 +122,7 @@ function sortRows(rows, sort) {
   return rows.sort((a, b) => b.evidence.runs - a.evidence.runs || byName(a, b));
 }
 
-function createBrowse({ repository, now, listingView, org = null, connectors: available }) {
+function createBrowse({ repository, now, listingView, org = null, pricing = null, connectors: available }) {
   const operatorHistory = require('./fair-exposure.cjs').operatorHistory;
   async function rows(repo, actor, agents) {
     const time = now();
@@ -131,7 +131,10 @@ function createBrowse({ repository, now, listingView, org = null, connectors: av
     const result = [];
     for (const agent of agents) {
       if (!histories.has(agent.ownerId)) histories.set(agent.ownerId, await operatorHistory(repo, agent.ownerId));
-      result.push(browseRow({ agent, listing: listingView(agent, time), history: histories.get(agent.ownerId), now: time, connectors, actor }));
+      const listing = listingView(agent, time);
+      // Buyers see each package at its all-in price: the builder's price plus Relay's fee (pricing.cjs).
+      if (pricing && listing.packages) listing.packages = listing.packages.map(item => ({ ...item, totalMinor: pricing.price(item.priceMinor).totalMinor }));
+      result.push(browseRow({ agent, listing, history: histories.get(agent.ownerId), now: time, connectors, actor }));
     }
     return result;
   }

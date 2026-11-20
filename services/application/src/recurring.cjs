@@ -34,7 +34,7 @@ function createRecurring(context, execution) {
     const offer = task.offers.find(o => o.id === task.selectedOfferId);
     if (task.status !== 'posted' || !offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now() || !offer.runtimeBid) fail(409, 'OFFER_UNAVAILABLE', 'Select a current runtime offer for this recurring request.');
     if ((offer.currency || 'USD') !== 'USD') fail(409, 'CURRENCY_UNSUPPORTED', 'Recurring budgets currently require a USD offer.');
-    if (perRunLimitMinor !== undefined && offer.amountMinor > perRunLimitMinor) fail(400, 'INVALID_LIMIT', 'The run limit must cover the selected quote.');
+    if (perRunLimitMinor !== undefined && require('./pricing.cjs').buyerTotal(offer) > perRunLimitMinor) fail(400, 'INVALID_LIMIT', 'The run limit must cover the selected quote.');
     const agent = await repo.get('agent', offer.agentId);
     const capability = agent?.capabilities.find(c => c.id === offer.capabilityId);
     if (!capability || capabilityView(agent, capability, now()).qualification !== 'qualified') fail(409, 'QUALIFICATION_REQUIRED', 'The selected capability needs a current qualification.');
@@ -147,11 +147,11 @@ function createRecurring(context, execution) {
           const capability = agent?.capabilities.find(c => c.id === schedule.capabilityId);
           if (!capability || capabilityView(agent, capability, now()).qualification !== 'qualified') return pause('The selected capability needs renewed qualification.');
           if (!agent.credentialHash || agent.credentialExpiresAt <= now() || agent.connectedAt <= now() - 120000 || !agent.rules.automaticRequested) return;
-          const offer = task.offers.find(o => o.agentId === schedule.agentId && o.capabilityId === schedule.capabilityId && o.scopeVersion === task.scopeVersion && o.expiresAt > now() && o.runtimeBid && (o.currency || 'USD') === 'USD' && o.amountMinor <= schedule.perRunLimitMinor);
+          const offer = task.offers.find(o => o.agentId === schedule.agentId && o.capabilityId === schedule.capabilityId && o.scopeVersion === task.scopeVersion && o.expiresAt > now() && o.runtimeBid && (o.currency || 'USD') === 'USD' && require('./pricing.cjs').buyerTotal(o) <= schedule.perRunLimitMinor);
           if (!offer) return;
           const month = monthKey(schedule.calendar, now());
           const reserved = schedule.month === month ? schedule.reservedMinor : 0;
-          if (reserved + offer.amountMinor > schedule.monthlyLimitMinor) return pause('Monthly quote limit reached. No additional run was authorized.');
+          if (reserved + require('./pricing.cjs').buyerTotal(offer) > schedule.monthlyLimitMinor) return pause('Monthly quote limit reached. No additional run was authorized.');
           if (task.selectedOfferId !== offer.id) {
             task.selectedOfferId = offer.id; touch(task, now()); event(task, 'system', 'schedule.offer_selected', now(), offer.id); await saveTask(repo, task);
           }
@@ -163,7 +163,7 @@ function createRecurring(context, execution) {
             if (['APPROVAL_REQUIRED', 'APPROVAL_STALE', 'RUNTIME_REQUIRED'].includes(error.code)) return;
             throw error; // Roll back partial selection/authorization on other errors.
           }
-          schedule.month = month; schedule.reservedMinor = reserved + offer.amountMinor;
+          schedule.month = month; schedule.reservedMinor = reserved + require('./pricing.cjs').buyerTotal(offer);
           schedule.version++; schedule.updatedAt = now();
           await repo.save('schedule', schedule);
           return;

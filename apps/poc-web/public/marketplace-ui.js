@@ -427,7 +427,7 @@ const RelayMarketplace = {
   // ---- Packages ("Hire it") --------------------------------------------
   packageTerms(item) {
     const inputs = item.inputs.map(key => this.INPUT_LABELS[key] || key);
-    return `<dl class="mk-terms"><div><dt>Price</dt><dd><strong>${escape(this.money(item.priceMinor, item.currency))}</strong></dd></div>
+    return `<dl class="mk-terms"><div><dt>Price</dt><dd><strong>${escape(this.money(item.totalMinor ?? item.priceMinor, item.currency))}</strong></dd></div>
       <div><dt>Delivery</dt><dd>${escape(this.duration(item.deliveryMinutes))} after work starts</dd></div>
       <div><dt>You provide</dt><dd>${escape(inputs.join(', '))}, plus any notes</dd></div>
       <div><dt>Changes</dt><dd>Fixes free until the checklist is met${item.extraRounds ? ` · ${this.plural(item.extraRounds, 'extra round')} for other changes` : ''}</dd></div></dl>
@@ -439,7 +439,7 @@ const RelayMarketplace = {
       ? `<div class="mk-package-actions"><button type="button" data-action="package-edit" data-id="${escape(item.id)}">Edit</button>${item.status === 'published'
         ? `<button type="button" data-action="package-status" data-id="${escape(item.id)}" data-status="paused">Pause</button>`
         : `<button type="button" class="mk-primary" data-action="package-status" data-id="${escape(item.id)}" data-status="published">Publish</button>`}</div>`
-      : `<button type="button" class="mk-primary" data-action="package-buy" data-agent="${escape(agent.id)}" data-id="${escape(item.id)}" data-version="${item.version}">Hire for ${escape(this.money(item.priceMinor, item.currency))}</button>`;
+      : `<button type="button" class="mk-primary" data-action="package-buy" data-agent="${escape(agent.id)}" data-id="${escape(item.id)}" data-version="${item.version}">Hire for ${escape(this.money(item.totalMinor ?? item.priceMinor, item.currency))}</button>`;
     return `<article class="mk-package"><header><h3>${escape(item.title)}</h3>${status}<span class="mk-caption">v${item.version}</span></header>
       <p>${escape(item.included)}</p>${this.packageTerms(item)}${actions}</article>`;
   },
@@ -454,7 +454,7 @@ const RelayMarketplace = {
       <label for="package-capability">Capability</label><select id="package-capability" name="capabilityId">${tested.map(item => `<option value="${escape(item.id)}" ${item.id === v.capabilityId ? 'selected' : ''}>${escape(item.task)}</option>`).join('')}</select>
       <label for="package-title">Package title</label><input id="package-title" name="title" minlength="3" maxlength="80" required value="${escape(v.title)}" placeholder="e.g. Clean one CSV export">
       <label for="package-included">What’s included</label><textarea id="package-included" name="included" rows="3" minlength="3" maxlength="2000" required placeholder="Exactly what the buyer gets back.">${escape(v.included)}</textarea>
-      <div class="mk-form-row"><div><label for="package-price">Price (${escape(m.capabilities.length ? (agent.ownerPackages?.[0]?.currency || 'USD') : 'USD')})</label><input id="package-price" name="price" type="number" min="0.01" step="0.01" required value="${v.priceMinor ? (v.priceMinor / 100).toFixed(2) : ''}"></div>
+      <div class="mk-form-row"><div><label for="package-price">Price (${escape(m.capabilities.length ? (agent.ownerPackages?.[0]?.currency || 'USD') : 'USD')})</label><input id="package-price" name="price" aria-describedby="package-price-fee" type="number" min="0.01" step="0.01" required value="${v.priceMinor ? (v.priceMinor / 100).toFixed(2) : ''}">${state.features?.fees?.charging ? `<p class="mk-caption" id="package-price-fee">What you receive. Buyers see it plus Relay’s fee (${escape(state.features.fees.rule)}).</p>` : ''}</div>
         <div><label for="package-delivery">Delivery, minutes after start</label><input id="package-delivery" name="delivery" type="number" min="1" step="1" required value="${v.deliveryMinutes}"></div>
         <div><label for="package-rounds">Extra rounds</label><select id="package-rounds" name="extraRounds">${[0, 1, 2, 3].map(n => `<option value="${n}" ${n === v.extraRounds ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>
       <label for="package-criteria">Checklist, one item per line (1–12)</label><textarea id="package-criteria" name="criteria" rows="4" required placeholder="No duplicate rows remain&#10;The header row is kept">${escape(v.criteria.map(c => c.text).join('\n'))}</textarea>
@@ -479,7 +479,7 @@ const RelayMarketplace = {
     if (agent.ownerPreview || m.own) return `<section class="mk-buy-box"><h2>Hire it</h2><p>${(agent.ownerPackages || []).length ? 'Manage your packages on the Packages tab.' : 'Add a package so buyers can hire this agent at a fixed price.'}</p><button type="button" class="mk-link-button" data-action="market-agent-tab" data-tab="packages">Your packages →</button></section>`;
     if (!m.packages.length) return '<section class="mk-buy-box"><h2>Hire it</h2><p>No packages for this agent. Request a custom quote below.</p></section>';
     return `<section class="mk-buy-box"><h2>Hire it</h2><ul class="mk-buy-packages">${m.packages.map(item => `<li><span><strong>${escape(item.title)}</strong><small>${escape(this.duration(item.deliveryMinutes))} · ${this.plural(item.criteria.length, 'check')}</small></span>
-      <button type="button" data-action="package-buy" data-agent="${escape(agent.id)}" data-id="${escape(item.id)}" data-version="${item.version}">${escape(this.money(item.priceMinor, item.currency))}</button></li>`).join('')}</ul>
+      <button type="button" data-action="package-buy" data-agent="${escape(agent.id)}" data-id="${escape(item.id)}" data-version="${item.version}">${escape(this.money(item.totalMinor ?? item.priceMinor, item.currency))}</button></li>`).join('')}</ul>
       <p class="mk-caption">Hiring fixes the terms. Nothing starts until you attach your file and confirm.</p></section>`;
   },
   async buyPackage(button) {
@@ -765,7 +765,7 @@ const RelayMarketplace = {
     const type = this.workType(task);
     const meta = [type === 'package' ? 'Hired package' : 'Posted request',
       offer ? `<span class="mk-handle">${escape(this.slug(offer.operatorName))}/${escape(this.slug(offer.agentName))}</span>` : escape(task.offerCount ? this.plural(task.offerCount, 'offer') : 'No offers yet'),
-      ...(offer ? [escape(this.money(offer.amountMinor, offer.currency))] : []),
+      ...(offer ? [escape(this.money(offer.totalMinor ?? offer.amountMinor, offer.currency))] : []),
       `updated ${escape(this.ago(task.updatedAt))}`];
     return `<li><a href="/tasks/${escape(task.id)}" data-route class="mk-thread mk-thread-${escape(tone || 'none')}">
       <span class="mk-thread-icon" title="${type === 'package' ? 'Package' : 'Request'}">${this.ICONS[type]}</span>

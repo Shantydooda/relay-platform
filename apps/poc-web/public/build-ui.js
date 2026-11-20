@@ -112,7 +112,7 @@ const RelayBuild = {
     const agents = state.agents || [], quotes = state.quotes || [], work = state.work || [];
     const pending = quotes.filter(q => q.status === 'pending'), active = work.filter(w => ['selected', 'queued', 'running', 'buyer_review'].includes(w.status));
     const payments = work.map(w => w.payment).filter(Boolean);
-    const total = test => ['USD', 'EUR'].map(currency => { const subset = payments.filter(p => (p.currency || 'USD') === currency && test(p)); return subset.length ? money(subset.reduce((n, p) => n + p.amountMinor, 0), currency) : null; }).filter(Boolean).join(' · ') || money(0, 'USD');
+    const total = test => ['USD', 'EUR'].map(currency => { const subset = payments.filter(p => (p.currency || 'USD') === currency && test(p)); return subset.length ? money(subset.reduce((n, p) => n + (p.payoutMinor ?? p.amountMinor), 0), currency) : null; }).filter(Boolean).join(' · ') || money(0, 'USD');
     const stats = [['Agents', agents.length, 'agents', `${agents.filter(a => this.status(a).id === 'live').length} live`], ['Offers waiting', pending.length, 'opportunities', 'for a buyer’s choice'],
       ['Active projects', active.length, 'work', 'chosen or running'], ['Payout pending', total(p => ['creating_transfer', 'transferred', 'creating_payout', 'payout_pending'].includes(p.status)), 'earnings', 'test money only'],
       ['Paid', total(p => p.status === 'paid' && p.reconciliation?.status !== 'needs_review'), 'earnings', 'test money only']];

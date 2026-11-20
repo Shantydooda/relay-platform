@@ -159,6 +159,9 @@ function createTaskChanges(context) {
           operatorId: actor.user.id,
           currency: offer.currency || 'USD', previousAmountMinor: offer.amountMinor,
           amountMinor: body.amountMinor,
+          // What the buyer would pay before and after, with Relay's fee (pricing.cjs).
+          previousTotalMinor: require('./pricing.cjs').buyerTotal(offer),
+          ...(({ feeMinor, totalMinor }) => ({ feeMinor, totalMinor }))(context.pricing.price(body.amountMinor)),
           retainedMinor: body.retainedMinor,
           deliveryMinutes: body.deliveryMinutes,
           title: text(body.title, 'Title', 1, 120),
@@ -260,6 +263,8 @@ function createTaskChanges(context) {
             createdAt: now(),
             expiresAt: now() + 86400000,
             changeProposalId: proposal.id,
+            // The buyer accepts the price they were shown: the fee frozen on the proposal (none on older proposals).
+            feeMinor: proposal.feeMinor ?? 0, totalMinor: proposal.totalMinor ?? proposal.amountMinor,
           };
           task.offers.push(offer);
           task.selectedOfferId = offer.id;

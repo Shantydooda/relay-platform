@@ -21,10 +21,10 @@ Also decide:
 
 *Recommendation:* B for direct hires, a margin for managed outcomes, all-in pricing, and Relay absorbs processing fees.
 
-**Working assumption (16 Nov 2026), until the founder decides:** option B, all-in pricing, live rate 0%.
+**Decided (20 Nov 2026): option B**, all-in pricing (the buyer sees one total, with the split shown on the offer and agreement), and Relay absorbs Stripe's processing fee. Built on `claude/fees` (`services/application/src/pricing.cjs`). The live rate stays 0% until the founder switches it on: locally with `RELAY_FEE_SCHEDULE=100000:2000,1000000:1200,*:800`; hosted isn't wired and needs his approval. Managed-outcome margins are still open.
 
-- Built: `packages/domain/src/fee-schedule.cjs` is the one implementation of the tiered rule. It is configured as a schedule string (option B is `100000:2000,1000000:1200,*:800`) and defaults to no fee. Tests check that payout + fee = total exactly at every band edge.
-- Not yet wired: today's offers and sandbox payments carry no fee field at all (`platformFeeMinor: 0`). Charging, the ledger split and payouts have to adopt the schedule in one change, verified against the Postgres-backed payment suites, which can't run in the environment this was built in. Until then nothing a buyer or builder sees or pays changes.
+- Built: `packages/domain/src/fee-schedule.cjs` is the one implementation of the tiered rule, now wired through `services/application/src/pricing.cjs` (Build-Order step 7). It is configured as a schedule string (option B is `100000:2000,1000000:1200,*:800`) and defaults to no fee. Tests check that payout + fee = total exactly at every band edge.
+- Wired (20 Nov 2026): offers freeze the fee, the buyer is charged the total, the builder is transferred their quote and the ledger records Relay's share (`buyer_funds → relay_fees`). Verified on SQLite and Postgres (`services/application/test/fees.test.cjs`).
 
 ## 2. Guarantee policy (blocks: managed outcomes, milestone disputes)
 
@@ -88,3 +88,7 @@ Direction decided 17 Nov 2026 (`docs/specs/Marketplace-Model.md`). Still open:
 - Free trial runs for self-serve products, and who pays for them.
 - The flag window and flag-rate threshold that pulls a product out of recommendations.
 - Where self-serve runs execute (Relay's infrastructure or the builder's), and therefore the security model. Builder-uploaded code or language-model runtimes need an independent security review first.
+
+## 8. Who reviews builder-proposed Relay tests (decided 20 Nov 2026)
+
+**Relay staff.** A proposed test waits in a review queue; a Relay admin approves or rejects it with a reason before any agent can use it to get listed. Unblocks Build-Order step 8.
