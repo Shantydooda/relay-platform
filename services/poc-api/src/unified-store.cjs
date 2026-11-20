@@ -5,7 +5,7 @@ const { createSqliteRepository } = require('../../application/src/repository.cjs
 const { createApplication } = require('../../application/src/service.cjs');
 const { fail } = require('../../../packages/contracts/src/input.cjs');
 
-async function createUnifiedLocalStore({ authDb, applicationDb, repository: suppliedRepository, storage = 'sqlite', now = Date.now, localExecution = false, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, connectionVault = null, connectionProviders = [], paymentRecoveryUserIds = [], autoAcceptAfterMs = null }) {
+async function createUnifiedLocalStore({ feeSchedule = '', authDb, applicationDb, repository: suppliedRepository, storage = 'sqlite', now = Date.now, localExecution = false, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, connectionVault = null, connectionProviders = [], paymentRecoveryUserIds = [], autoAcceptAfterMs = null }) {
   const identity = createStore(authDb, now, { identityOnly: true });
   const repository = suppliedRepository || createSqliteRepository(applicationDb);
   await importLegacyLocalData(authDb, repository);
@@ -25,7 +25,7 @@ async function createUnifiedLocalStore({ authDb, applicationDb, repository: supp
   }
   const { guardLocalAccess, createAccessBoundary } = require('./access-guard.cjs');
   const boundary = createAccessBoundary(repository);
-  const application = createApplication({ repository: boundary.repository, objectStore, fileScanner, now, localExecution, scopingProvider, paymentProvider, driveProvider, attioProvider, connectionVault, connectionProviders, paymentRecoveryUserIds, resolveOperator, resolveActor: resolveOperator, autoAcceptAfterMs });
+  const application = createApplication({ repository: boundary.repository, objectStore, fileScanner, now, localExecution, scopingProvider, paymentProvider, driveProvider, attioProvider, connectionVault, connectionProviders, paymentRecoveryUserIds, resolveOperator, resolveActor: resolveOperator, autoAcceptAfterMs, feeSchedule });
   const guarded = guardLocalAccess({ identity, application, repository, resolveOperator, now, boundary });
   return {
     ...guarded, features: { ...application.features, builderOrganizations: true }, repository, storage,

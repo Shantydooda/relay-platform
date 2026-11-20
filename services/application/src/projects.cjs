@@ -160,7 +160,7 @@ function createProjects(context) {
     if (!approval?.id) return { approval: null, approvalActions: null };
     const { id, status, version, note, agreement, decisionNote } = approval;
     return { approval: { id, status, version, note, decisionNote: decisionNote || null,
-      agreement: { agentName: agreement.agentName, amountMinor: agreement.amountMinor, currency: agreement.currency, scopeVersion: agreement.scopeVersion } },
+      agreement: { agentName: agreement.agentName, amountMinor: require('./pricing.cjs').buyerTotal(agreement), currency: agreement.currency, scopeVersion: agreement.scopeVersion } },
       approvalActions: await context.approvals.approvalActions(repo, actor, task) };
   }
   async function project(actor, projectId) {

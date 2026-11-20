@@ -25,7 +25,7 @@ const RelayApprovals = {
       stale: 'A fresh approval is needed',
     };
     return `<section class="panel scope-recap" aria-label="Company approval"><span class="eyebrow">Company budget</span><h2>${endedUnpaid ? 'Approval recorded · allowance released' : approval.status === 'stale' && state.detail.execution ? 'Company access changed' : labels[approval.status] || escape(approval.status)}</h2>
-      ${approval.status === 'stale' && currentOffer ? `<p><strong>Now selected:</strong> ${escape(currentOffer.agentName)} · ${this.money(currentOffer.amountMinor)} · scope v${task.scopeVersion}</p>` : ''}
+      ${approval.status === 'stale' && currentOffer ? `<p><strong>Now selected:</strong> ${escape(currentOffer.agentName)} · ${this.money(currentOffer.totalMinor ?? currentOffer.amountMinor)} · scope v${task.scopeVersion}</p>` : ''}
       ${approval.invalidatedReason ? `<p role="status">${escape(approval.invalidatedReason)}</p>` : ''}
       ${approval.agreement ? `<p>${approval.status === 'stale' ? 'Previous request: ' : ''}${escape(approval.agreement.agentName)} · ${this.money(approval.agreement.amountMinor)} · scope v${approval.agreement.scopeVersion}</p>` : ''}
       ${approval.decisionNote ? `<p><strong>${approval.status === 'stale' ? 'Previous reviewer’s note' : 'Reviewer’s note'}</strong><br>${escape(approval.decisionNote)}</p>` : ''}

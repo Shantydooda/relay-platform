@@ -74,7 +74,7 @@ function chosenOfferView(task, now) {
     : task.offers.find(item => item.id === task.selectedOfferId && item.expiresAt > now);
   if (!offer) return null;
   return { agentId: offer.agentId, agentName: offer.agentName, operatorName: offer.operatorName, amountMinor: offer.amountMinor,
-    currency: offer.currency || 'USD', packageId: offer.packageId || null };
+    feeMinor: offer.feeMinor ?? 0, totalMinor: offer.totalMinor ?? offer.amountMinor, currency: offer.currency || 'USD', packageId: offer.packageId || null };
 }
 function retryAvailable(task, tenantId = task.tenantId) {
   return task.tenantId === tenantId && task.assignment?.status === 'failed' && !task.retriedBy && task.status !== 'cancelled' &&
@@ -116,7 +116,8 @@ function agentView(agent, now) {
     runtime: { connected, connectedAt: agent.connectedAt || null, kind: agent.runtimeKind || null, transport: agent.runtimeTransport || 'local-csv', expiresAt: agent.credentialExpiresAt || null, name: agent.runtimeName || null, version: agent.runtimeVersion || null } };
 }
 
-function createApplication({ repository, now = Date.now, localExecution = false, pilotConnections = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], connectionVault = null, connectionProviders = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour, autoAcceptAfterMs = null, pilotUnpaidExecution = false }) {
+function createApplication({ repository, now = Date.now, localExecution = false, pilotConnections = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], connectionVault = null, connectionProviders = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour, autoAcceptAfterMs = null, pilotUnpaidExecution = false, feeSchedule = '' }) {
+  const pricing = require('./pricing.cjs').createPricing(feeSchedule);
   if (pilotConnections && (localExecution || typeof resolveOperator !== 'function' || typeof resolveActor !== 'function')) {
     throw new Error('PILOT_CONNECTIONS_REQUIRE_MANAGED_IDENTITY');
   }
@@ -276,7 +277,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       task.package = { ...terms, criteria: terms.criteria.map(item => ({ ...item })), inputs: [...terms.inputs] };
       task.acceptanceCriteria = terms.criteria.map(item => ({ ...item }));
       task.scopes[0].acceptanceCriteria = task.acceptanceCriteria;
-      const offer = packageOffer({ agent, capability, qualification: capabilityView(agent, capability, time), task, terms, time });
+      const offer = pricing.priced(packageOffer({ agent, capability, qualification: capabilityView(agent, capability, time), task, terms, time }));
       task.offers.push(offer);
       task.selectedOfferId = offer.id;
       event(task, actor.user.id, 'task.created', time);
@@ -431,7 +432,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (!task || task.status !== 'posted' || actor.memberships.some(member => member.id === task.tenantId) || task.tenantId === actor.user.id || task.ownerId === actor.user.id) notFound();
       require('./orchestration.cjs').ready(task);
       if (currency !== 'USD' && (task.companyApprovalRequired || task.orchestrationStep || task.scheduleId || task.recurringScheduleId || (task.workPlan?.cadence && task.workPlan.cadence !== 'once'))) fail(409, 'CURRENCY_UNSUPPORTED', 'Budgets and recurring or coordinated work currently use USD.');
-      require('./orchestration.cjs').withinBudget(task, body.amountMinor);
+      require('./orchestration.cjs').withinBudget(task, pricing.price(body.amountMinor).totalMinor);
       assertUnfunded(task);
       if (task.preferredAgentId && task.preferredAgentId !== body.agentId) fail(409, 'SCHEDULE_AGENT', 'This recurring run is reserved for its chosen agent.');
       if (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) fail(404, 'NOT_FOUND', 'This direct request is reserved for another builder.');
@@ -454,6 +455,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         qualification: capabilityView(agent, capability, now()).qualification, qualificationEvidence: capabilityView(agent, capability, now()).assessment, taskVersion: task.version, scopeVersion: task.scopeVersion,
         amountMinor: body.amountMinor, deliveryMinutes: body.deliveryMinutes, proposal, currency,
         createdAt: now(), expiresAt: now() + 86400000, runtimeBid: !!runtime, runtimeKind: runtime ? agent.runtimeKind : null };
+      pricing.priced(offer);
       task.offers.push(offer); event(task, actor.user.id, 'offer.received', now()); await saveTask(repo, task);
       await repo.save('offer-index', { id: offer.id, ownerId: actor.user.id, taskId: id, offerId: offer.id });
       return { taskId: id, offerId: offer.id };
@@ -592,7 +594,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   // Runtime-specific commands are installed in one place and share task locks,
   // authorization, receipt replay handling and the same immutable task document.
-  const context = { capabilities, supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, taskReader, agentFor, now, localExecution, connectionVault, connectionProviders, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView, autoAcceptAfterMs };
+  const context = { capabilities, supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, taskReader, agentFor, now, localExecution, connectionVault, connectionProviders, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView, autoAcceptAfterMs, pricing };
   context.approvals = require('./approvals.cjs').createApprovals(context);
   context.projects = require('./projects.cjs').createProjects(context);
   context.org = require('./org-controls.cjs').createOrgControls(context);
@@ -617,9 +619,9 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const packages = createPackages({ ...context, qualificationOf: (agent, capability) => capabilityView(agent, capability, now()).qualification });
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
-  const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView, org: context.org,
+  const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView, org: context.org, pricing,
     connectors: require('./marketplace-browse.cjs').workingConnectors({ capabilities, driveProvider, attioProvider, connectionProviders }) });
-  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, orgPolicy: context.org.orgPolicy, setOrgPolicy: context.org.setOrgPolicy, publishing: context.org.publishing, orgAudit: context.org.orgAudit, actAs: context.org.actAs, recordOrgAction: context.org.recordOrgAction, ...connectionCommands, ...intakeCommands, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
+  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps, fees: pricing.charging ? { charging: true, rule: pricing.describe() } : { charging: false } }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, orgPolicy: context.org.orgPolicy, setOrgPolicy: context.org.setOrgPolicy, publishing: context.org.publishing, orgAudit: context.org.orgAudit, actAs: context.org.actAs, recordOrgAction: context.org.recordOrgAction, ...connectionCommands, ...intakeCommands, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),
