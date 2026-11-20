@@ -63,7 +63,7 @@ const RelayBuild = {
     if (agent.listingStatus === 'paused') return { id: 'paused', label: 'Paused', note: 'Hidden from browse. Open requests already quoted stay as they are.' };
     if (agent.listingStatus === 'published' && passed) return { id: 'live', label: 'Live', note: 'Listed on Agents and quoting on requests.' };
     if (passed) return { id: 'ready', label: 'Ready to publish', note: 'Passed a Relay test. Publish it to appear on Agents.' };
-    if (agent.runtime?.connected || agent.readiness?.connection) return { id: 'testing', label: 'Testing', note: 'Connected. Pass a Relay test to publish.' };
+    if (agent.runtime?.connected || agent.readiness?.connection) return { id: 'testing', label: 'Testing', note: 'Pass a Relay test to publish.' };
     return { id: 'draft', label: 'Draft', note: agent.readiness?.profile ? 'Connect a runtime next.' : 'Finish the profile, then connect a runtime.' };
   },
   // Paid work needs operator checks and payouts; say so once instead of per page.
@@ -138,6 +138,7 @@ const RelayBuild = {
         <span class="mk-row-title">${this.avatar(builder)}<span class="mk-handle">${escape(this.slug(builder))}/${escape(this.slug(agent.name))}</span><span class="mk-status mk-status-${s.id}">${s.label}</span></span>
         <span class="mk-meta">${this.meta(meta)}</span>
         <span class="mk-desc">${escape(agent.purpose || 'No description yet.')}</span>
+        <span class="mk-build-conn">${this.connectionBadge(agent)}</span>
         <span class="mk-build-actions"><button type="button" class="mk-chip" data-action="open-agent" data-id="${escape(agent.id)}">${['draft', 'testing'].includes(s.id) ? 'Continue setup' : 'Manage'}</button>${['live', 'paused', 'ready'].includes(s.id) ? `<a class="mk-next" href="/agents/${escape(agent.id)}" data-route>View public page →</a>` : ''}<span class="mk-build-note">${escape(s.note)}</span></span></div></li>`;
     }).join('')}</ul>`;
   },
@@ -196,17 +197,31 @@ const RelayBuild = {
 
   // ---- Earnings and settings ------------------------------------------------
   earnings() {
-    return `<div class="mk-strip mk-build-strip"><div class="mk-stat"><span>Paid out</span><strong>${escape(money(0, 'USD'))}</strong><small>no payouts yet</small></div><div class="mk-stat"><span>On its way</span><strong>${escape(money(0, 'USD'))}</strong><small>after the buyer accepts</small></div></div>
-      ${this.section('How you get paid', null, '', '<ol class="mk-build-steps"><li>A buyer chooses your offer. That isn’t revenue yet.</li><li>The buyer funds the work and your agent delivers.</li><li>The buyer accepts the delivery against their checklist.</li><li>Relay pays out after settlement.</li></ol><p class="mk-empty-note">Payments and payouts aren’t connected in this environment, so nothing here is real money.</p><a class="mk-next" href="/build/settings" data-route>Check payout setup →</a>')}`;
+    const org = this.actingOrg();
+    return `<div class="mk-strip mk-build-strip"><div class="mk-stat"><span>Paid to you</span><strong>${escape(money(0, 'USD'))}</strong><small>nothing paid yet</small></div><div class="mk-stat"><span>Coming to you</span><strong>${escape(money(0, 'USD'))}</strong><small>once buyers accept work</small></div></div>
+      ${this.section('How you get paid', null, '', `<ol class="mk-build-steps"><li>A buyer chooses your offer. Nothing is owed yet.</li><li>The buyer pays Relay, and your agent does the work.</li><li>The buyer accepts the delivery against their checklist.</li><li>Relay sends the money to ${org ? `${escape(org.name)}’s` : 'your'} payout account.</li></ol><p class="mk-empty-note">Payments aren’t switched on yet, so no real money moves here.</p><a class="mk-next" href="/build/settings" data-route>Payout setup →</a>`)}`;
   },
   settings() {
     const back = state.returnAgentId ? `<button type="button" class="mk-chip" data-action="open-agent" data-id="${escape(state.returnAgentId)}">← Back to agent setup</button>` : '';
-    return `${back}${this.section('Builder account', null, '', `<div class="mk-table-wrap"><table class="mk-table"><tbody>
-      <tr><th scope="row">Name</th><td>${escape(this.builderName())}</td><td></td></tr>
-      <tr><th scope="row">Public handle</th><td><code>${escape(this.slug(this.builderName()))}</code></td><td class="mk-empty-note">Shown before each agent name.</td></tr>
-      ${this.actingOrg() ? `<tr><th scope="row">Organization</th><td>${escape(this.actingOrg().name)}</td><td class="mk-empty-note">Agents, connection keys, offers and reputation belong to ${escape(this.actingOrg().name)}. Its owners, and members while “Members can publish agents” is on, manage them. Each change is in the organization’s audit log.</td></tr>` : ''}
-      <tr><th scope="row">Operator verification</th><td><span class="mk-status">Not started</span></td><td class="mk-empty-note">The identity check isn’t connected yet. Signing up doesn’t verify you.</td></tr>
-      <tr><th scope="row">Payouts</th><td><span class="mk-status">Not set up</span></td><td class="mk-empty-note">${this.actingOrg() ? `One payout account for ${escape(this.actingOrg().name)}, set up by an owner. ` : ''}Payout setup isn’t available yet. Relay never asks for bank details or wallet keys here.</td></tr></tbody></table></div>`)}`;
+    const org = this.actingOrg(), name = this.builderName(), agents = state.agents || [];
+    const account = this.section('Builder account', null, '', `<div class="mk-table-wrap"><table class="mk-table"><tbody>
+      <tr><th scope="row">Name</th><td>${escape(name)}</td><td></td></tr>
+      <tr><th scope="row">Public handle</th><td><code>${escape(this.slug(name))}</code></td><td class="mk-empty-note">Shown before each agent name.</td></tr>
+      ${org ? `<tr><th scope="row">Organization</th><td>${escape(org.name)}</td><td class="mk-empty-note">Agents, connection keys, offers and reputation belong to ${escape(org.name)}. Its owners, and members while “Members can publish agents” is on, manage them. Each change is in the organization’s audit log.</td></tr>` : ''}
+      <tr><th scope="row">Operator verification</th><td><span class="mk-status">Not started</span></td><td class="mk-empty-note">The identity check isn’t connected yet. Signing up doesn’t verify you.</td></tr></tbody></table></div>`);
+    const keyKind = agent => {
+      const r = agent.runtime || {};
+      if (!r.expiresAt && !r.connected) return 'No key';
+      return r.transport === 'supplier-api' ? 'Your own runtime (API)' : 'Local CSV runtime';
+    };
+    const keys = this.section('Connection keys', agents.length, '', agents.length ? `<p class="mk-caption">Each agent has its own key. Create a new one if a key leaks or someone with access leaves; the old one stops working at once.</p><div class="mk-table-wrap"><table class="mk-table mk-keys"><thead><tr><th scope="col">Agent</th><th scope="col">Status</th><th scope="col">Key</th><th scope="col">Expires</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead><tbody>${agents.map(agent => {
+      const r = agent.runtime || {}, none = keyKind(agent) === 'No key' || this.connection(agent).label.startsWith('Key expired');
+      return `<tr><td><span class="mk-handle">${escape(this.slug(name))}/${escape(this.slug(agent.name))}</span></td><td>${this.connectionBadge(agent)}</td><td>${escape(keyKind(agent))}</td><td>${r.expiresAt ? `<span class="mk-keys-label">Key expires </span>${escape(r.expiresAt > Date.now() ? this.until(r.expiresAt) : 'expired')}` : '—'}</td><td><button type="button" class="mk-link-button" data-action="agent-tab" data-id="${escape(agent.id)}" data-tab="connection">${none ? 'Connect' : 'Manage'}</button></td></tr>`;
+    }).join('')}</tbody></table></div>` : '<p class="mk-empty-note">No agents yet.</p>');
+    const payouts = typeof RelayPayments === 'object' && state.payments?.configured ? this.section('Payouts', null, '', RelayPayments.settings()) : this.section('Payouts', null, '', `<div class="mk-table-wrap"><table class="mk-table"><tbody>
+      <tr><th scope="row">Payout account</th><td><span class="mk-status">Not set up</span></td><td class="mk-empty-note">${org ? `One account for ${escape(org.name)}, set up by an owner. ` : ''}Payout setup isn’t available yet. Relay never asks for bank details or wallet keys here.</td></tr></tbody></table></div>`);
+    const notifications = this.section('Notifications', null, '', `<p class="mk-caption">Relay tells you in the app, under the bell at the top, about work a buyer chose you for: when it starts, messages, revision requests and acceptance.${org ? ` While you build as ${escape(org.name)}, the bell shows ${escape(org.name)}’s updates, shared with its other members.` : ''} Alerts for new matching requests and email come later.</p>`);
+    return back + account + keys + payouts + notifications;
   },
 
   // The agent's own setup page is headed like its public page: builder/agent.
@@ -248,12 +263,44 @@ const RelayBuild = {
     if (id === 'draft') return agent.readiness?.profile ? 'connection' : 'profile';
     return 'overview';
   },
+  // ---- Connection: from the last check-in and the key, so it stays true ------
+  // between refreshes. The server counts an agent connected for 2 minutes after
+  // a check-in; the browser applies the same rule as time passes.
+  connection(agent, now = Date.now()) {
+    const r = agent.runtime || {};
+    const expiry = r.expiresAt && r.expiresAt - now < 48 * 3600000 ? ` · key expires ${this.until(r.expiresAt, now)}` : '';
+    if (r.expiresAt && r.expiresAt <= now) return { tone: 'off', label: 'Key expired · create a new one' };
+    if (r.connectedAt && now - r.connectedAt <= 120000 && (r.connected || r.expiresAt)) return { tone: 'live', label: `Connected · checked in ${this.since(r.connectedAt, now)}${expiry}` };
+    if (!r.expiresAt && !r.connected) return { tone: 'off', label: 'Not connected' };
+    if (!r.connectedAt) return { tone: 'wait', label: `Key ready · waiting for the first check-in${expiry}` };
+    return { tone: 'stale', label: `Offline · last check-in ${this.since(r.connectedAt, now)}${expiry}` };
+  },
+  connectionBadge(agent) {
+    const r = agent.runtime || {}, c = this.connection(agent);
+    return `<span class="mk-conn mk-conn-${c.tone}" data-conn-at="${Number(r.connectedAt) || 0}" data-conn-exp="${Number(r.expiresAt) || 0}" data-conn-on="${r.connected ? 1 : 0}">${escape(c.label)}</span>`;
+  },
+  // Updates every badge in place (called by a timer; nothing is re-rendered).
+  tickConnections(nodes, now = Date.now()) {
+    for (const node of nodes) {
+      const c = this.connection({ runtime: { connectedAt: Number(node.dataset.connAt) || null, expiresAt: Number(node.dataset.connExp) || null, connected: node.dataset.connOn === '1' } }, now);
+      if (node.textContent !== c.label) node.textContent = c.label;
+      node.className = `mk-conn mk-conn-${c.tone}`;
+    }
+  },
+  since(time, now = Date.now()) {
+    const seconds = Math.max(0, Math.round((now - time) / 1000));
+    return seconds < 60 ? `${seconds} s ago` : this.ago(time, now);
+  },
+  until(time, now = Date.now()) {
+    const hours = Math.max(0, Math.round((time - now) / 3600000));
+    return hours < 48 ? `in ${hours} h` : `in ${Math.round(hours / 24)} days`;
+  },
   setup(agent) {
     const passed = (agent.capabilities || []).some(item => item.qualification === 'qualified');
-    const connected = !!agent.runtime?.connected;
+    const connected = this.connection(agent).tone === 'live';
     return [
       ['profile', 'Describe it', !!agent.readiness?.profile, 'Name, what it does and its capabilities.', 'Edit profile'],
-      ['connection', 'Connect it', connected, connected ? `Connected · last check-in ${this.ago(agent.runtime.connectedAt)}` : 'Run it where you like and connect it with a key.', 'Connect'],
+      ['connection', 'Connect it', connected, connected ? this.connection(agent).label : 'Run it where you like and connect it with a key.', 'Connect'],
       ['tests', 'Pass a Relay test', passed, passed ? 'Passed. Buyers see the result on its card.' : 'Relay sends a test job and checks what comes back.', 'Take a test'],
       ['offers', 'Publish it', agent.listingStatus === 'published' && passed, agent.listingStatus === 'published' ? 'Listed on Agents.' : passed ? 'Ready. Publish it to appear on Agents.' : 'Opens after a passed Relay test.', 'Publish'],
     ];
@@ -265,6 +312,7 @@ const RelayBuild = {
     const row = (label, value, tab, link) => `<tr><th scope="row">${label}</th><td>${value}</td><td>${tab ? `<button type="button" class="mk-link-button" data-action="agent-tab" data-id="${escape(agent.id)}" data-tab="${tab}">${link || 'Change'}</button>` : link || ''}</td></tr>`;
     return this.section(next ? 'Get it ready for work' : 'Ready for work', null, '', list)
       + this.section('At a glance', null, '', `<div class="mk-table-wrap"><table class="mk-table"><tbody>
+        ${row('Connection', this.connectionBadge(agent), 'connection', 'Keys')}
         ${row('Capabilities', tests.join('<br>') || 'None yet', 'tests', 'Relay tests')}
         ${row('Packages', escape(this.plural((agent.packages || []).length, 'package')), '', `<a href="/agents/${escape(agent.id)}#packages" data-route>Manage on your agent page →</a>`)}
         ${row('Automatic offers', escape(this.autoSummary(agent.rules)), 'offers')}

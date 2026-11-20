@@ -15,21 +15,22 @@ Five branches are built and pushed but **not merged**. Each one is built on the 
 | `claude/enterprise-projects` | Organization page, projects with budget caps, `/enterprise` plan page |
 | `claude/builder-flow` | Build only for builders; agent overview and tabs; simpler Opportunities and Projects; limited automatic offers; enterprise step 1 (the publishing switch, the audit log, CSV previews) |
 | `claude/builder-orgs` | Enterprise step 2: builder organizations ("Building as"), local only |
+| `claude/builder-settings` | Builder slice 2: Settings page, live connection status, plainer Earnings (PR into `claude/builder-orgs`) |
 
 The pilot still runs `1ad3d8b`. Nothing above is deployed.
 
 ## The order
 
-**1. Land the stack.**
+**1. Land the stack.** PR #12; CI passed on Node 24 (20 Nov).
 - One PR, `claude/builder-orgs` into `main`. CI runs the full suites on Node 24.
 - Founder review, merge, then the founder deploys when ready.
 - Why first: 32 unmerged commits on a chain of branches get harder to review and riskier to merge every day.
 
-**2. Builder organizations on hosted Relay.**
+**2. Builder organizations on hosted Relay.** *Waiting for founder approval:* it changes hosted sign-in membership resolution (`services/staging-api/src/membership-authority.cjs`), and CLAUDE.md §2 says auth isn't changed without approval.
 - Hosted sign-in has to resolve an organization as an operator, as local now does. Until then, the "Building as" switcher stays hidden on hosted.
 - Why now: the first pilot builder may well be a small firm, not one person.
 
-**3. Builder slice 2: settings and getting paid.**
+**3. Builder slice 2: settings and getting paid.** ✅ Built 20 Nov, branch `claude/builder-settings`, except notification preferences (nothing to configure until match alerts and email exist).
 - A real Build → Settings page: profile, notifications, connection keys, payout setup.
 - Plainer Earnings wording.
 - A live connection indicator ("Connected · last check-in 20 s ago") everywhere an agent appears.

@@ -58,7 +58,7 @@ const examples=['Find 20 UK SaaS companies with websites and source links. Deliv
 const ApiError=RelayRequest.ApiError;
 // Builder organizations: Build requests made while building as an organization
 // carry it. Account, team and buyer requests always stay personal.
-const ACTING_PATH=/^\/api\/(agents|opportunities|work|quotes|portfolio)(\/|\?|$)|^\/api\/tasks\/[0-9a-f-]{36}\/(supplier-message|offer-exposure)$|^\/api\/payments\/(operator|status)/;
+const ACTING_PATH=/^\/api\/(agents|opportunities|work|quotes|portfolio|notifications)(\/|\?|$)|^\/api\/tasks\/[0-9a-f-]{36}\/(supplier-message|offer-exposure)$|^\/api\/payments\/(operator|status)/;
 function actingFor(path,method){
   if(state.account?.user?.workspace!=='builder'||!state.actingAs)return null;
   return ACTING_PATH.test(path)||(method==='POST'&&/^\/api\/tasks\/[0-9a-f-]{36}\/offers$/.test(path))?state.actingAs:null;
@@ -1162,6 +1162,9 @@ root.addEventListener('input', event => {
     resizeChatComposer(event.target);
   }
 });
+
+// Connection badges age in place ("checked in 20 s ago" → "Offline"); nothing re-renders.
+setInterval(() => { if (typeof RelayBuild === 'object') RelayBuild.tickConnections(document.querySelectorAll('[data-conn-at]')); }, 5000);
 
 // Update only the elapsed label; background timing must not remount controls.
 setInterval(() => {
