@@ -30,6 +30,9 @@ const INTERNAL = new Set([
   'receivePaymentEvent',
   'readAgentTool',
   'requestToolPermission',
+  'requestAccess',
+  'readAccess',
+  'endBlocked',
 ]);
 const SUPPLIER_COMMANDS = new Set([
   'marketplace.quote',

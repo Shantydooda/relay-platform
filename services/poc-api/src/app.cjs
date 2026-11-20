@@ -27,6 +27,11 @@ const assets = {
   '/marketplace.js':['marketplace.js','text/javascript; charset=utf-8'],
   '/execution-ui.js':['execution-ui.js','text/javascript; charset=utf-8'],
   '/approvals-ui.js':['approvals-ui.js','text/javascript; charset=utf-8'],
+  '/org-ui.js':['org-ui.js','text/javascript; charset=utf-8'],
+  '/build-ui.js':['build-ui.js','text/javascript; charset=utf-8'],
+  '/request-ui.js':['request-ui.js','text/javascript; charset=utf-8'],
+  '/connections-ui.js':['connections-ui.js','text/javascript; charset=utf-8'],
+  '/intake-ui.js':['intake-ui.js','text/javascript; charset=utf-8'],
   '/acceptance-ui.js':['acceptance-ui.js','text/javascript; charset=utf-8'],
   '/work-state-ui.js':['work-state-ui.js','text/javascript; charset=utf-8'],
   '/teams-ui.js':['teams-ui.js','text/javascript; charset=utf-8'],
@@ -134,7 +139,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed,features:store.features||{}});
       if (!managed && method === 'GET' && ['/drive/callback','/drive/picker'].includes(path)) res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
       // Real links into the app: the page loads, then the browser reads the path.
-      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||['/post','/evidence'].includes(path);
+      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||/^\/docs\/(?:evidence|relay-tests|packages|revisions)$/.test(path)||/^\/org\/[0-9a-f-]{36}(?:\/(?:work|members|spending|connections|settings)|\/projects\/[0-9a-f-]{36})?$/.test(path)||/^\/build(?:\/(?:new|agents|opportunities|projects|earnings|settings))?$/.test(path)||['/post','/evidence','/enterprise','/requests','/builders'].includes(path);
       if(method==='GET'&&(Object.hasOwn(assets,path)||appRoute||(managed&&path==='/auth/confirm'))) {
         const [file,type]=assets[path==='/auth/confirm'||appRoute?'/':path];
         const content=await readFile(resolve(PUBLIC,file));
@@ -186,7 +191,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         const actor=await store.principal(result.raw,{allowRecovery:true});
         return send(200,{user:actor.user,memberships:actor.memberships,csrf:actor.csrf,recoveryRequired:result.recoveryRequired});
       }
-      const actor=await store.principal(raw,{allowRecovery:['/api/me','/api/auth/reset','/api/auth/logout'].includes(path)});
+      let actor=await store.principal(raw,{allowRecovery:['/api/me','/api/auth/reset','/api/auth/logout'].includes(path)});
       if(method==='GET'&&path==='/api/me') return send(200,{user:actor.user,memberships:actor.memberships,csrf:actor.csrf,recoveryRequired:!!actor.recoveryRequired});
       if(mutation) store.csrf(actor,req.headers['x-csrf-token']);
       if(method==='POST'&&path==='/api/auth/logout') {
@@ -200,6 +205,14 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       }
       if (store.features?.unifiedBackend) {
         const key = req.headers['idempotency-key'];
+        // Builder organizations: the Build area sends the organization a member
+        // is acting for. Account, team and organization pages stay personal.
+        const actingFor = req.headers['x-relay-act-as'];
+        if (actingFor && !/^\/api\/(me|teams)(\/|$)/.test(path)) {
+          if (!store.actAs || !/^[0-9a-f-]{36}$/.test(actingFor)) fail(400, 'ACT_AS_UNAVAILABLE', 'Publishing as an organization is not available here.');
+          actor = await store.actAs(actor, actingFor);
+          if (mutation && path.startsWith('/api/payments') && actor.onBehalfOf.role !== 'owner') fail(403, 'OWNER_REQUIRED', `Only an owner of ${actor.user.name} can manage its payouts.`);
+        }
         if (path === '/api/notifications' && method === 'GET') return send(200, await store.notifications(actor));
         if (path === '/api/notifications/read' && method === 'POST') return send(200, await store.readNotifications(actor, await jsonBody(req)));
 
@@ -270,6 +283,37 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         const budgetRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/budget$/);
         if (budgetRoute && method === 'GET') return send(200, await store.companyBudget(actor, budgetRoute[1], url.searchParams.get('after') || ''));
         if (budgetRoute && method === 'POST') return send(200, await store.configureBudget(actor, budgetRoute[1], await jsonBody(req), key));
+        // The fixed agent category list (packages/domain/src/categories.cjs).
+        if (path === '/api/categories' && method === 'GET') return send(200, { fields: require('../../../packages/domain/src/categories.cjs').taxonomy() });
+        // Buyer connections and access grants (docs/specs/Buyer-Connections.md).
+        if (path === '/api/connections' && method === 'GET') return send(200, await store.connections(actor, url.searchParams.get('tenantId') || ''));
+        if (path === '/api/connections' && method === 'POST') return send(201, await store.connect(actor, await jsonBody(req), key));
+        const connectionRoute = path.match(/^\/api\/connections\/([0-9a-f-]{36})\/disconnect$/);
+        if (connectionRoute && method === 'POST') return send(200, await store.disconnect(actor, connectionRoute[1], await jsonBody(req), key));
+        const accessRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/access\/(approve|decline)$/);
+        if (accessRoute && method === 'POST') return send(200, await store[accessRoute[2] === 'approve' ? 'approveAccess' : 'declineAccess'](actor, accessRoute[1], await jsonBody(req), key));
+        const grantRoute = path.match(/^\/api\/access-grants\/([0-9a-f-]{36})\/revoke$/);
+        if (grantRoute && method === 'POST') return send(200, await store.revokeAccess(actor, grantRoute[1], await jsonBody(req), key));
+        // Organization controls: who may publish, and the owners' audit log.
+        if (path === '/api/me/publishing' && method === 'GET') return send(200, await store.publishing(actor));
+        const orgRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/(policy|audit)$/);
+        if (orgRoute && orgRoute[2] === 'policy' && method === 'GET') return send(200, await store.orgPolicy(actor, orgRoute[1]));
+        if (orgRoute && orgRoute[2] === 'policy' && method === 'POST') return send(200, await store.setOrgPolicy(actor, orgRoute[1], await jsonBody(req), key));
+        if (orgRoute && orgRoute[2] === 'audit' && method === 'GET') {
+          const audit = await store.orgAudit(actor, orgRoute[1]);
+          if (url.searchParams.get('format') !== 'csv') return send(200, audit);
+          const csv = Buffer.from(require('../../application/src/org-controls.cjs').auditCsv(audit));
+          res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="relay-audit-log.csv"', 'Content-Length': csv.length, 'Cache-Control': 'no-store' });
+          return res.end(csv);
+        }
+        const teamProjectsRoute = path.match(/^\/api\/teams\/([0-9a-f-]{36})\/projects$/);
+        if (teamProjectsRoute && method === 'GET') return send(200, await store.projects(actor, teamProjectsRoute[1]));
+        if (teamProjectsRoute && method === 'POST') return send(201, await store.createProject(actor, teamProjectsRoute[1], await jsonBody(req), key));
+        const projectRoute = path.match(/^\/api\/projects\/([0-9a-f-]{36})$/);
+        if (projectRoute && method === 'GET') return send(200, await store.project(actor, projectRoute[1]));
+        if (projectRoute && method === 'POST') return send(200, await store.updateProject(actor, projectRoute[1], await jsonBody(req), key));
+        const taskProjectRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/project$/);
+        if (taskProjectRoute && method === 'POST') return send(200, await store.moveTask(actor, taskProjectRoute[1], await jsonBody(req), key));
         const approvalRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/approval(?:\/(decide))?$/);
         if (approvalRoute && method === 'POST') return send(200, await store[approvalRoute[2] ? 'decideApproval' : 'requestApproval'](actor, approvalRoute[1], await jsonBody(req), key));
         if (path === '/api/payments/recovery' && method === 'GET') return send(200, await store.paymentRecovery(actor, url.searchParams.get('after') || ''));
@@ -324,6 +368,12 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
           if (credential.token) runtimeManager.start(id, credential.token);
           return send(200, { agentId: id, version: credential.version, started: !!credential.token });
         }
+        // ERP intake, typed attachments and sample pairs (intake.cjs).
+        const intakeRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(intake|checks|attachments|attachments\/remove)$/);
+        if (intakeRoute && method === 'POST') {
+          const name = { intake: 'setIntake', checks: 'setChecks', attachments: 'addAttachment', 'attachments/remove': 'removeAttachment' }[intakeRoute[2]];
+          return send(200, await store[name](actor, intakeRoute[1], await jsonBody(req, intakeRoute[2] === 'attachments' ? 7200000 : 32768), key));
+        }
         const input = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/input$/);
         if (input && method === 'POST') return send(200, await store.addInput(actor, input[1], await jsonBody(req, 400000), key));
         const execution = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(authorize-local|accept-delivery|request-revision)$/);
@@ -350,6 +400,15 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if(path==='/api/agent-market'&&method==='GET')return send(200,await market.discover(actor,{savedOnly:url.searchParams.has('saved') ? ({true:true,false:false}[url.searchParams.get('saved')] ?? null) : false,q:url.searchParams.get('q')||'',category:url.searchParams.get('category')||'All agents',type:url.searchParams.get('type')||'All types',after:url.searchParams.get('after')||'',limit:Number(url.searchParams.get('limit')||25)}));
         const savedAgentPath = path.match(/^\/api\/agent-market\/([0-9a-f-]{36})\/saved$/);
         if (savedAgentPath && method === 'PATCH') return send(200, await market.saveAgent(actor, savedAgentPath[1], await jsonBody(req), key));
+        const packagePath = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/packages(?:\/([0-9a-f-]{36}))?$/);
+        if (packagePath && market.savePackage) {
+          const [, agentId, packageId] = packagePath;
+          if (!packageId && method === 'POST') return send(201, await market.savePackage(actor, agentId, null, await jsonBody(req), key));
+          if (packageId && method === 'PUT') return send(200, await market.savePackage(actor, agentId, packageId, await jsonBody(req), key));
+          if (packageId && method === 'PATCH') return send(200, await market.setPackageStatus(actor, agentId, packageId, await jsonBody(req), key));
+        }
+        const buyPath = path.match(/^\/api\/agent-market\/([0-9a-f-]{36})\/packages\/([0-9a-f-]{36})\/buy$/);
+        if (buyPath && method === 'POST' && market.buyPackage) return send(201, await market.buyPackage(actor, buyPath[1], buyPath[2], await jsonBody(req), key));
         const listingPath=path.match(/^\/api\/agent-market\/([0-9a-f-]{36})$/);
         if(listingPath&&method==='GET')return send(200,{agent:await market.listing(actor,listingPath[1])});
         const acquisitionPath = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/acquisition$/);

@@ -59,6 +59,15 @@ Sources checked against official documentation: [Connect testing](https://docs.s
 Final local evidence: 118 core tests, 19 native PostgreSQL tests and 17 frontend tests passed; the web command also reran 5 shared UI tests already counted in core. Syntax and whitespace checks passed. Self-review corrected a duplicate response field, separated sandbox labels from unpaid execution labels, and checked provider-field assumptions against Stripe's refund schema. The browser payout confirmation survived reload. The disposable QA database was removed and the main localhost app restarted after an offline paired backup. Independent human review and actual Stripe sandbox validation remain outstanding.
 
 
+## Planned: verified builder before payouts (decided 20 Nov 2026)
+
+Receiving money is the last stage of builder status (`docs/specs/Marketplace-Model.md` → "Accounts"). Before payments go live:
+- Funding, starting paid work, transfer and payout require the builder's provider-hosted identity **and business** verification to be complete. Fresh operator readiness already covers identity and payouts; add the business check.
+- The builder's public profile and agent pages show "Verified builder" only from the provider's retrieved status, never from what the builder enters.
+- Relay still never collects identity documents or bank details itself.
+
+This is part of the payments release and needs the same independent human review.
+
 ## Signed webhooks and automatic reconciliation — 28 October 2026
 
 Stripe remains disconnected. The local launcher only enables the receiver when a test provider key and `RELAY_STRIPE_WEBHOOK_SECRET` are explicitly configured. `POST /api/webhooks/stripe` accepts bounded raw JSON, verifies the timestamped HMAC signature (five-minute tolerance), rejects live events and commits a minimal durable inbox before acknowledging. No raw event body, identity details or bank information is retained. Duplicate event IDs are idempotent; conflicting identities are rejected.

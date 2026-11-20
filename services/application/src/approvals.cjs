@@ -9,11 +9,13 @@ function agreement(task) {
   const offer = task.offers.find(item => item.id === task.selectedOfferId);
   if (!offer) return null;
   const value = { offer, scopeVersion: task.scopeVersion, title: task.title,
-    brief: task.brief, inputHash: task.input?.sha256 || null };
+    brief: task.brief, inputHash: task.input?.sha256 || null,
+    // The project is part of the agreement: moving the task voids the approval.
+    ...(task.projectId ? { projectId: task.projectId } : {}) };
   return { fingerprint: createHash('sha256').update(JSON.stringify(value)).digest('hex'),
     offerId: offer.id, agentName: offer.agentName || 'Agent', amountMinor: offer.amountMinor,
     currency: offer.currency, expiresAt: offer.expiresAt, deliveryMinutes: offer.deliveryMinutes,
-    scopeVersion: task.scopeVersion, title: task.title, brief: task.brief };
+    scopeVersion: task.scopeVersion, title: task.title, brief: task.brief, projectId: task.projectId || null };
 }
 function approvalView(task, now) {
   if (!task.companyApprovalRequired) return null;
@@ -123,8 +125,17 @@ function createApprovals(context) {
       return { taskId: id, version: task.version };
     });
   }
+  // Company approvers and owners decide anywhere; a project's lead decides on
+  // that project's work (docs/specs/Enterprise-and-Projects.md).
+  async function decider(repo, actor, task) {
+    const m = await member(actor, task.tenantId);
+    if (['owner', 'approver'].includes(m.role)) return { m, decidedAs: m.role };
+    const project = task.projectId ? await repo.get('project', task.projectId) : null;
+    if (project?.tenantId === task.tenantId && project.leadId === actor.user.id) return { m, decidedAs: 'lead' };
+    fail(403, 'FORBIDDEN', 'Your company role cannot perform this action.');
+  }
   async function checkDecision(repo, actor, task, decision) {
-    await member(actor, task.tenantId, ['owner', 'approver']);
+    const { decidedAs } = await decider(repo, actor, task);
     const a = task.approval;
     if (!a || approvalView(task, now())?.status !== 'pending') fail(409, 'APPROVAL_STALE', 'This request changed or expired. Ask for a fresh request.');
     // A removed requester cannot obtain a new allocation through an old queue entry.
@@ -134,9 +145,16 @@ function createApprovals(context) {
       if (!budget) fail(409, 'BUDGET_REQUIRED', 'An administrator must set the company allowance first.');
       if (budgetView(budget, now()).availableMinor < a.agreement.amountMinor) fail(409, 'BUDGET_EXCEEDED', 'Not enough unreserved company budget.');
       if (Object.keys(budget.allocations).length >= 1000) fail(409, 'BUDGET_HISTORY_LIMIT', 'This local allowance has reached its history limit.');
-      return budget;
+      // Read after the budget lock, so a concurrent cap change is ordered with this.
+      const project = task.projectId ? await repo.get('project', task.projectId) : null;
+      if (project) {
+        if (project.status !== 'active') fail(409, 'PROJECT_ARCHIVED', 'This project is archived. Reopen it to approve work.');
+        if (require('./projects.cjs').projectBudget(project, budget, now()).availableMinor < a.agreement.amountMinor)
+          fail(409, 'PROJECT_BUDGET_EXCEEDED', 'Not enough unreserved project budget.');
+      }
+      return { budget, decidedAs };
     }
-    return null;
+    return { budget: null, decidedAs };
   }
   async function approvalActions(repo, actor, task) {
     const { availability } = require('./action-availability.cjs');
@@ -153,19 +171,21 @@ function createApprovals(context) {
     const access = async repo => {
       const task = await repo.get('task', id, true);
       if (!task) fail(404, 'NOT_FOUND', 'Request not found.');
-      await member(actor, task.tenantId, ['owner', 'approver']);
+      await decider(repo, actor, task);
       if (task.approval?.id !== body.approvalId || approvalView(task, now())?.status === 'stale') fail(409, 'APPROVAL_STALE', 'This request changed. Submit a fresh request.');
       return task;
     };
     return command(actor.user.id, key, ['approval-decision', id, body], access, async repo => {
       const task = await access(repo), a = task.approval;
       if (!a || a.id !== body.approvalId || a.version !== body.expectedVersion || approvalView(task, now()).status !== 'pending') fail(409, 'APPROVAL_STALE', 'This request changed or expired. Ask for a fresh request.');
-      const budget = await checkDecision(repo, actor, task, body.decision);
+      const { budget, decidedAs } = await checkDecision(repo, actor, task, body.decision);
       if (body.decision === 'approved') {
-        budget.allocations[a.id] = { taskId: id, amountMinor: a.agreement.amountMinor, expiresAt: a.agreement.expiresAt, status: 'reserved' };
+        budget.allocations[a.id] = { taskId: id, amountMinor: a.agreement.amountMinor, expiresAt: a.agreement.expiresAt, status: 'reserved',
+          ...(task.projectId ? { projectId: task.projectId } : {}) };
         budget.version++; await repo.save('company-budget', budget);
       }
-      a.reviewerEpoch = (await member(actor, task.tenantId, ['owner', 'approver'])).accessEpoch ?? null;
+      a.reviewerEpoch = (await member(actor, task.tenantId)).accessEpoch ?? null;
+      a.decidedAs = decidedAs;
       a.status = body.decision; a.version++; a.decisionNote = note; a.decidedBy = actor.user.id; a.decidedAt = now();
       touch(task, now()); event(task, actor.user.id, `approval.${body.decision}`, now());
       await require('./supplier-feed.cjs').saveTask(repo, task);
@@ -180,7 +200,13 @@ function createApprovals(context) {
     const a = approvalView(task, now());
     if (a?.status !== 'approved') fail(403, 'APPROVAL_REQUIRED', 'Request company approval for this exact offer before starting or funding work.');
     if (!resolveOperator) fail(503, 'MEMBERSHIP_UNAVAILABLE', 'Current approver access cannot be verified.');
-    const reviewer = await member(await resolveOperator(a.decidedBy), task.tenantId, ['owner', 'approver']);
+    // A lead's approval holds only while they still lead the task's project.
+    const lead = a.decidedAs === 'lead';
+    const reviewer = await member(await resolveOperator(a.decidedBy), task.tenantId, lead ? undefined : ['owner', 'approver']);
+    if (lead) {
+      const project = task.projectId ? await repo.get('project', task.projectId) : null;
+      if (project?.leadId !== a.decidedBy) fail(403, 'APPROVAL_REQUIRED', 'The project lead changed. Request fresh approval.');
+    }
     const requester = await member(await resolveOperator(a.requestedBy), task.tenantId, ['owner', 'employee']);
     if ((reviewer.accessEpoch ?? null) !== (a.reviewerEpoch ?? null) || (requester.accessEpoch ?? null) !== (a.requesterEpoch ?? null)) fail(403, 'APPROVAL_REQUIRED', 'Company access changed. Request fresh approval.');
     const budget = await repo.get('company-budget', task.tenantId, true);

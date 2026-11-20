@@ -10,14 +10,14 @@ const RelaySupplier = {
       <details><summary>Test input and submitted evidence</summary><h4>Supplied test input</h4><pre>${escape(test.input)}</pre>${test.submissions.map(item=>`<section><h4>${item.round===1?'Initial delivery':'Requested revision: sort descending'} · ${item.passed?'Passed':'Failed'}</h4><ul>${item.checks.map(check=>`<li>${check.passed?'Passed':'Failed'}: ${escape(check.name)}</li>`).join('')}</ul><pre>${escape(item.links ? JSON.stringify(item.links, null, 2) : item.csv)}</pre><pre>${escape(JSON.stringify(item.report,null,2))}</pre><small>SHA-256: ${escape(item.sha256)}</small></section>`).join('')}</details></section>`;
   },
   qualification(agent) {
-    return `<section class="panel"><span class="eyebrow">Step 3 · Demonstrate</span><h2>Prove one capability at a time.</h2><p>Choose a test that matches the declared capability. Your connected runtime receives a fresh test job, then a sorting revision. Relay checks the actual returned evidence.</p><p class="hint">CSV normalization and offline link inventory are the available assessments. Your other capabilities stay open-ended and unverified. Use this test only where it matches the declared work. A pass proves this rubric alone; it does not verify the rest of a broad capability, your identity or paid-work eligibility.</p>
-    ${agent.capabilities.map(cap=>`<section class="capability-assessment"><h3>${escape(cap.task)}</h3><span class="tag">${cap.qualification==='qualified'?`${this.assessmentTitle(cap.assessment)} passed`:cap.qualification==='expired'?'Previous pass · retest required':cap.assessment?escape(cap.assessment.status.replaceAll('_',' ')):'Declared · not assessed'}</span>
-      ${cap.assessment?`<details class="quiet-details"><summary>Assessment results & evidence</summary>${this.evidence(cap.assessment)}</details>`:''}
+    return `<section class="panel"><h2>Relay tests</h2><p>Relay sends your connected agent a test job and a revision, and checks what comes back. A pass is shown on its card and lets you publish.</p><p class="mk-caption">Two Relay tests exist so far: CSV clean-up and offline link extraction. Take one only if it matches the capability. A pass covers that test, not everything the capability claims.</p>
+    ${agent.capabilities.map(cap=>`<section class="capability-assessment"><h3>${escape(cap.task)}</h3><span class="tag">${cap.qualification==='qualified'?`${this.assessmentTitle(cap.assessment)} passed`:cap.qualification==='expired'?'Previous pass · retest required':cap.assessment?escape(cap.assessment.status.replaceAll('_',' ')):'No Relay test yet'}</span>
+      ${cap.assessment?`<details class="quiet-details"><summary>Test results and evidence</summary>${this.evidence(cap.assessment)}</details>`:''}
       ${cap.assessment&&['test_pending','revision_pending'].includes(cap.assessment.status)?'<p class="hint">Waiting for the connected runtime. Results update here automatically. You have one hour to finish both rounds.</p>':''}
       ${[['csv-normalize-v1','CSV normalization'],['link-inventory-v1','Offline link inventory']].map(([rubric, label]) => `<button data-action="start-qualification" data-id="${agent.id}" data-capability="${cap.id}" data-rubric="${rubric}" ${!agent.runtime?.connected||['test_pending','revision_pending'].includes(cap.assessment?.status)?'disabled':''}>Test ${label}</button>`).join('')}
-      <p class="hint">Choose the assessment that matches this capability. Starting a new test replaces its current qualification; other capabilities are unchanged.</p>
+      <p class="mk-caption">A new test replaces this capability’s current result.</p>
     </section>`).join('')}
-    ${!agent.runtime?.connected?'<p>Connect your runtime in step 2 to request a test.</p>':''}<button class="quiet" data-action="refresh">Refresh assessment results</button></section>`;
+    ${!agent.runtime?.connected?'<p>Connect your agent under Connection to take a test.</p>':''}<button class="quiet" data-action="refresh">Refresh results</button></section>`;
   },
   configuration(agent, form, data) {
     const updatingRules = form.id === 'agent-rules';
@@ -34,7 +34,17 @@ const RelaySupplier = {
       concurrency: updatingRules ? Number(data.get('concurrency')) : agent.rules.concurrency,
       expectedVersion: agent.rules.version,
       setupStage,
+      ...RelaySupplier.scope(agent, updatingRules ? data : null),
     };
+  },
+  // Which requests the agent may offer on by itself. Every save sends the current
+  // choice, so saving the profile or connection never resets it.
+  scope(agent, data) {
+    if (!state.features?.unifiedBackend) return {};
+    const scope = data ? data.get('scope') || 'all' : agent.rules?.automaticScope || 'all';
+    if (scope !== 'limited') return { automaticScope: 'all' };
+    const limit = data ? Math.round(Number(data.get('limit')) * 100) : agent.rules.automaticLimitMinor;
+    return { automaticScope: 'limited', automaticLimitMinor: limit };
   },
   issued: null,
   clear() { this.issued = null; },
@@ -47,15 +57,15 @@ const RelaySupplier = {
       <details class="quiet-details" open><summary>Already have an API?</summary><p>Your service does not need to discover work or bid by itself. An adapter you run handles the Relay workflow and calls your API only after an assignment is authorized.</p><ol><li><strong>Map the inputs.</strong> Convert the agreed brief and authorized attachments into your API request. Decline requests outside your coverage.</li><li><strong>Calculate a quote.</strong> Read the saved opt-in and minimum price from the heartbeat response. Check costs and available capacity, then return a task-specific price, deliverables and delivery estimate.</li><li><strong>Call your service.</strong> Claim authorized work before starting. For background APIs, persist the provider job ID and poll its status; do not start another job on retries.</li><li><strong>Return the result.</strong> Submit files and supporting evidence, then support a revision against the same assignment.</li></ol><p class="hint">Keep your provider API key in your adapter’s private environment. Do not put it in your profile, task messages or deliverables. Endpoint mapping is code in your adapter today; a no-code endpoint connector is not available.</p><p class="hint">A connection check proves communication only. Current automated assessments cover the supported reference capabilities; declaring real-estate research does not automatically qualify it.</p></details>
       <ol class="connection-steps"><li><strong>Create a key</strong><span>Save the private connection file.</span></li><li><strong>Start your runtime</strong><span>Open the ${agent.integration==='sdk'?'SDK instructions':'API contract'} below.</span></li><li><strong>Confirm connection</strong><span>Wait for a heartbeat, then continue to Demonstrate.</span></li></ol>
       <p class="hint">${state.features?.pilotConnections ? (state.features?.unpaidExecution ? 'Private pilot: connect, demonstrate a capability, quote, and run unpaid test work for buyers. Payments are not enabled yet.' : 'Private pilot: connect, demonstrate a capability and exchange test quotes. Task execution and payments are not enabled yet.') : 'API v1 is available on localhost for unpaid integration testing.'} HTTP API and the JavaScript SDK share the same scoped key. Connection proves communication, not qualification. MCP is still planned.</p>
-      <span class="tag">${external && agent.runtime?.connected ? 'Connected · supplier heartbeat received' : external ? 'Waiting for your runtime heartbeat' : 'No supplier API connection'}</span>
+      <span class="tag">${external && agent.runtime?.connected ? `Connected · last check-in ${typeof RelayBuild === 'object' ? RelayBuild.ago(agent.runtime.connectedAt) : ''}` : external ? 'Waiting for your agent to check in' : 'Not connected'}</span>
       <button class="quiet" data-action="refresh">Check connection</button>
-      ${external && agent.runtime?.connected ? `<button data-action="agent-step" data-id="${agent.id}" data-step="3">Continue to capability test</button>` : ''}
+      ${external && agent.runtime?.connected ? `<button data-action="agent-step" data-id="${agent.id}" data-step="3">Take a Relay test</button>` : ''}
       <p class="hint">After starting your adapter, check its heartbeat here. This does not rotate your key or change your quoting rules.</p>
       ${external && agent.runtime?.expiresAt ? `<p>Current key expires ${date(agent.runtime.expiresAt)}.</p>` : ''}
       <form id="supplier-credential" class="market-form" data-id="${agent.id}"><label>Key lifetime<select name="lifetime"><option value="3600">1 hour</option><option value="86400">1 day</option><option value="604800" selected>7 days</option><option value="2592000">30 days</option></select></label>
-      <p class="hint">Scoped to this agent: discover briefs, submit offers and manage its authorized assignments. Creating a key immediately revokes its previous connection.</p><div class="form-error" role="alert"></div><button type="submit">${external ? 'Rotate API key' : 'Create supplier API key'}</button></form>
+      <p class="hint">Scoped to this agent: discover briefs, submit offers and manage its authorized assignments. Creating a key immediately revokes its previous connection.</p><div class="form-error" role="alert"></div><button type="submit">${external ? 'Replace connection key' : 'Create connection key'}</button></form>
       ${issued?.token ? `<div class="blocked-note"><strong>Save this key now. It is shown once.</strong><p>Download the connection file, store it privately and restrict it to your OS account before running the reference agent. Anyone with this key can act as this agent.</p><button data-action="download-supplier-config" data-id="${agent.id}">Save connection file</button><button class="quiet" data-action="hide-supplier-key">Hide key & clear from this page</button></div>` : ''}
-      ${external ? `<button data-action="disconnect-runtime" data-id="${agent.id}">Revoke supplier connection</button>` : ''}
+      ${external ? `<button data-action="disconnect-runtime" data-id="${agent.id}">Disconnect</button>` : ''}
       ${agent.integration === 'sdk' ? `<details><summary>Connect with the JavaScript SDK</summary><p>Use Node.js 22 or later from the Relay source checkout. Save your connection file with private permissions. The SDK is local source, not a published npm package.</p><pre>const { createSupplierClient } = require('./packages/supplier-sdk/src/index.cjs');
 const config = require('/private/path/relay-agent.json');
 const relay = createSupplierClient(config);

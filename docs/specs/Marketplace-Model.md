@@ -63,6 +63,61 @@ Decided 17 Nov 2026. Design canvas: https://claude.ai/artifact/MT5nZQNokuKusGRi3
 
 **Don't copy Hugging Face's branding, logos or exact visuals.** Take the information architecture only. When the catalogue is small (under about 30 agents), the same rows can show one more line of description so the page doesn't look sparse.
 
+## One marketplace for buyers and builders
+
+Decided 18 Nov 2026 (founder), after the buyer-to-builder UX audit.
+
+1. **No separate builder workspace.** Everyone gets the same top bar and pages. Role comes from ownership, as on Hugging Face, not from a workspace switch.
+   - **Agent page `/agents/<id>`:** one page for everyone. The owner also sees an owner-only **Settings** tab (listing, card content, connection and runtime, Relay tests, quoting rules). The owner adds and edits packages on the public **Packages** tab; buyers buy from it and from the buying panel.
+   - **Builder profile `/builders/<handle>`:** lists a builder's agents as the same browse rows. Signed-in users only, until the public hub opens.
+   - **Requests:** builders see open requests matching their agents (replacing "Opportunities"). It is the same request the buyer posted, with its attached input visible.
+   - **Your work:** one list for both sides, filtered "as buyer" / "as builder", grouped by the shared work states. Offers are a filter here, not a separate page.
+   - **Earnings, payouts and account checks** move to the account menu.
+   - **"Publish an agent"** opens the new-agent flow (Introduce → Connect → pass a Relay test → Publish), not a workspace switch.
+   - **Update 19 Nov 2026 (founder): builders keep their own area.** A **Build** link in the shared top bar opens `/build`, with a left menu like Hugging Face's settings pages: **Dashboard** (`/build`), **Agents**, **Opportunities** (open requests plus the builder's offers), **Projects** (work their agents were chosen for), **Earnings** and **Settings** (`/build/<section>`), plus `/build/new` for a new agent. There is still no visible workspace switch: opening a `/build` page selects the builder side and any other page the buyer side (`apps/poc-web/public/build-ui.js`). Each agent shows one status from what the server enforces: Draft, Testing (connected), Ready to publish (passed a Relay test), Live (published) or Paused. Requests never show internal scope numbers. **Update 20 Nov 2026:** each agent's page in Build opens on an **Overview**:
+- a four-step checklist (describe, connect, pass a Relay test, publish) with the next step's button;
+- an at-a-glance table.
+
+It then has tabs Profile · Connection · Relay tests · Offers & listing · Results. Drafts open on their next setup step.
+
+Other changes on the same date:
+- **Opportunities** lists only new requests, with when each was posted, whether it was sent directly and which of your agents fits.
+- **Your offers** shows open offers only. Chosen ones move to Projects, and past ones fold away.
+- **Projects** are grouped into Needs you or your agent / Waiting on the buyer / Done.
+- **Automatic offers** can be limited to small requests (founder decision, as an option; see `docs/Supplier-API.md`).
+
+Still to do from item 1: the owner tabs on `/agents/<id>`, the one-page new-agent flow, builder profile pages and the filter column on Opportunities.
+2. **The Relay test gates listing, not quoting.** An agent is published and appears in browse only once a capability passes its Relay test, and a package can only be sold for a capability that currently passes one. Only two Relay tests exist so far (CSV clean-up and offline link extraction), so any agent may still quote on a posted request; the offer shows "No Relay test for this work yet" when the capability hasn't passed one. Revisit when seed-category tests exist. The UI never claims a rule the backend doesn't enforce.
+3. **One vocabulary on both sides:** *request* (not opportunity or task), *offer* (not quote), *work* (not tasks), *Relay test* (not qualification or assessment). Code names may stay; screens use these words.
+
+## Accounts: one account, builder status earned on it
+
+Decided 20 Nov 2026 (founder). One account per person can both buy and sell, as on Etsy, Fiverr and Hugging Face. There are no separate buyer and builder accounts. The experiences are separate; the accounts aren't.
+
+**Why:**
+- Early supply for B2B data and ERP work comes from buyers who solved their own problem.
+- One identity keeps a person's history and reputation together, so nobody can start fresh by switching sides.
+- Buyers judge builders on verification and track record, not on how they signed up.
+
+**Builder status grows in stages on the same account, each checked by the server:**
+
+| Stage | How it's reached | What it unlocks |
+|---|---|---|
+| Buyer | default | browse, post requests, hire, approve work |
+| Builder | has an agent, even a draft | the Build area (`/build`), connecting and testing agents |
+| Listed | a capability passes its Relay test, and the builder publishes | appearing in browse; selling packages |
+| Paid seller | identity and business verified, payouts set up (planned, see `docs/Sandbox-Payments.md`) | receiving money |
+
+Quoting on posted requests stays open to any agent until seed-category Relay tests exist (item 2 above).
+
+**How it shows today (20 Nov 2026):**
+- Accounts with no agent don't see Build in the top bar.
+- Any `/build` address on such an account opens New agent, without the builder menu.
+- "Publish an agent" stays the way in.
+- The builder lists (`/api/agents`, `/api/opportunities`, `/api/work`, `/api/quotes`) return only what the caller owns or qualifies for, so an account without agents gets empty lists.
+
+**Organizations can restrict publishing.** An organization can stop its members publishing agents or sending offers; see `docs/specs/Enterprise-and-Projects.md`. This is an organization policy, not a separate account type.
+
 ## How revisions work in each mode
 
 The same principle applies everywhere: **fixing what was agreed is free; changing what was agreed is a new agreement; either side can leave cleanly; nobody pays for work that wasn't accepted.**

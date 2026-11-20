@@ -56,10 +56,21 @@ const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&
 const date=value=>new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const examples=['Find 20 UK SaaS companies with websites and source links. Deliver a CSV.','Create a 30-second launch video for my product.','Build a landing page for my new business.'];
 const ApiError=RelayRequest.ApiError;
+// Builder organizations: Build requests made while building as an organization
+// carry it. Account, team and buyer requests always stay personal.
+const ACTING_PATH=/^\/api\/(agents|opportunities|work|quotes|portfolio)(\/|\?|$)|^\/api\/tasks\/[0-9a-f-]{36}\/(supplier-message|offer-exposure)$|^\/api\/payments\/(operator|status)/;
+function actingFor(path,method){
+  if(state.account?.user?.workspace!=='builder'||!state.actingAs)return null;
+  return ACTING_PATH.test(path)||(method==='POST'&&/^\/api\/tasks\/[0-9a-f-]{36}\/offers$/.test(path))?state.actingAs:null;
+}
+function actingKey(){return 'relay.buildingAs.'+(state.account?.user?.id||'');}
+function storedActing(){try{const value=localStorage.getItem(actingKey());return value===null?undefined:value;}catch{return undefined;}}
+function storeActing(id){try{localStorage.setItem(actingKey(),id||'');}catch{}}
 async function api(path,{method='GET',body,key}={}) {
   let waiting=false;
+  const acting=actingFor(path,method);
   try {
-    return await RelayRequest.request(path,{method,managed:state.authMode==='managed',onSlow(){waiting=true;notice.textContent=`${state.features?.pilotConnections?'Relay':'Staging'} is taking a little longer. Free hosting may be waking up. Please keep this tab open.`;},credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{}),...(state.account?.csrf?{'X-CSRF-Token':state.account.csrf}:{}),...(key?{'Idempotency-Key':key}:{})},...(body?{body:JSON.stringify(body)}:{})});
+    return await RelayRequest.request(path,{method,managed:state.authMode==='managed',onSlow(){waiting=true;notice.textContent=`${state.features?.pilotConnections?'Relay':'Staging'} is taking a little longer. Free hosting may be waking up. Please keep this tab open.`;},credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{}),...(state.account?.csrf?{'X-CSRF-Token':state.account.csrf}:{}),...(key?{'Idempotency-Key':key}:{}),...(acting?{'X-Relay-Act-As':acting}:{})},...(body?{body:JSON.stringify(body)}:{})});
   } finally {if(waiting)notice.textContent='';}
 }
 async function command(path,method,body) {
@@ -101,7 +112,10 @@ function workspaceRoleLabel(role) {
 }
 function companyWorkspaceBanner() {
   const membership = activeCompanyMembership();
-  if (!membership) return '';
+  // Organization pages carry the organization in their own header.
+  if (!membership || ['org', 'enterprise'].includes(state.buyerTab) && !state.detail) return '';
+  // The request page names its organization and project in its own header.
+  if (state.detail && typeof RelayRequestPage === 'object' && RelayRequestPage.applies(state.detail)) return '';
   return `<section class="company-context-bar" aria-label="Current company workspace"><div><span class="company-context-label">COMPANY WORKSPACE</span><strong>${escape(membership.name)}</strong><span class="company-context-role">You’re a team member · ${escape(workspaceRoleLabel(membership.role))}</span></div><button class="quiet" data-action="buyer-nav" data-tab="business">Workspace & team</button></section>`;
 }
 
@@ -120,7 +134,7 @@ function header() {
   if (!user || state.auth) return `<header class="auth-topbar"><button class="brand" data-action="home" aria-label="Relay home">relay</button><div><span>${state.auth === 'signup' ? 'Already have an account?' : 'New to Relay?'}</span><button class="quiet" data-action="${state.auth === 'signup' ? 'login' : 'signup'}">${state.auth === 'signup' ? 'Log in' : 'Create an account'}</button></div></header>`;
 
   const builderSide = user.workspace === 'builder';
-  if (!builderSide && typeof RelayMarketplace === 'object') return RelayMarketplace.topbar(user);
+  if (typeof RelayMarketplace === 'object') return RelayMarketplace.topbar(user);
   const community = globalThis.document?.documentElement?.dataset.design === 'community';
   const company = activeCompanyMembership();
   const active = builderSide
@@ -167,7 +181,7 @@ function newTask() {
 }
 
 function taskList() { return taskDashboard(); }
-function buyerPage(){if(typeof RelayMarketplace==='object'&&!state.detail){if(state.buyerTab==='market')return state.agentPageId?RelayMarketplace.agent():RelayMarketplace.browse();if(state.buyerTab==='request')return RelayMarketplace.post();if(state.buyerTab==='evidence')return RelayMarketplace.evidencePage();}if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
+function buyerPage(){if(typeof RelayMarketplace==='object'&&!state.detail){if(state.buyerTab==='tasks')return RelayMarketplace.work();if(state.buyerTab==='activity')return RelayMarketplace.activity();if(state.buyerTab==='market')return state.agentPageId?RelayMarketplace.agent():RelayMarketplace.browse();if(state.buyerTab==='request')return RelayMarketplace.post();if(state.buyerTab==='evidence')return RelayMarketplace.docsPage();if(state.buyerTab==='requests')return RelayMarketplace.requestsPage();if(state.buyerTab==='builders')return RelayMarketplace.buildersPage();if(state.buyerTab==='org'&&typeof RelayOrg==='object')return RelayOrg.page();if(state.buyerTab==='enterprise'&&typeof RelayOrg==='object')return RelayOrg.enterprise();}if(state.buyerTab==='market'&&!state.detail)return RelayAgentMarket.page();if(state.features?.workspaceApps&&!state.detail&&['apps','tools'].includes(state.buyerTab))return state.buyerTab==='apps'?RelayApps.page():RelayApps.toolsPage();if(state.buyerTab==='scheduled'&&!state.detail)return RelayRecurring.page();if(state.buyerTab==='activity'&&!state.detail)return activityPage();if(state.buyerTab==='business'&&!state.detail&&state.authMode==='local'&&typeof RelayTeams==='object')return RelayTeams.page();if(state.buyerTab==='billing'&&!state.detail&&typeof RelayPayments==='object')return RelayPayments.billing();if(state.detail&&typeof RelayRequestPage==='object'&&typeof RelayMarketplace==='object'&&state.account?.user.workspace==='buyer'&&RelayRequestPage.applies(state.detail))return RelayRequestPage.view();if(state.detail?.task.orchestrationPlan)return taskView();if(state.detail)return state.detail.task.status==='draft'&&!state.detail.task.orchestrationStep&&!state.editing?draftConversation():taskView();if(state.buyerTab==='tasks')return taskList();if(['business','billing','tools'].includes(state.buyerTab)){const copy={business:['Business workspace','Team memberships and budget approvals are not connected in this local build. Your current requests belong to your personal workspace.'],billing:['Billing','Payment collection is not connected locally. No card details or wallet access are collected here.'],tools:['Connected tools','Tool authorization and delivery destinations are not connected yet. A file delivery will not silently send work into another service.']}[state.buyerTab];return `<section class="market-workspace"><header class="builder-page-title"><div><h1>${copy[0]}</h1></div></header><section class="panel"><p>${copy[1]}</p><button data-action="buyer-nav" data-tab="tasks">Back to my tasks</button></section></section>`;}return newTask();}
 function focusOfferReview(offerId, reviewing) {
  const action = reviewing ? 'accept-offer' : 'review-offer';
  const target = [...root.querySelectorAll('[data-action]')].find(button =>
@@ -185,7 +199,7 @@ function settleWorkspaceNavigation(changedView) {
 function render(){
  const activeReply=document.activeElement?.id==='message-text'?document.activeElement:null;
  const replySelection=activeReply?{start:activeReply.selectionStart,end:activeReply.selectionEnd}:null;
- const viewKey=JSON.stringify([state.account?.user.id,state.tenantId,state.auth,state.account?.user.workspace,state.detail?.task.id,state.buyerTab,state.builderTab,state.setupAgentId,state.addingAgent,state.setupStage,state.agentIntroPart,state.recoveryOpen]);
+ const viewKey=JSON.stringify([state.account?.user.id,state.tenantId,state.auth,state.account?.user.workspace,state.detail?.task.id,state.buyerTab,state.builderTab,state.setupAgentId,state.addingAgent,state.setupStage,state.agentTab,state.agentIntroPart,state.recoveryOpen]);
  const changedView=state.renderedViewKey!==viewKey;state.renderedViewKey=viewKey;
  const disclosureKey = item => item.dataset.disclosureKey || [item.closest('[data-app-id]')?.dataset.appId || '', item.closest('[data-run-id]')?.dataset.runId || '', item.querySelector('summary')?.textContent].join(':');
  const expanded = !changedView ? [...root.querySelectorAll('.canvas details')].filter(item => item.open).map(disclosureKey) : [];
@@ -195,8 +209,9 @@ function render(){
  const oldId = root.querySelector('.buyer-conversation')?.dataset.taskId;
  const scrollTop = scrollOwner.scrollTop;
  document.body.classList.toggle('workspace-open',!!state.account&&!state.auth);
- document.body.classList.toggle('market-open',!!state.account&&!state.auth&&state.account.user.workspace==='buyer'&&typeof RelayMarketplace==='object');
- root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${state.account.user.workspace === 'buyer' ? 'buyer-workspace mk-shell' : ''} ${activeCompanyMembership()?'company-workspace-active':''}">${state.account.user.workspace === 'buyer' && typeof RelayMarketplace === 'object' ? '' : `<div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>`}${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?builder():buyerPage()}</main></div>`);
+ document.body.classList.toggle('market-open',!!state.account&&!state.auth&&typeof RelayMarketplace==='object');
+ document.body.classList.toggle('build-open',!!state.account&&!state.auth&&state.account.user.workspace==='builder'&&!state.agentPageId&&typeof RelayBuild==='object');
+ root.innerHTML=!state.account&&!state.auth?landing():header()+(state.auth?authView():`<div class="workspace-content ${state.account.user.workspace === 'buyer' ? 'buyer-workspace mk-shell' : typeof RelayMarketplace === 'object' ? 'mk-shell' : ''} ${activeCompanyMembership()?'company-workspace-active':''}">${typeof RelayMarketplace === 'object' ? '' : `<div id="notification-slot">${typeof RelayNotifications === 'object' ? RelayNotifications.view() : ''}</div>`}${companyWorkspaceBanner()}<main id="workspace-main" class="canvas" tabindex="-1">${state.teamInviteToken&&state.authMode==='local'?RelayTeams.page():state.recoveryOpen&&state.payments?.recoveryAccess?RelayPayments.recovery():state.account.user.workspace==='builder'?(state.agentPageId&&typeof RelayMarketplace==='object'?RelayMarketplace.agent():builder()):buyerPage()}</main></div>`);
  if (typeof RelayLanding === 'object') RelayLanding.mount?.(root);
  if (typeof observeOfferExposure === 'function') observeOfferExposure();
  if (!changedView) root.querySelectorAll('.canvas details').forEach(item => {
@@ -243,12 +258,14 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   const state=nextState;
   state.filePreview=null;
   state.account=await api('/api/me');
+  // The fixed category list, for the browse rail, the builder's picker and Post a request.
+  if(!state.taxonomy&&!state.account.recoveryRequired)try{state.taxonomy=(await api('/api/categories')).fields;}catch{state.taxonomy=[];}
   if(typeof RelayAgentMarket === 'object' && RelayAgentMarket.storefrontId() && state.account.user.workspace === 'buyer') state.buyerTab='market';
   if(state.account.recoveryRequired){state.auth='reset';state.tasks=[];state.detail=null;return;}
   if(state.features?.notifications&&!background)try{await RelayNotifications.load();}catch{state.notificationError='Updates could not load. Try Refresh.';}
   if(state.features?.unifiedBackend)state.payments=await api('/api/payments/status');
   if(state.recoveryOpen&&state.payments?.recoveryAccess){state.recoveryData=await api('/api/payments/recovery?after='+encodeURIComponent(state.recoveryAfter||''));if(state.operationsBacklogUser!==state.account.user.id||!state.operationsBacklog){state.operationsBacklog=await api('/api/operations/backlog');state.operationsBacklogUser=state.account.user.id;}}
-  const tenant=state.account.memberships.find(m=>m.id===state.tenantId)||state.account.memberships[0];
+  const tenant=(state.buyerTab==='org'&&state.account.memberships.find(m=>m.id===state.orgId&&m.company))||state.account.memberships.find(m=>m.id===state.tenantId)||state.account.memberships[0];
   state.tenantId=tenant?.id;
   if (!background) state.spendingHistory = state.features?.unifiedBackend && state.buyerTab === 'billing' && tenant ? await api('/api/payments/history?tenantId='+encodeURIComponent(tenant.id)+'&from='+encodeURIComponent(state.spendingFrom||'')+'&to='+encodeURIComponent(state.spendingTo||'')+'&currency='+encodeURIComponent(state.spendingCurrency||'USD')) : null;
   state.activity=state.account.user.workspace!=='builder'&&state.buyerTab==='activity'?await api('/api/activity'):null;
@@ -274,14 +291,29 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
 
   state.attio = state.features?.attioDelivery && tenant?.role === 'owner' ? await api('/api/attio/status?tenantId='+encodeURIComponent(tenant.id)) : null;
   state.drive=state.features?.driveConnections && tenant?.role==='owner' ? await api('/api/drive/status?tenantId='+encodeURIComponent(tenant.id)) : null;
-  state.team=tenant?.company&&state.buyerTab==='business'?await api('/api/teams/'+tenant.id):null;
+  state.team=tenant?.company&&['business','org'].includes(state.buyerTab)?await api('/api/teams/'+tenant.id):null;
   state.teamHistory=state.team?.role==='owner'?await api('/api/teams/'+tenant.id+'/history?before='+encodeURIComponent(state.teamHistoryBefore||'')):null;
   state.companyBudget=state.team?await api('/api/teams/'+tenant.id+'/budget?after='+encodeURIComponent(state.budgetAfter||'')):null;
   state.tasks=tenant?(await api(`/api/tasks?tenantId=${encodeURIComponent(tenant.id)}`)).tasks:[];
+  // An organization can stop its members publishing agents (org Settings).
+  if(!background&&state.features?.unifiedBackend)try{state.publishing=await api('/api/me/publishing');}catch{state.publishing=null;}
+  // Which organization, if any, this person is building as (remembered per person).
+  const actingOrgs=state.features?.builderOrganizations?(state.publishing?.organizations||[]).filter(org=>org.canAct):[];
+  if(state.actingAsUser!==state.account.user.id){state.actingAsUser=state.account.user.id;state.actingAs=storedActing();}
+  if(state.actingAs&&!actingOrgs.some(org=>org.id===state.actingAs))state.actingAs=null;
   if(state.account.user.workspace==='builder'&&(state.features?.unifiedBackend||state.authMode==='local')){
+    // First visit without agents of your own: start in the organization that has them.
+    if(state.actingAs===undefined){
+      const org=actingOrgs.find(item=>item.agents>0);
+      state.actingAs=org&&!(await api('/api/agents')).agents.length?org.id:null;
+    }
     const [a,o,w,q]=await Promise.all([api('/api/agents'),api('/api/opportunities'),api('/api/work'),api('/api/quotes')]);
     state.agents=a.agents;state.opportunities=o.tasks;state.work=w.tasks;state.quotes=q.offers;state.detail=null;state.offers=[];
+    if(!state.actingAs){state.ownAgentCount=a.agents.length;state.ownAgentsUser=state.account.user.id;}
+    if(typeof RelayBuild==='object')RelayBuild.gate(state);
   }else{
+    // Whether to show Build in the top bar: only accounts that have an agent.
+    if(state.ownAgentsUser!==state.account.user.id&&(state.features?.unifiedBackend||state.authMode==='local')){state.ownAgentCount=(await api('/api/agents')).agents.length;state.ownAgentsUser=state.account.user.id;}
     if(id){state.detail=await api(`/api/tasks/${id}`);if(state.tenantId!==state.detail.task.tenantId){state.tenantId=state.detail.task.tenantId;if(state.features?.workspaceApps)state.workspaceApps=await api('/api/workspace-apps?tenantId='+encodeURIComponent(state.tenantId));state.tasks=(await api('/api/tasks?tenantId='+encodeURIComponent(state.tenantId))).tasks;}}else state.detail=null;
     const taskMember = state.account.memberships.find(member => member.id === state.tenantId);
     state.attioReceipts = id && state.features?.attioDelivery && taskMember?.role === 'owner'
@@ -292,6 +324,8 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
       state.drive = state.features?.driveConnections && taskMember?.role === 'owner' ? await api('/api/drive/status?tenantId='+encodeURIComponent(state.tenantId)) : null;
     }
     state.offers=id&&(state.features?.unifiedBackend||state.authMode==='local')?(await api(`/api/tasks/${id}/offers`)).offers:[];
+    // An agent asked for access: load the workspace's systems so the buyer can grant one here.
+    if(state.detail?.access?.requests?.some(r=>r.status==='pending')&&!state.connections)state.connections=await api('/api/connections?tenantId='+encodeURIComponent(state.detail.task.tenantId));
   }
 }
 function chatController() {
@@ -421,6 +455,31 @@ root.addEventListener('submit',event=>{
       await refresh();render();
     }else if(form.id==='execution-retry'){
       await command('/api/tasks/'+state.detail.task.id+'/retry-execution','POST',{expectedVersion:state.detail.task.version,reason:data.get('reason')});await refresh();render();
+    }else if(form.id==='org-policy'){
+      const saved=await command('/api/teams/'+state.orgId+'/policy','POST',{membersCanPublish:data.get('membersCanPublish')==='on',expectedVersion:Number(form.dataset.version)});
+      await refresh(null);render();notice.textContent=saved.membersCanPublish?'Saved. Members can publish agents.':'Saved. Members can no longer publish agents or send offers.';
+    }else if(form.id==='project-create'||form.id==='project-edit'){
+      const fields={name:String(data.get('name')||'').trim(),description:String(data.get('description')||'').trim(),leadId:data.get('leadId'),memberIds:data.getAll('memberIds'),capMinor:Math.round(Number(data.get('cap'))*100)};
+      if(form.id==='project-create'){const created=await command('/api/teams/'+state.orgId+'/projects','POST',fields);state.projectCreateOpen=false;notice.textContent='Project created.';await RelayMarketplace.go('/org/'+state.orgId+'/projects/'+created.projectId);}
+      else{await command('/api/projects/'+state.projectId,'POST',{...fields,status:data.get('archived')?'archived':'active',expectedVersion:Number(form.dataset.version)});notice.textContent='Project saved.';await refresh(null);render();}
+    }else if(form.id==='check-add'){
+      const checks=[...(state.detail.checks||[]).map(c=>RelayIntake.checkBody(c)),RelayIntake.checkFromForm(data)];
+      await command('/api/tasks/'+state.detail.task.id+'/checks','POST',{expectedVersion:state.detail.task.version,checks});notice.textContent='Check added. Relay runs it on every delivery.';await refresh(state.detail.task.id);render();
+    }else if(form.id==='attachment-add'){
+      const file=form.elements.file?.files?.[0],role=data.get('role');
+      const base64=await RelayIntake.fileBase64(file);
+      await command('/api/tasks/'+state.detail.task.id+'/attachments','POST',{expectedVersion:state.detail.task.version,role,filename:file.name,base64,...(role==='sample_input'?{caseKind:data.get('caseKind')||'typical'}:{}),...(role==='expected_output'?{pairId:data.get('pairId')}:{})});
+      notice.textContent='File added to the request.';await refresh(state.detail.task.id);render();
+    }else if(form.id==='connection-create'){
+      const credentials={};for(const [name,value] of data.entries())if(name.startsWith('cred-'))credentials[name.slice(5)]=String(value);
+      await command('/api/connections','POST',{tenantId:state.orgId,provider:data.get('provider'),environment:data.get('environment'),label:String(data.get('label')||'').trim(),credentials});
+      notice.textContent='System connected. Its credentials are stored encrypted and won’t be shown again.';await refresh(null);render();
+    }else if(form.dataset.accessApprove){
+      await command('/api/tasks/'+state.detail.task.id+'/access/approve','POST',{expectedVersion:state.detail.task.version,requestId:form.dataset.accessApprove,connectionId:data.get('connectionId'),days:Number(data.get('days'))});
+      notice.textContent='Read access granted. The agent can continue.';await refresh(state.detail.task.id);render();
+    }else if(form.id==='project-add-task'){
+      const option=form.elements.taskId.selectedOptions[0];
+      await command('/api/tasks/'+option.value+'/project','POST',{projectId:state.projectId,expectedVersion:Number(option.dataset.version)});notice.textContent='Added to the project. Any earlier approval needs to be requested again.';await refresh(null);render();
     }else if(form.id==='company-budget'){
       await command('/api/teams/'+state.tenantId+'/budget','POST',{limitMinor:Math.round(Number(data.get('limit'))*100),expectedVersion:state.companyBudget?.budget?.version||0});await refresh(null);render();
     }else if(form.id==='approval-request'){
@@ -491,27 +550,28 @@ root.addEventListener('submit',event=>{
     }else if(form.id==='agent'){
       if(state.agentIntroPart!=='capabilities'){captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();return;}
       const rows=[...form.querySelectorAll('.capability-row')];
-      const result=await command('/api/agents','POST',{name:data.get('name'),purpose:data.get('purpose'),domain:data.get('domain'),kind:data.get('kind'),integration:'api',capabilities:rows.map(r=>({category:r.querySelector('[name=category]').value,task:r.querySelector('[name=capability]').value,metadata:capabilityMetadata(r)}))});
-      state.addingAgent=false;state.agentDraft=null;sessionStorage.removeItem(agentDraftKey());state.setupAgentId=result.agentId;state.setupStage=2;location.hash=`agent=${result.agentId}&step=2`;await refresh();render();notice.textContent='Profile saved. Choose how your runtime will connect.';
+      const result=await command('/api/agents','POST',{name:data.get('name'),purpose:data.get('purpose'),domain:data.get('domain'),kind:data.get('kind'),integration:'api',capabilities:rows.map(r=>{const pick=r.querySelector('[name=categoryId]')?.value;return {...(pick?{categoryId:pick}:{}),...(!pick||pick==='other'?{category:r.querySelector('[name=category]')?.value||''}:{}),task:r.querySelector('[name=capability]').value,metadata:capabilityMetadata(r)};})});
+      state.addingAgent=false;state.agentDraft=null;sessionStorage.removeItem(agentDraftKey());state.setupAgentId=result.agentId;state.setupStage=2;state.agentTab='connection';location.hash=`agent=${result.agentId}&step=2`;await refresh();render();notice.textContent='Profile saved. Choose how your runtime will connect.';
     }else if(['agent-connection','agent-rules','agent-profile'].includes(form.id)){
       const agent = state.agents.find(item => item.id === form.dataset.id);
       const configuration = RelaySupplier.configuration(agent, form, data);
       await command(`/api/agents/${agent.id}`, 'PATCH', configuration);
       state.setupStage = configuration.setupStage;
+      if (typeof RelayBuild === 'object') state.agentTab = form.id === 'agent-profile' && RelayBuild.status(agent).id === 'draft' ? 'connection' : form.id === 'agent-profile' ? 'profile' : form.id === 'agent-connection' ? 'connection' : 'offers';
       location.hash = `agent=${agent.id}&step=${state.setupStage}`;
       await refresh();
       render();
-      notice.textContent = form.id === 'agent-connection'
-        ? 'Method saved. Connect your runtime below, then continue to Demonstrate.'
-        : state.agents.find(item => item.id === agent.id)?.rules.automaticEnabled
-          ? 'Local automatic bidding is active. Commercial readiness is still incomplete.'
-          : 'Operating preferences saved. Review the connection and bidding status above.';
+      notice.textContent = form.id === 'agent-connection' ? 'Method saved. Create a key below and start your connector.'
+        : form.id === 'agent-profile' ? 'Profile saved.'
+        : state.agents.find(item => item.id === agent.id)?.rules.automaticEnabled ? 'Saved. Automatic offers are on.' : 'Saved.';
     }else if(form.dataset.quote){
       const capabilityId=data.get('capabilityId');if(!capabilityId)throw new Error('Choose the capability supporting this offer.');const agent=state.agents.find(a=>a.capabilities.some(c=>c.id===capabilityId));
       await command(`/api/tasks/${form.dataset.quote}/offers`,'POST',{agentId:agent.id,capabilityId,expectedVersion:Number(form.dataset.version),amountMinor:Math.round(Number(data.get('price'))*100),currency:data.get('currency')||'USD',deliveryMinutes:Number(data.get('minutes')),proposal:data.get('proposal')});
       state.builderTab='quotes';await refresh();render();notice.textContent='Offer sent to the buyer.';
     }else if(form.id==='post-request'){
       await RelayMarketplace.submitPost(form);
+    }else if(form.id==='package-form'){
+      await RelayMarketplace.submitPackage(form);
     }else if(form.id==='market-search'){
       RelayMarketplace.filters().q=String(data.get('q')||'').trim();
       if(state.buyerTab==='market'&&!state.agentPageId&&!state.detail)RelayMarketplace.refreshList();else await RelayMarketplace.go('/');
@@ -637,6 +697,17 @@ root.addEventListener('click',event=>{
     }
     else if(action.startsWith('notification-')){await RelayNotifications.click(button);}
     else if(action.startsWith('app-')){await RelayApps.click(button);}
+    else if(action==='project-create-toggle'){state.projectCreateOpen=!state.projectCreateOpen;render();root.querySelector('#project-name')?.focus();}
+    else if(action==='connection-disconnect'){if(state.disconnecting!==button.dataset.id){state.disconnecting=button.dataset.id;render();}else{await command('/api/connections/'+button.dataset.id+'/disconnect','POST',{expectedVersion:Number(button.dataset.version)});state.disconnecting=null;notice.textContent='Disconnected. Every grant on it has stopped.';await refresh(null);render();}}
+    else if(action==='connection-disconnect-cancel'){state.disconnecting=null;render();}
+    else if(action==='access-decline'){await command('/api/tasks/'+state.detail.task.id+'/access/decline','POST',{expectedVersion:state.detail.task.version,requestId:button.dataset.id});notice.textContent='Access declined. The work stays paused.';await refresh(state.detail.task.id);render();}
+    else if(action==='access-revoke'){await command('/api/access-grants/'+button.dataset.id+'/revoke','POST',{expectedVersion:Number(button.dataset.version)});notice.textContent='Access revoked. The agent’s next read will be refused.';await refresh(state.detail.task.id);render();}
+    else if(action==='check-remove'){const checks=(state.detail.checks||[]).filter(c=>c.id!==button.dataset.id).map(c=>RelayIntake.checkBody(c));await command('/api/tasks/'+state.detail.task.id+'/checks','POST',{expectedVersion:state.detail.task.version,checks});notice.textContent='Check removed.';await refresh(state.detail.task.id);render();}
+    else if(action==='attachment-remove'){await command('/api/tasks/'+state.detail.task.id+'/attachments/remove','POST',{expectedVersion:state.detail.task.version,attachmentId:button.dataset.id});notice.textContent='File removed.';await refresh(state.detail.task.id);render();}
+    else if(action==='request-open'){await command('/api/tasks/'+state.detail.task.id+'/post','POST',{expectedVersion:state.detail.task.version});notice.textContent='Open for offers. Qualified agents can now quote.';await refresh(state.detail.task.id);render();}
+    else if(action==='request-tab'){state.requestTab=button.dataset.tab;render();}
+    else if(action==='project-tab'){state.projectTab=button.dataset.tab;render();}
+    else if(action==='project-post'){state.postTarget={tenantId:button.dataset.tenant,projectId:button.dataset.project};await RelayMarketplace.go('/post');}
     else if(action==='approval-next'||action==='approval-first'){state.budgetAfter=action==='approval-next'?state.companyBudget.nextCursor:'';await refresh(null);render();}
     else if(action==='scan-file'){
       await command('/api/tasks/'+button.dataset.task+'/submissions/'+button.dataset.submission+'/files/'+button.dataset.file+'/scan','POST',{});
@@ -745,9 +816,16 @@ root.addEventListener('click',event=>{
     else if(action==='add-agent'){state.setupAgentId=null;state.addingAgent=true;state.agentIntroPart='profile';location.hash='agent-new';try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}render();}
     else if(action==='continue-capabilities'){const form=document.getElementById('agent');if(!form.reportValidity())return;captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();}
     else if(action==='edit-introduction'){state.agentIntroPart='profile';render();}
+    else if((action==='stop-agent'||action==='close-agent')&&typeof RelayBuild==='object'&&typeof RelayMarketplace==='object'&&!RelayBuild.isBuilder()){state.addingAgent=false;await RelayMarketplace.go('/');}
     else if(action==='stop-agent'||action==='close-agent'){state.addingAgent=false;state.setupAgentId=null;state.builderTab='agents';location.hash='';render();}
     else if(action==='readiness-account'){state.returnAgentId=button.dataset.id;state.setupAgentId=null;state.builderTab='settings';location.hash='';render();}
-    else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);location.hash=`agent=${a.id}&step=${state.setupStage}`;if(action==='open-agent')await refresh(null);render();}
+    else if(action==='act-as'){
+      state.actingAs=button.dataset.id||null;storeActing(state.actingAs);
+      state.setupAgentId=null;state.addingAgent=false;state.builderTab='dashboard';state.agents=[];
+      if(typeof RelayMarketplace==='object')await RelayMarketplace.go('/build');else{await refresh();render();}
+    }
+    else if(action==='agent-tab'){state.setupAgentId=button.dataset.id;state.agentTab=button.dataset.tab;render();root.querySelector('#workspace-main')?.focus({preventScroll:true});}
+    else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);if(typeof RelayBuild==='object')state.agentTab=action==='agent-step'?RelayBuild.STEP_TAB[state.setupStage]:RelayBuild.defaultTab(a);location.hash=`agent=${a.id}&step=${state.setupStage}`;if(action==='open-agent')await refresh(null);render();}
     else if(action==='add-capability'){document.querySelector('#capability-rows').insertAdjacentHTML('beforeend',capabilityRow());captureAgentDraft(document.getElementById('agent'));}
     else if(action==='remove-capability'){if(document.querySelectorAll('.capability-row').length>1){button.closest('.capability-row').remove();captureAgentDraft(document.getElementById('agent'));}else notice.textContent='Keep at least one capability.';}
     else if(action==='connect-runtime'||action==='disconnect-runtime'){
@@ -845,7 +923,7 @@ async function boot(){
     const setup=location.hash.match(/^#agent=([0-9a-f-]{36})&step=([1-3])$/);if(setup){state.setupAgentId=setup[1];state.setupStage=Number(setup[2]);}
     if(['#activity'].includes(location.hash))state.buyerTab='activity';
     const routed=typeof RelayMarketplace==='object'?RelayMarketplace.apply(RelayMarketplace.parse()):null;
-    const id=routed||location.hash.match(/^#(?:task|chat)=([0-9a-f-]{36})$/)?.[1];await refresh(id);if(state.addingAgent){try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}}}
+    const id=routed||location.hash.match(/^#(?:task|chat)=([0-9a-f-]{36})$/)?.[1];await refresh(id);if(typeof RelayBuild==='object'&&typeof RelayMarketplace==='object'&&!location.hash){const route=RelayMarketplace.parse();if(await RelayBuild.ensure(route)){RelayMarketplace.apply(route);await refresh(id);}}if(state.addingAgent){try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}}}
   catch(error){if(error.status!==401)notice.textContent=error.message;}
   render();
 }
@@ -861,7 +939,7 @@ if (typeof RelayMarketplace === 'object') {
     if (link.dataset.tab) {
       Object.assign(state, { buyerTab: link.dataset.tab, detail: null, agentPageId: null, editing: false, reviewOffer: null });
       history.pushState(null, '', '/#' + link.dataset.tab);
-      run(async () => { await refresh(null); render(); });
+      run(async () => { if (typeof RelayBuild === 'object') await RelayBuild.ensure({ page: 'tab' }); await refresh(null); render(); });
       return;
     }
     run(() => RelayMarketplace.go(url.pathname));
@@ -876,7 +954,8 @@ if (typeof RelayMarketplace === 'object') {
       RelayMarketplace.refreshList();
       root.querySelector(`[data-action="market-filter"][data-group="${button.dataset.group}"][data-value="${CSS.escape(value)}"]`)?.focus();
     } else if (action === 'market-rail-tab') { f.railTab = button.dataset.tab; RelayMarketplace.refreshList(); root.querySelector(`[data-action="market-rail-tab"][data-tab="${button.dataset.tab}"]`)?.focus(); }
-    else if (action === 'market-more-categories') { f.allCategories = true; RelayMarketplace.refreshList(); }
+    else if (action === 'market-more-categories') { f.allCategories = !f.allCategories; RelayMarketplace.refreshList(); }
+    else if (action === 'market-price-reset') { f.price = [0, RelayMarketplace.PRICE_STOPS.length - 1]; RelayMarketplace.refreshList(); }
     else if (action === 'market-clear') { Object.assign(f, { q: '', categories: [], ways: [], works: [], evidence: [] }); RelayMarketplace.refreshList(); }
     else if (action === 'market-agent-tab') { state.agentTab = button.dataset.tab; render(); root.querySelector(`[data-action="market-agent-tab"][data-tab="${button.dataset.tab}"]`)?.focus(); }
     else if (action === 'market-copy-link') {
@@ -889,6 +968,50 @@ if (typeof RelayMarketplace === 'object') {
       state.retryFrom = null; state.postDraft = null; state.postTaskId = null; state.postFile = null;
       run(() => RelayMarketplace.go('/post'));
     } else if (action === 'market-post-open') { state.preferredAgent = null; state.postTaskId = null; render(); }
+  });
+  // List controls on Your work and Activity (marketplace-ui.js).
+  const pageFilters = page => page === 'work' ? RelayMarketplace.workFilters() : RelayMarketplace.activityFilters();
+  root.addEventListener('click', event => {
+    if (event.target.closest('[data-action="page-rail-toggle"]')) { state.railOpen = !state.railOpen; render(); root.querySelector('[data-action="page-rail-toggle"]')?.focus(); return; }
+    const button = event.target.closest('[data-action="page-set"], [data-action="page-filter-clear"]');
+    if (!button) return;
+    const page = button.dataset.page, f = pageFilters(page);
+    if (button.dataset.action === 'page-filter-clear') page === 'work' ? Object.assign(f, { q: '', type: 'all' }) : Object.assign(f, { who: '' });
+    else f[button.dataset.group] = button.dataset.value;
+    render();
+    root.querySelector(`[data-action="page-set"][data-group="${button.dataset.group}"][data-value="${CSS.escape(button.dataset.value || '')}"]`)?.focus();
+  });
+  root.addEventListener('change', event => {
+    const check = event.target.closest('[data-page-check], [data-page-sort]');
+    if (!check) return;
+    const page = check.dataset.pageCheck || check.dataset.pageSort, f = pageFilters(page);
+    if (check.dataset.pageCheck) f[check.dataset.group] = check.checked; else f.sort = check.value;
+    render();
+    root.querySelector(check.dataset.pageCheck ? `[data-page-check="${page}"]` : `[data-page-sort="${page}"]`)?.focus();
+  });
+  root.addEventListener('input', event => {
+    if (event.target.dataset.pageName !== 'work') return;
+    RelayMarketplace.workFilters().q = event.target.value;
+    const caret = event.target.selectionStart;
+    render();
+    const input = root.querySelector('[data-page-name="work"]'); if (input) { input.focus(); input.setSelectionRange(caret, caret); }
+  });
+  // Packages ("Hire it"): owner editing on the agent page, buyer hiring.
+  root.addEventListener('click', event => {
+    const button = event.target.closest('[data-action^="package-"]');
+    if (!button) return;
+    const action = button.dataset.action;
+    if (action === 'package-new') { state.packageForm = { id: null }; render(); root.querySelector('#package-title')?.focus(); }
+    else if (action === 'package-edit') { state.packageForm = { id: button.dataset.id }; render(); root.querySelector('#package-title')?.focus(); }
+    else if (action === 'package-cancel') { state.packageForm = null; render(); }
+    else if (action === 'package-status') run(() => RelayMarketplace.setPackageStatus(button));
+    else if (action === 'package-buy') run(() => RelayMarketplace.buyPackage(button));
+  });
+  root.addEventListener('change', event => {
+    if (!event.target.matches('[data-market-has-packages]')) return;
+    const f = RelayMarketplace.filters();
+    f.ways = event.target.checked ? [...new Set([...f.ways, 'hire'])] : f.ways.filter(way => way !== 'hire');
+    RelayMarketplace.refreshList();
   });
   root.addEventListener('input', event => {
     if (!event.target.matches('[data-market-name], #market-search-input')) return;
@@ -944,7 +1067,7 @@ setInterval(pollWorkspace,2000);
 
 function agentDraftKey(){return `relay-agent-draft:${state.account?.user.id||'visitor'}`;}
 function captureAgentDraft(form){
- const data=new FormData(form);state.agentDraft={name:data.get('name'),kind:data.get('kind'),purpose:data.get('purpose'),domain:data.get('domain'),part:state.agentIntroPart,capabilities:form.querySelectorAll('.capability-row').length?[...form.querySelectorAll('.capability-row')].map(row=>({category:row.querySelector('[name=category]').value,task:row.querySelector('[name=capability]').value,metadata:capabilityMetadata(row)})):state.agentDraft?.capabilities||[]};
+ const data=new FormData(form);state.agentDraft={name:data.get('name'),kind:data.get('kind'),purpose:data.get('purpose'),domain:data.get('domain'),part:state.agentIntroPart,capabilities:form.querySelectorAll('.capability-row').length?[...form.querySelectorAll('.capability-row')].map(row=>({categoryId:row.querySelector('[name=categoryId]')?.value||'',category:row.querySelector('[name=category]')?.value||'',task:row.querySelector('[name=capability]').value,metadata:capabilityMetadata(row)})):state.agentDraft?.capabilities||[]};
  try{sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));}catch{notice.textContent='Draft cannot be saved in this browser. Keep the page open until you save the agent.';}
  document.querySelector('#agent-preview')?.replaceChildren();const preview=document.querySelector('#agent-preview');if(preview)preview.innerHTML=agentPreview(state.agentDraft);
  const domain=form.querySelector('[name=domain]');if(domain)domain.required=data.get('kind')==='specialist';
@@ -954,7 +1077,7 @@ root.addEventListener('change',event=>{if(event.target.name==='integration'&&eve
 
 root.addEventListener('change',event=>{if(event.target.id==='registry-agent'){if(typeof RelaySupplier==='object')RelaySupplier.clear();const id=event.target.value;if(!id){state.setupAgentId=null;state.addingAgent=true;state.agentIntroPart='profile';location.hash='agent-new';}else{state.addingAgent=false;state.setupAgentId=id;state.setupStage=state.agents.find(a=>a.id===id)?.setupStage||2;location.hash=`agent=${id}&step=${state.setupStage}`;}render();}});
 
-root.addEventListener('change',event=>{if(event.target.id==='team-workspace')run(async()=>{state.tenantId=event.target.value;state.budgetAfter='';state.teamInviteLink=null;await refresh(null);render();});});
+root.addEventListener('change',event=>{if(event.target.matches?.('[data-price-range]')){const f=RelayMarketplace.filters(),v=Number(event.target.value),side=event.target.dataset.priceRange;f.price=side==='lo'?[Math.min(v,f.price[1]),f.price[1]]:[f.price[0],Math.max(v,f.price[0])];RelayMarketplace.refreshList();root.querySelector(`[data-price-range="${side}"]`)?.focus();return;}if(event.target.matches?.('[data-category-pick]')){const form=event.target.closest('form#agent');const needs=event.target.value==='other',has=!!event.target.closest('.capability-row')?.querySelector('[name=category]');if(form&&needs!==has){captureAgentDraft(form);render();}return;}if(event.target.matches?.('[data-post-kind]')){const form=event.target.form;state.postDraft={...(state.postDraft||{}),title:form.elements.title?.value||'',brief:form.elements.brief?.value||'',criteria:form.elements.criteria?.value||''};state.postKind=event.target.value;render();return;}if(event.target.matches?.('[data-check-type]')){state.checkType=event.target.value;render();return;}if(event.target.matches?.('[data-attach-role]')){state.attachRole=event.target.value;render();return;}if(event.target.matches?.('[data-connect-provider]')){state.connectProvider=event.target.value;render();return;}if(event.target.id==='team-workspace')run(async()=>{state.tenantId=event.target.value;state.budgetAfter='';state.teamInviteLink=null;await refresh(null);render();});});
 
 root.addEventListener('change', event => {
   if (event.target.form?.id === 'schedule-create') RelayRecurring.preview(event.target.form);

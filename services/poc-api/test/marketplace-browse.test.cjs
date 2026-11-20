@@ -26,7 +26,7 @@ test('the marketplace lists real agents with the evidence Relay recorded, and pa
       assert.equal(row.evidence.runs, 0);
       assert.equal(row.version, '1');
     }
-    assert.deepEqual(market.connectors, [], 'no connector is configured in this test environment');
+    assert.deepEqual(market.connectors, ['CSV upload'], 'only CSV input works in this test environment');
 
     // One accepted run moves that agent to the top of "most verified runs".
     const taskId = await f.postTask();
@@ -55,7 +55,10 @@ test('the marketplace lists real agents with the evidence Relay recorded, and pa
     assert.deepEqual(top.buyers, { total: 1, repeat: 0 });
     assert.equal(top.isNew, false);
     assert.equal(other.isNew, true);
-    assert.equal((await f.request('/api/marketplace?sort=price', f.buyer)).status, 400, 'there are no prices to sort by yet');
+    const byPrice = await f.request('/api/marketplace?sort=price', f.buyer);
+    assert.equal(byPrice.status, 200, 'packages give prices to sort by');
+    assert.ok(byPrice.body.agents.every(row => row.fromPrice === null), 'no packages here, so every agent is quoted per request');
+    assert.equal((await f.request('/api/marketplace?sort=cheapest', f.buyer)).status, 400);
     assert.equal((await f.request('/api/marketplace?sort=newest', f.buyer)).status, 200);
 
     // A builder sees their own listing marked as theirs.
@@ -75,6 +78,7 @@ test('the marketplace lists real agents with the evidence Relay recorded, and pa
       assert.match(await response.text(), /marketplace-ui\.js/);
     }
     assert.equal((await fetch(`${f.origin}/agents/not-an-id`)).status, 404);
+    assert.equal((await fetch(`${f.origin}/docs/not-a-guide`)).status, 404);
     assert.equal((await fetch(`${f.origin}/marketplace-ui.css`)).status, 200);
   } finally {
     await f.close();

@@ -27,7 +27,9 @@ function pauseForPermission(task, now) {
 
 function resumeAfterPermission(task, now) {
   const job = task.assignment;
-  if (!job.permissionWait || task.permissionRequests.some(request => request.assignmentId === job.id && ['pending', 'declined'].includes(request.status))) return;
+  // Tool permissions (workspace-apps) and system access requests (connections) both hold the wait.
+  const open = [...(task.permissionRequests || []), ...(task.accessRequests || [])];
+  if (!job.permissionWait || open.some(request => request.assignmentId === job.id && ['pending', 'declined'].includes(request.status))) return;
   if (holdThroughPermission(job)) return;
   job.queueDeadlineAt = now + 120000;
   job.deadlineAt = now + 120000 + job.permissionWait.remainingMs;

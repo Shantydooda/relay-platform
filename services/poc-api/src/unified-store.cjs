@@ -5,13 +5,18 @@ const { createSqliteRepository } = require('../../application/src/repository.cjs
 const { createApplication } = require('../../application/src/service.cjs');
 const { fail } = require('../../../packages/contracts/src/input.cjs');
 
-async function createUnifiedLocalStore({ authDb, applicationDb, repository: suppliedRepository, storage = 'sqlite', now = Date.now, localExecution = false, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, paymentRecoveryUserIds = [], autoAcceptAfterMs = null }) {
+async function createUnifiedLocalStore({ authDb, applicationDb, repository: suppliedRepository, storage = 'sqlite', now = Date.now, localExecution = false, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, connectionVault = null, connectionProviders = [], paymentRecoveryUserIds = [], autoAcceptAfterMs = null }) {
   const identity = createStore(authDb, now, { identityOnly: true });
   const repository = suppliedRepository || createSqliteRepository(applicationDb);
   await importLegacyLocalData(authDb, repository);
   async function resolveOperator(id) {
     const user = authDb.prepare('SELECT id,name FROM users WHERE id=?').get(id);
-    if (!user) fail(403, 'OPERATOR_UNAVAILABLE', 'Operator is unavailable.');
+    if (!user) {
+      // A builder organization operates its own agents (Enterprise roadmap, step 2).
+      const org = authDb.prepare('SELECT t.id,t.name FROM tenants t JOIN company_workspaces c ON c.tenant_id=t.id WHERE t.id=?').get(id);
+      if (org) return { user: { id: org.id, name: org.name }, memberships: [], organization: true };
+      fail(403, 'OPERATOR_UNAVAILABLE', 'Operator is unavailable.');
+    }
     const memberships = authDb.prepare(`SELECT m.tenant_id AS id,m.role,e.epoch AS accessEpoch,
       EXISTS(SELECT 1 FROM company_workspaces c WHERE c.tenant_id=m.tenant_id) AS company
       FROM memberships m JOIN membership_epochs e ON e.user_id=m.user_id AND e.tenant_id=m.tenant_id
@@ -20,10 +25,10 @@ async function createUnifiedLocalStore({ authDb, applicationDb, repository: supp
   }
   const { guardLocalAccess, createAccessBoundary } = require('./access-guard.cjs');
   const boundary = createAccessBoundary(repository);
-  const application = createApplication({ repository: boundary.repository, objectStore, fileScanner, now, localExecution, scopingProvider, paymentProvider, driveProvider, attioProvider, paymentRecoveryUserIds, resolveOperator, resolveActor: resolveOperator, autoAcceptAfterMs });
+  const application = createApplication({ repository: boundary.repository, objectStore, fileScanner, now, localExecution, scopingProvider, paymentProvider, driveProvider, attioProvider, connectionVault, connectionProviders, paymentRecoveryUserIds, resolveOperator, resolveActor: resolveOperator, autoAcceptAfterMs });
   const guarded = guardLocalAccess({ identity, application, repository, resolveOperator, now, boundary });
   return {
-    ...guarded, features: application.features, repository, storage,
+    ...guarded, features: { ...application.features, builderOrganizations: true }, repository, storage,
     async health() {
       authDb.prepare('SELECT 1').get();
       await repository.read(repo => repo.hasRecords());

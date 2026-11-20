@@ -33,9 +33,9 @@ test('the same state reads correctly to each side and groups by whose move it is
   const blocked = workState({ assignment: { status: 'buyer_review' }, submissions: [{ files: [{ scan: { status: 'blocked' } }] }] }, 0);
   assert.deepEqual([...view(blocked)], ['File blocked', 'Delivered · a file was blocked', 'Needs you', 'attention', 'Review delivery']);
   const working = workState({ assignment: { status: 'running', leaseUntil: 10 } }, 0);
-  assert.deepEqual([...view(working)], ['In progress', 'In progress', 'Under way', 'active', 'Open conversation']);
+  assert.deepEqual([...view(working)], ['In progress', 'In progress', 'Under way', 'active', 'View progress']);
   const done = workState({ assignment: { status: 'accepted' } }, 0);
-  assert.deepEqual([...view(done)], ['Delivery accepted', 'Accepted', 'Completed', 'complete', 'Open conversation']);
+  assert.deepEqual([...view(done)], ['Delivery accepted', 'Accepted', 'Completed', 'complete', 'View work']);
   const scheduled = workState({ status: 'posted', recurringScheduleId: 's', offers: [] }, 0);
   assert.equal(view(scheduled)[2], 'Under way', 'a recurring parent is not "needs you"');
 });

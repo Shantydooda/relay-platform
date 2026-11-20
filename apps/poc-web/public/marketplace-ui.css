@@ -39,7 +39,7 @@ html[data-appearance='dark'] body.market-open {
 body.market-open .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 /* Shell: a top bar replaces the sidebar for buyers. */
-body.market-open .workspace-content.buyer-workspace.mk-shell {
+body.market-open .workspace-content.mk-shell {
   margin: 0;
   min-height: calc(100dvh - 65px);
   border: 0;
@@ -210,13 +210,139 @@ html[data-appearance] body.market-open #app .mk-link-button:hover { text-decorat
 .mk-prose li, .mk-prose p { line-height: 1.65; }
 .mk-prose .mk-primary { margin-top: 24px; }
 
+/* Your work and Activity: Hugging Face's community list and profile timeline.
+   Docs: guides · prose · on this page. Same tokens as the Agents page. */
+.mk-rail-toggle { display: none; }
+.mk-meta .mk-handle { font-size: 13px; font-weight: 500; }
+.mk-cols { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 0 40px; max-width: 1320px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 48px) 64px; box-sizing: border-box; }
+.mk-cols > .mk-results { padding: 0; }
+.mk-side { font-size: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+html[data-appearance] body.market-open #app .mk-side-button { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: var(--mk-text) !important; text-decoration: none; background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 9px; padding: 9px 14px; box-shadow: var(--mk-shadow); }
+html[data-appearance] body.market-open #app .mk-side-button:hover { border-color: var(--mk-muted); }
+html[data-appearance] body.market-open #app .mk-side-primary { color: var(--mk-accent) !important; background: var(--mk-accent-soft); border-color: transparent; }
+.mk-side-note { margin: 4px 0 0; color: var(--mk-muted); font-size: 13px; line-height: 1.5; }
+.mk-side-note strong { color: var(--mk-text); }
+.mk-side h2 { font-size: 15px; font-weight: 600; color: var(--mk-text); margin: 22px 0 2px; }
+.mk-side-links { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+html[data-appearance] body.market-open #app .mk-side-links a { color: var(--mk-text); text-decoration: none; }
+html[data-appearance] body.market-open #app .mk-side-links a::before { content: '↗'; color: var(--mk-muted); margin-right: 8px; font-size: 12px; }
+html[data-appearance] body.market-open #app .mk-side-links a:hover { text-decoration: underline !important; }
+.mk-page-head { margin-bottom: 16px; }
+.mk-page-head h1 { margin: 0; font-size: 24px; font-weight: 600; color: var(--mk-text); }
+.mk-listbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 16px; }
+.mk-listbar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-left: auto; }
+.mk-listbar .mk-filter-name input { width: 240px; padding: 7px 14px; }
+.mk-segments { display: inline-flex; gap: 4px; }
+html[data-appearance] body.market-open #app .mk-segments button { font: inherit; font-size: 14px; color: var(--mk-muted); background: none; border: 0; border-radius: 8px; padding: 6px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+html[data-appearance] body.market-open #app .mk-segments button:hover { color: var(--mk-text); background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-segments button[aria-pressed='true'] { color: var(--mk-on-ink); background: var(--mk-ink); font-weight: 600; }
+html[data-appearance] body.market-open #app .mk-segments button[aria-pressed='true'] .mk-chip-count { color: inherit; opacity: 0.75; }
+.mk-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mk-muted); border: 1px solid var(--mk-border); border-radius: 8px; padding: 0 0 0 10px; }
+.mk-sort select { font: inherit; font-size: 13px; color: var(--mk-text); background: transparent; border: 0; padding: 6px 8px 6px 0; cursor: pointer; }
+.mk-threads { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.mk-thread { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: stretch; color: var(--mk-text) !important; text-decoration: none !important; border: 1px solid var(--mk-row-border); border-radius: 10px; overflow: hidden; background: var(--mk-bg); }
+.mk-thread:hover { border-color: var(--mk-border); box-shadow: 0 2px 8px rgba(16, 24, 40, 0.08); }
+.mk-thread:focus-visible { outline: 2px solid var(--mk-accent); outline-offset: 2px; }
+.mk-thread-icon { display: grid; place-items: center; background: var(--mk-rail); color: var(--mk-muted); }
+.mk-thread-icon svg { width: 20px; height: 20px; }
+.mk-thread-attention .mk-thread-icon { color: #b54708; background: #fff4e5; }
+.mk-thread-active .mk-thread-icon { color: var(--mk-accent); background: var(--mk-accent-soft); }
+.mk-thread-complete .mk-thread-icon { color: var(--mk-good); }
+html[data-appearance='dark'] body.market-open .mk-thread-attention .mk-thread-icon { color: #f5b971; background: rgba(245, 185, 113, 0.12); }
+.mk-thread-body { display: grid; gap: 4px; padding: 13px 16px; min-width: 0; }
+.mk-thread .mk-next { align-self: center; padding: 0 16px; }
+.mk-next { font-size: 13px; font-weight: 600; color: var(--mk-accent); white-space: nowrap; }
+.mk-work-title { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mk-tone-attention { color: #b54708; background: #fff4e5; }
+.mk-tone-active { color: var(--mk-accent); background: var(--mk-accent-soft); }
+.mk-tone-complete { color: var(--mk-good); background: transparent; border: 1px solid currentColor; }
+.mk-tone-none { color: var(--mk-muted); background: var(--mk-rail); }
+html[data-appearance='dark'] body.market-open .mk-tone-attention { color: #f5b971; background: rgba(245, 185, 113, 0.12); }
+.mk-actor-you { color: var(--mk-text); background: var(--mk-rail); border: 1px solid var(--mk-border); }
+.mk-actor-agent { color: var(--mk-accent); background: var(--mk-accent-soft); }
+.mk-actor-relay, .mk-actor-workspace { color: var(--mk-muted); background: var(--mk-rail); }
+.mk-chip-count { font-size: 12px; color: var(--mk-muted); }
+.mk-day { margin-top: 24px; max-width: 860px; }
+.mk-day:first-of-type { margin-top: 0; }
+.mk-day h2 { font-size: 13px; font-weight: 600; color: var(--mk-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 8px; }
+.mk-timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.mk-timeline::before { content: ''; position: absolute; left: 11px; top: 6px; bottom: 6px; width: 1px; background: var(--mk-border); }
+.mk-tl-item { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 7px 0; }
+.mk-tl-dot { position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; font-weight: 700; box-sizing: border-box; }
+.mk-tl-text { margin: 0; font-size: 14px; line-height: 24px; color: var(--mk-text); display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; min-width: 0; }
+.mk-tl-who { font-weight: 600; }
+.mk-tl-on { color: var(--mk-muted); }
+html[data-appearance] body.market-open #app .mk-tl-on a { color: var(--mk-text); font-family: var(--mk-mono); font-size: 13px; }
+.mk-tl-text time { color: var(--mk-muted); font-size: 13px; margin-left: auto; }
+.mk-format { display: block; font-family: var(--mk-mono); font-size: 13px; color: var(--mk-muted); background: var(--mk-rail); border: 1px solid var(--mk-row-border); border-radius: 8px; padding: 10px 12px; margin: 8px 0 0; white-space: pre-wrap; }
+.mk-docs { display: grid; grid-template-columns: 240px minmax(0, 760px) 220px; gap: 0 48px; justify-content: center; max-width: 1320px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 48px) 64px; box-sizing: border-box; color: var(--mk-text); }
+.mk-docs-nav, .mk-docs-toc { position: sticky; top: 96px; align-self: start; font-size: 14px; }
+.mk-docs-nav h2, .mk-docs-toc h2 { font-size: 13px; font-weight: 600; color: var(--mk-muted); margin: 0 0 10px; }
+.mk-docs-nav ul, .mk-docs-toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+html[data-appearance] body.market-open #app .mk-docs-nav a { display: block; color: var(--mk-text); text-decoration: none; padding: 6px 10px; border-radius: 8px; }
+html[data-appearance] body.market-open #app .mk-docs-nav a:hover { background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-docs-nav a[aria-current='page'] { color: var(--mk-on-ink); background: var(--mk-ink); font-weight: 600; }
+.mk-docs-toc ul { border-left: 1px solid var(--mk-border); }
+html[data-appearance] body.market-open #app .mk-docs-toc a { display: block; color: var(--mk-muted); text-decoration: none; padding: 4px 12px; }
+html[data-appearance] body.market-open #app .mk-docs-toc a:hover { color: var(--mk-text); }
+.mk-docs-body h1 { font-size: 30px; font-weight: 700; margin: 0 0 10px; color: var(--mk-text); }
+.mk-docs-body .mk-lead { font-size: 17px; color: var(--mk-muted); margin: 0 0 8px; line-height: 1.6; }
+.mk-docs-body section { scroll-margin-top: 96px; }
+.mk-docs-body h2 { font-size: 21px; font-weight: 600; margin: 32px 0 10px; color: var(--mk-text); }
+.mk-docs-body p, .mk-docs-body li { font-size: 15px; line-height: 1.75; }
+.mk-docs-body p { margin: 0 0 12px; }
+.mk-docs-body ul { padding-left: 22px; margin: 0 0 12px; }
+.mk-docs-foot { margin-top: 36px !important; padding-top: 24px; border-top: 1px solid var(--mk-border); }
+
+/* Packages ("Hire it"): fixed terms on the agent page and in the buying panel. */
+.mk-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mk-packages { display: grid; gap: 14px; margin-top: 14px; }
+.mk-package { border: 1px solid var(--mk-border); border-radius: 12px; padding: 18px 20px; background: var(--mk-bg); box-shadow: var(--mk-shadow); }
+.mk-package header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.mk-package h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--mk-text); }
+.mk-package h4 { margin: 14px 0 0; font-size: 13px; font-weight: 600; color: var(--mk-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.mk-package > p { margin: 8px 0 0; color: var(--mk-text); }
+.mk-terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 18px; margin: 14px 0 0; }
+.mk-terms div { min-width: 0; }
+.mk-terms dt { font-size: 12px; color: var(--mk-muted); }
+.mk-terms dd { margin: 2px 0 0; font-size: 14px; color: var(--mk-text); }
+.mk-package-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+html[data-appearance] body.market-open #app .mk-package-actions button:not(.mk-primary) { font: inherit; font-size: 14px; font-weight: 600; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 9px; padding: 9px 14px; cursor: pointer; }
+.mk-package > .mk-primary { margin-top: 16px; }
+.mk-package-form { border: 1px solid var(--mk-border); border-radius: 12px; padding: 18px 20px; margin: 14px 0 0; background: var(--mk-rail); }
+.mk-package-form h3 { margin: 0; font-size: 17px; }
+.mk-package-form select { box-sizing: border-box; width: 100%; font: inherit; font-size: 15px; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 10px; padding: 10px 12px; }
+.mk-form-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.mk-buy-packages { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 8px; }
+.mk-buy-packages li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mk-buy-packages span { display: grid; min-width: 0; font-size: 14px; }
+.mk-buy-packages small { color: var(--mk-muted); font-size: 12px; }
+html[data-appearance] body.market-open #app .mk-buy-packages button { flex: none; font: inherit; font-size: 14px; font-weight: 600; color: #ffffff; background: #3b4fd8; border: 0; border-radius: 9px; padding: 8px 12px; cursor: pointer; }
+html[data-appearance] body.market-open #app .mk-buy-packages button:hover { background: #2a3bb0; }
+
 @media (max-width: 1100px) {
+  .mk-docs { grid-template-columns: 220px minmax(0, 1fr); }
+  .mk-docs-toc { display: none; }
   .mk-browse { grid-template-columns: 280px minmax(0, 1fr); }
   .mk-list { grid-template-columns: minmax(0, 1fr); }
   .mk-agent-layout { grid-template-columns: minmax(0, 1fr); }
   .mk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
+  .mk-form-row { grid-template-columns: 1fr; }
+  html[data-appearance] body.market-open #app .mk-rail-toggle { display: flex; align-items: center; justify-content: center; margin: 16px 16px 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  .mk-rail:not(.mk-rail-open) { display: none; }
+  .mk-browse { align-content: start; }
+  .mk-cols, .mk-docs { grid-template-columns: minmax(0, 1fr); padding: 20px 16px 48px; }
+  .mk-side { flex-direction: row; flex-wrap: wrap; margin-bottom: 20px; }
+  .mk-side h2, .mk-side-links, .mk-side-note { display: none; }
+  .mk-listbar-end { margin-left: 0; }
+  .mk-listbar .mk-filter-name, .mk-listbar .mk-filter-name input { width: 100%; }
+  .mk-thread { grid-template-columns: 44px minmax(0, 1fr); }
+  .mk-thread .mk-next { grid-column: 2; padding: 0 16px 12px; }
+  .mk-tl-text time { margin-left: 0; }
+  .mk-docs-nav { position: static; margin-bottom: 20px; }
+  .mk-docs-nav ul { display: flex; flex-wrap: wrap; gap: 4px; }
   .mk-topbar { position: static; flex-wrap: wrap; gap: 12px 16px; padding: 12px 16px; }
   .mk-brand { order: 1; }
   .mk-account { order: 2; }
@@ -236,4 +362,297 @@ html[data-appearance] body.market-open #app .mk-link-button:hover { text-decorat
   .mk-strip { grid-template-columns: minmax(0, 1fr); }
   .mk-io { grid-template-columns: minmax(0, 1fr); }
   .mk-post-card .mk-primary { width: 100%; text-align: center; }
+}
+
+/* Hired package card on the task page */
+.selected-agreement .package-title { display: block; margin-top: 4px; font-size: 18px; }
+
+/* ---- Organizations, projects and Enterprise (docs/specs/Enterprise-and-Projects.md) ---- */
+.mk-org-avatar { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--mk-ink); color: var(--mk-on-ink); font-weight: 700; font-size: 15px; flex: none; }
+.mk-org-avatar-sm { width: 24px; height: 24px; font-size: 12px; border-radius: 6px; }
+.mk-org-head .mk-agent-title h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mk-org-head .mk-agent-title h1 .mk-tag { font-family: inherit; font-size: 12px; }
+.mk-org-head h1 a { color: var(--mk-muted); text-decoration: none; }
+.mk-org-head h1 a:hover { color: var(--mk-text); text-decoration: underline; }
+html[data-appearance] body.market-open #app .mk-tabs a { font-size: 15px; color: var(--mk-muted); text-decoration: none; border-bottom: 2px solid transparent; padding: 10px 2px 12px; }
+html[data-appearance] body.market-open #app .mk-tabs a[aria-current='page'] { color: var(--mk-text); font-weight: 600; border-bottom-color: var(--mk-text); }
+.mk-org-body { margin-top: 24px; }
+.mk-h1 { margin: 0; font-size: 22px; font-weight: 600; color: var(--mk-text); }
+.mk-buy-box .mk-org-big, .mk-org-big { margin: 4px 0 0; font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mk-budgetbar { display: block; appearance: none; -webkit-appearance: none; width: 100%; max-width: 360px; height: 6px; margin-top: 8px; border: 0; border-radius: 3px; background: var(--mk-rail); overflow: hidden; }
+.mk-budgetbar::-webkit-progress-bar { background: var(--mk-row-border); border-radius: 3px; }
+.mk-budgetbar::-webkit-progress-value { background: var(--mk-accent); border-radius: 3px; }
+.mk-budgetbar::-moz-progress-bar { background: var(--mk-accent); border-radius: 3px; }
+.mk-thread-muted { opacity: 0.7; }
+.mk-panel { border: 1px solid var(--mk-border); border-radius: 12px; padding: 4px 20px 20px; margin: 0 0 20px; background: var(--mk-bg); }
+.mk-panel h3 { margin: 16px 0 0; font-size: 17px; }
+.mk-form select { box-sizing: border-box; width: 100%; font: inherit; font-size: 15px; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 10px; padding: 9px 12px; }
+.mk-fieldset { border: 1px solid var(--mk-border); border-radius: 10px; margin: 12px 0 0; padding: 8px 14px 12px; display: grid; gap: 4px; }
+.mk-fieldset legend { font-size: 14px; font-weight: 600; padding: 0 4px; }
+.mk-fieldset .mk-check { font-weight: 400; margin: 0; display: flex; gap: 8px; align-items: center; }
+.mk-fieldset .mk-check input { width: auto; }
+.mk-form > .mk-check { font-weight: 400; display: flex; gap: 8px; align-items: center; }
+.mk-form > .mk-check input { width: auto; }
+.mk-project-item { border-bottom: 1px solid var(--mk-row-border); }
+.mk-project-item > .mk-thread { border-bottom: 0; }
+.mk-approval { padding: 0 16px 14px 72px; }
+.mk-approval-line { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
+.mk-approval-form { max-width: 520px; margin-top: 8px; }
+.mk-member-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.mk-member-list li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--mk-row-border); }
+.mk-menu-label { display: block; margin: 10px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--mk-muted); }
+.mk-menu-panel > a { display: block; padding: 6px 0; color: var(--mk-text); text-decoration: none; }
+.mk-enterprise { max-width: 1040px; }
+.mk-enterprise-hero { padding: 24px 0 8px; }
+.mk-enterprise-hero h1 { margin: 6px 0 0; font-size: 34px; line-height: 1.15; max-width: 760px; }
+.mk-eyebrow { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--mk-accent); }
+.mk-plan-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.mk-plan-cards article { border: 1px solid var(--mk-border); border-radius: 12px; padding: 16px 18px; background: var(--mk-rail); }
+.mk-plan-cards h3 { margin: 0 0 6px; font-size: 16px; }
+.mk-plan-cards p { margin: 0; color: var(--mk-muted); font-size: 14px; line-height: 1.5; }
+.mk-plan-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.mk-plan-table th, .mk-plan-table td { padding: 10px 12px; border-bottom: 1px solid var(--mk-row-border); text-align: center; }
+.mk-plan-table th[scope='row'] { text-align: left; font-weight: 400; }
+.mk-plan-table thead th { font-size: 15px; border-bottom: 2px solid var(--mk-border); }
+.mk-plan-table thead th:first-child { text-align: left; }
+.mk-plan-live { color: var(--mk-good); font-weight: 700; }
+.mk-plan-planned { color: var(--mk-muted); font-style: italic; }
+.mk-plan-none { color: var(--mk-muted); }
+@media (max-width: 760px) {
+  .mk-plan-cards { grid-template-columns: 1fr; }
+  .mk-enterprise-hero h1 { font-size: 26px; }
+  .mk-plan-table th, .mk-plan-table td { padding: 8px 4px; font-size: 13px; }
+  .mk-approval { padding: 0 0 14px; }
+  .mk-org-head .mk-tabs { overflow-x: auto; }
+}
+
+/* ---- Request page: a commission laid out like a discussion page, not a chat ---- */
+.mk-crumbs { font-family: var(--mk-mono); font-size: 14px; color: var(--mk-muted); margin-bottom: 10px; }
+.mk-crumbs a { color: var(--mk-muted); text-decoration: none; }
+.mk-crumbs a:hover { color: var(--mk-text); text-decoration: underline; }
+.mk-agent-title h1.mk-request-title { font-family: inherit; font-weight: 600; font-size: 26px; }
+.mk-req-desc { border: 1px solid var(--mk-border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+.mk-req-desc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; background: var(--mk-rail); border-bottom: 1px solid var(--mk-border); font-size: 14px; }
+.mk-req-desc-head .mk-link-button { margin-left: auto; }
+.mk-req-desc-body { padding: 14px 16px 16px; }
+.mk-brief { margin: 0 0 12px; white-space: pre-wrap; line-height: 1.55; overflow-wrap: anywhere; }
+.mk-offer-list { display: grid; gap: 12px; margin-bottom: 8px; }
+.mk-request-main .mk-section { margin-bottom: 28px; }
+.mk-request-main .mk-section h2 { display: flex; align-items: baseline; gap: 8px; }
+.mk-empty-inline { padding: 18px; text-align: left; border: 1px dashed var(--mk-border); border-radius: 12px; }
+.mk-empty-inline h3 { margin: 0 0 4px; font-size: 16px; }
+.mk-empty-inline p { margin: 0; }
+/* Reused cards drop their old chat framing here. */
+.mk-request .thread-speaker { display: none; }
+.mk-request .thread-message { background: none; border: 0; box-shadow: none; padding: 0; margin: 0; max-width: none; }
+.mk-request .scope-recap, .mk-request .panel { border: 1px solid var(--mk-border); border-radius: 12px; padding: 16px; margin: 0 0 20px; background: var(--mk-bg); box-shadow: none; }
+.mk-request .scope-recap .eyebrow, .mk-request .panel .eyebrow { color: var(--mk-muted); }
+.mk-comment { border: 1px solid var(--mk-border); border-radius: 12px; margin: 0 0 12px; overflow: hidden; }
+.mk-comment header { display: flex; gap: 8px; align-items: baseline; padding: 8px 14px; background: var(--mk-rail); border-bottom: 1px solid var(--mk-border); font-size: 14px; }
+.mk-comment p { margin: 0; padding: 12px 14px; }
+.mk-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 8px 0 0; font-size: 14px; }
+.mk-facts dt { color: var(--mk-muted); }
+.mk-facts dd { margin: 0; }
+html[data-appearance] body.market-open #app .mk-danger { color: #c4320a; }
+html[data-appearance='dark'] body.market-open #app .mk-danger { color: #f97066; }
+.mk-next-step strong { font-size: 16px; }
+
+/* ---- Connected systems and access requests ---- */
+.mk-connection-name { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.mk-connection-list li { flex-wrap: wrap; }
+.mk-inline-confirm { font-size: 14px; }
+.mk-bullets { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px; line-height: 1.5; }
+/* Organization tabs without a side column get the same page gutter. */
+.mk-org-body > :not(.mk-cols) { max-width: 1100px; margin-left: auto; margin-right: auto; padding: 28px clamp(16px, 4vw, 48px) 0; box-sizing: border-box; }
+.mk-org-body > :last-child:not(.mk-cols) { padding-bottom: 64px; }
+
+/* ---- ERP intake readiness ---- */
+.mk-readiness { border: 1px solid var(--mk-border); border-left: 3px solid #b54708; border-radius: 10px; padding: 12px 16px; margin: 16px 0; background: var(--mk-rail); display: grid; gap: 8px; justify-items: start; }
+.mk-readiness.mk-ready { border-left-color: var(--mk-good); }
+.mk-readiness .mk-bullets { margin: 0; }
+.mk-kind { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+
+/* ---- Automatic check results ---- */
+.mk-check-results { list-style: none; margin: 12px 0 0; padding: 0; border: 1px solid var(--mk-border); border-radius: 10px; overflow: hidden; }
+.mk-check-results > li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--mk-row-border); font-size: 14px; }
+.mk-check-results > li:last-child { border-bottom: 0; }
+.mk-check-mark { font-weight: 700; text-align: center; }
+.mk-check-pass .mk-check-mark { color: var(--mk-good); }
+.mk-check-fail .mk-check-mark { color: #c4320a; }
+.mk-check-error .mk-check-mark { color: #b54708; }
+
+/* ---- Category rail: fields as headings, tasks as chips ---- */
+.mk-category-field { margin: 0 0 12px; }
+.mk-category-field h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.mk-category-field h3 .mk-chip { font-weight: 600; }
+.mk-seed { font-size: 11px; font-weight: 500; color: var(--mk-accent); margin-left: 4px; }
+
+/* ---- Price range: two handles over fixed stops ---- */
+.mk-price-head { display: flex; align-items: center; justify-content: space-between; }
+.mk-price-head h2 { margin: 0; }
+.mk-reset { padding: 3px 10px; font-size: 13px; }
+.mk-price-stops { display: flex; justify-content: space-between; font-size: 11px; gap: 2px; color: var(--mk-muted); margin-top: 12px; }
+.mk-price-stops span { padding: 2px 3px; white-space: nowrap; border-radius: 5px; }
+.mk-price-stops .mk-price-on { background: var(--mk-ink); color: var(--mk-on-ink); }
+.mk-price-track { position: relative; height: 22px; margin: 6px 7px 0; }
+.mk-price-bar { position: absolute; left: 0; right: 0; top: 9px; height: 3px; display: flex; background: var(--mk-border); border-radius: 2px; }
+.mk-price-bar span { flex: 1; }
+.mk-price-bar .mk-price-fill { background: var(--mk-ink); }
+.mk-price-track input[type=range] { position: absolute; left: -7px; right: -7px; width: calc(100% + 14px); top: 0; height: 22px; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.mk-price-track input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 22px; }
+.mk-price-track input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; background: var(--mk-ink); border: 2px solid var(--mk-bg); cursor: pointer; }
+.mk-price-track input[type=range]::-moz-range-track { background: transparent; }
+.mk-price-track input[type=range]::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border-radius: 50%; background: var(--mk-ink); border: 2px solid var(--mk-bg); cursor: pointer; }
+.mk-price-track input[type=range]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--mk-accent); outline-offset: 2px; }
+
+.mk-builder-agents { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 13px; }
+.mk-builder-agents a { color: var(--mk-accent); text-decoration: none; }
+.mk-builder-agents a:hover { text-decoration: underline; }
+/* Global input styles paint range inputs as boxes; undo them for the price handles. */
+html[data-appearance] body.market-open #app .mk-price-track input[type=range] { background: transparent; border: 0; padding: 0; box-shadow: none; border-radius: 0; min-height: 0; outline: none; }
+.mk-price { margin-top: 28px; }
+/* Phones: the main nav scrolls sideways on one line instead of wrapping. */
+@media (max-width: 760px) {
+  html[data-appearance] body.market-open #app .mk-nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+  html[data-appearance] body.market-open #app .mk-nav::-webkit-scrollbar { display: none; }
+}
+
+/* Build area: a builder's own pages, left menu like Hugging Face's settings. */
+/* ---- Build: a builder's pages, in the same look as the buyer pages ----------
+   Left menu like the browse rail; the main column uses the browse heading, cards,
+   list rows and stat strip. Older workspace parts shown inside Build (agent setup,
+   project details, earnings) are flattened to the same cards, buttons and fields. */
+body.market-open .workspace-content.mk-shell > .canvas:has(.mk-build) { max-width: none; padding: 0; }
+.mk-build { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100dvh - 65px); }
+.mk-build.mk-build-first { grid-template-columns: minmax(0, 1fr); }
+.mk-build-nav { display: flex; flex-direction: column; gap: 2px; padding: 28px 20px; border-right: 1px solid var(--mk-border); background: var(--mk-rail); font-size: 15px; }
+.mk-build-who { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; padding: 0 8px; }
+.mk-build-who .mk-handle { font-size: 14px; }
+html[data-appearance] body.market-open #app .mk-build-nav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 8px; color: var(--mk-muted); text-decoration: none; }
+html[data-appearance] body.market-open #app .mk-build-nav a:hover { color: var(--mk-text); background: var(--mk-bg); }
+html[data-appearance] body.market-open #app .mk-build-nav a.active { background: var(--mk-ink); color: var(--mk-on-ink); font-weight: 600; }
+html[data-appearance] body.market-open #app .mk-build-nav a.active .mk-count { color: inherit; opacity: 0.75; }
+.mk-build-main { min-width: 0; max-width: 1180px; padding: 32px; box-sizing: border-box; }
+.mk-build-main .market-workspace { padding: 0; max-width: none; }
+.mk-build-head { justify-content: space-between; align-items: flex-start; }
+.mk-build-head .mk-caption { margin-top: 4px; font-size: 13px; }
+.mk-build-caption { margin: -8px 0 16px; }
+.mk-build-strip { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+html[data-appearance] body.market-open #app .mk-build-strip a.mk-stat { color: var(--mk-text); text-decoration: none; background: var(--mk-bg); }
+html[data-appearance] body.market-open #app .mk-build-strip a.mk-stat:hover { border-color: var(--mk-muted); }
+.mk-build-section { margin-top: 32px; }
+.mk-build-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.mk-build-section-head h2 { margin: 0; font-size: 18px; }
+.mk-build-section .mk-empty-note { margin: 0; }
+html[data-appearance] body.market-open #app .mk-build :is(.mk-next, .mk-publish) { text-decoration: none; }
+.mk-thread-muted { opacity: 0.7; }
+
+/* Agents: the browse card plus owner actions. */
+.mk-build-card { display: flex; flex-direction: column; }
+.mk-build-card .mk-status { margin-left: auto; }
+.mk-build-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: auto; padding-top: 14px; }
+html[data-appearance] body.market-open #app .mk-build-actions .mk-chip { padding: 5px 12px; font-size: 13px; font-weight: 600; }
+.mk-build-note { flex-basis: 100%; font-size: 12px; color: var(--mk-muted); }
+.mk-status { flex: none; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--mk-border); color: var(--mk-muted); white-space: nowrap; }
+.mk-status-live { color: var(--mk-good); border-color: currentColor; }
+.mk-status-ready { color: var(--mk-accent); border-color: currentColor; }
+
+/* Opportunities and projects: list rows that open in place. */
+.mk-build-opportunity .mk-thread { grid-template-columns: 56px minmax(0, 1fr); }
+.mk-build-checklist, .mk-build-offer-form { display: block; margin-top: 8px; font-size: 13px; }
+.mk-build-checklist :is(strong, h3, h4) { font-size: 13px; }
+.mk-build-checklist ul { margin: 4px 0; padding-left: 18px; color: var(--mk-text); }
+.mk-build-offer-form details { border-top: 1px solid var(--mk-row-border); padding-top: 10px; margin-top: 4px; }
+.mk-build-offer-form summary, .mk-build-main details > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--mk-accent); }
+.mk-build-project { border-radius: 12px; }
+.mk-build-main details.mk-build-project > summary { list-style: none; display: block; color: var(--mk-text); font-weight: 400; font-size: inherit; }
+.mk-build-project > summary::-webkit-details-marker { display: none; }
+.mk-build-project[open] > summary .mk-thread { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.mk-build-project > :not(summary) { margin: 0 !important; border: 1px solid var(--mk-row-border) !important; border-top: 0 !important; border-radius: 0 0 12px 12px !important; padding: 16px 18px 18px 72px !important; }
+.mk-build-steps { margin: 0 0 12px; padding-left: 20px; line-height: 1.8; font-size: 14px; }
+
+/* The Build header already names the page; the old setup hero and agent picker repeat it. */
+.mk-build-main :is(.supplier-intro, .registry-toolbar) { display: none; }
+.mk-build-title { font-size: 24px; font-weight: 600; }
+
+/* Older workspace parts inside Build, flattened to the marketplace look. */
+html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-form, .readiness, .offer-card, .business-card, .delivery-submission, .delivery-file, .blocked-note, .registry-toolbar, .delivery-placeholder) {
+  color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-row-border); border-radius: 12px; padding: 16px 18px; box-shadow: none; transform: none; }
+html[data-appearance] body.market-open #app .mk-build-main :is(.blocked-note, .delivery-placeholder) { background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-build-main .panel .panel { background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards label { background: var(--mk-bg); border: 1px solid var(--mk-row-border); border-radius: 12px; color: var(--mk-text); box-shadow: none; }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards label:has(input:checked) { border-color: var(--mk-ink); background: var(--mk-rail); }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards :is(strong, small) { color: inherit; }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards small { color: var(--mk-muted); }
+html[data-appearance] body.market-open #app .mk-build-main :is(h2, h3) { color: var(--mk-text); letter-spacing: 0; }
+html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-form, .readiness) h2 { font-size: 18px; font-weight: 600; margin: 4px 0 8px; }
+html[data-appearance] body.market-open #app .mk-build-main :is(.panel, .market-form, .readiness) h3 { font-size: 15px; font-weight: 600; }
+html[data-appearance] body.market-open #app .mk-build-main :is(p, .hint, small, li) { font-size: 14px; line-height: 1.55; }
+html[data-appearance] body.market-open #app .mk-build-main :is(.hint, small, .muted, .eyebrow) { color: var(--mk-muted); }
+html[data-appearance] body.market-open #app .mk-build-main .eyebrow { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+html[data-appearance] body.market-open #app .mk-build-main .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--mk-border); background: transparent; color: var(--mk-muted); }
+html[data-appearance] body.market-open #app .mk-build-main button:not([class*='mk-']) { font: inherit; font-size: 13px; font-weight: 600; min-height: 0; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 8px; padding: 6px 12px; box-shadow: none; cursor: pointer; }
+html[data-appearance] body.market-open #app .mk-build-main button:not([class*='mk-']):hover { border-color: var(--mk-muted); background: var(--mk-bg); }
+html[data-appearance] body.market-open #app .mk-build-main button.primary { color: var(--mk-on-ink); background: var(--mk-ink); border-color: var(--mk-ink); }
+html[data-appearance] body.market-open #app .mk-build-main button.primary:hover { color: var(--mk-on-ink); background: var(--mk-ink); opacity: 0.88; }
+html[data-appearance] body.market-open #app .mk-build-main button.quiet { border-color: transparent; background: transparent; color: var(--mk-accent); padding-inline: 0; }
+html[data-appearance] body.market-open #app .mk-build-main :is(input:not([type='radio']):not([type='checkbox']), select, textarea) { font: inherit; font-size: 14px; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 9px; padding: 8px 11px; box-shadow: none; }
+html[data-appearance] body.market-open #app .mk-build-main :is(input, select, textarea):focus { outline: 2px solid var(--mk-accent); outline-offset: 1px; }
+html[data-appearance] body.market-open #app .mk-build-main label { font-size: 13px; font-weight: 600; color: var(--mk-text); }
+html[data-appearance] body.market-open #app .mk-build-main .dashboard-stats > * { border-radius: 12px; padding: 14px 16px; }
+html[data-appearance] body.market-open #app .mk-build-main .dashboard-stats strong { font-size: 22px; font-weight: 600; }
+html[data-appearance] body.market-open #app .mk-build-main .setup-steps { display: flex; flex-wrap: wrap; gap: 4px 28px; margin: 8px 0 20px; border-bottom: 1px solid var(--mk-border); }
+html[data-appearance] body.market-open #app .mk-build-main .setup-steps :is(button, span) { font-size: 15px; font-weight: 400; color: var(--mk-muted); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 2px 12px; }
+html[data-appearance] body.market-open #app .mk-build-main .setup-steps :is(button[aria-current='step'], span.active) { color: var(--mk-text); font-weight: 600; border-bottom-color: var(--mk-text); }
+html[data-appearance] body.market-open #app .mk-build-main .setup-steps small { font-size: 12px; color: var(--mk-muted); margin-right: 4px; }
+
+@media (max-width: 760px) {
+  .mk-build { grid-template-columns: 1fr; grid-template-rows: auto 1fr; min-height: 0; }
+  .mk-build-nav { flex-direction: row; align-items: center; overflow-x: auto; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--mk-border); scrollbar-width: none; }
+  .mk-build-who { display: none; }
+  html[data-appearance] body.market-open #app .mk-build-nav a { white-space: nowrap; padding: 7px 12px; }
+  .mk-build-main { padding: 20px 16px 48px; }
+  .mk-build-head { flex-direction: column; }
+  .mk-build-opportunity .mk-thread { grid-template-columns: 44px minmax(0, 1fr); }
+  .mk-build-project > :not(summary) { padding: 14px 16px !important; }
+}
+
+/* ---- One agent's management page: tabs, setup checklist ------------------- */
+html[data-appearance] body.market-open #app .mk-build-tabs { margin: 0 0 24px; border-bottom: 1px solid var(--mk-border); flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-tabs button { white-space: nowrap; margin-bottom: -1px; font-size: 15px; font-weight: 400; color: var(--mk-muted); background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 2px 12px; }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-tabs button[aria-current='page'] { color: var(--mk-text); font-weight: 600; border-bottom-color: var(--mk-text); }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-tabs button:hover { color: var(--mk-text); background: none; }
+.mk-build-tab > .mk-section:first-child, .mk-build-tab > .panel:first-child { margin-top: 0; }
+.mk-build-setup { list-style: none; margin: 0; padding: 0; border: 1px solid var(--mk-row-border); border-radius: 12px; }
+.mk-build-setup li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 18px; border-top: 1px solid var(--mk-row-border); }
+.mk-build-setup li:first-child { border-top: 0; }
+.mk-build-setup li span:nth-child(2) { display: grid; gap: 2px; }
+.mk-build-setup small { color: var(--mk-muted); font-size: 13px; }
+.mk-build-tick { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--mk-border); display: grid; place-items: center; font-size: 13px; color: var(--mk-on-ink); }
+.mk-build-setup li.is-done .mk-build-tick { background: var(--mk-good); border-color: var(--mk-good); }
+.mk-build-setup li.is-next .mk-build-tick { border-color: var(--mk-ink); }
+.mk-build-setup li.is-done strong { color: var(--mk-muted); font-weight: 500; }
+.mk-build-past { margin-top: 12px; }
+html[data-appearance] body.market-open #app .mk-build-past > summary { cursor: pointer; color: var(--mk-muted); font-size: 14px; padding: 6px 0; }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-scope { border: 0; padding: 0; margin: 14px 0; display: grid; gap: 8px; }
+html[data-appearance] body.market-open #app .mk-build-main .mk-build-scope legend { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+@media (max-width: 760px) {
+  .mk-build-setup li { grid-template-columns: 24px minmax(0, 1fr); }
+  .mk-build-setup li button { grid-column: 2; justify-self: start; }
+}
+
+/* Builder organizations: "Building as" you or an organization you can publish for. */
+html[data-appearance] body.market-open #app .mk-build-as { margin: 0 0 18px; padding: 0 8px; }
+html[data-appearance] body.market-open #app .mk-build-first .mk-build-as { padding: 0; }
+html[data-appearance] body.market-open #app .mk-build-as ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+html[data-appearance] body.market-open #app .mk-build-first .mk-build-as ul { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+html[data-appearance] body.market-open #app .mk-build-as button { width: 100%; text-align: left; font-size: 14px; font-weight: 400; color: var(--mk-muted); background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; }
+html[data-appearance] body.market-open #app .mk-build-first .mk-build-as button { width: auto; border-color: var(--mk-border); }
+html[data-appearance] body.market-open #app .mk-build-as button[aria-pressed='true'] { color: var(--mk-text); font-weight: 600; border-color: var(--mk-border); background: var(--mk-surface, transparent); }
+html[data-appearance] body.market-open #app .mk-build-as button:hover { color: var(--mk-text); }
+@media (max-width: 760px) {
+  html[data-appearance] body.market-open #app .mk-build-nav .mk-build-as { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin: 0 8px 0 0; padding: 0 12px 0 0; border-right: 1px solid var(--mk-border); }
+  html[data-appearance] body.market-open #app .mk-build-as .mk-caption { white-space: nowrap; }
+  html[data-appearance] body.market-open #app .mk-build-as ul { flex-direction: row; flex-wrap: nowrap; gap: 6px; margin: 0; }
+  html[data-appearance] body.market-open #app .mk-build-as button { width: auto; white-space: nowrap; border-color: var(--mk-border); }
 }

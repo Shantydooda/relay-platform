@@ -3,7 +3,7 @@ const {test}=require('node:test');const assert=require('node:assert/strict');con
 function ui(){const state={authMode:'local',detail:{task:{status:'posted',version:2,scopeVersion:1}},offers:[],agents:[],work:[],quotes:[],opportunities:[],builderTab:'agents'};const ctx=vm.createContext({state,location:{origin:'http://127.0.0.1:4180'},escape:text,date:()=> 'Date',Intl,Date});for(const file of ['supplier-ui.js','marketplace.js','buyer-flow.js'])vm.runInContext(readFileSync(resolve(__dirname,'../public',file),'utf8'),ctx);return {state,ctx};}
 test('offer review escapes supplier content, requires explicit selection and does not authorize work',()=>{
  const {state,ctx}=ui();state.offers=[{id:'offer',agentName:'<img onerror=bad>',agentType:'specialist',operatorName:'A',amountMinor:7500,deliveryMinutes:45,proposal:'</article><script>bad</script>',capability:'Custom task',taskVersion:2,scopeVersion:1,expiresAt:Date.now()+100000}];
- let html=vm.runInContext('offerCards()',ctx);assert.doesNotMatch(html,/<img onerror|<script>/);assert.match(html,/Not currently assessed/);assert.match(html,/Review offer/);assert.doesNotMatch(html,/data-action="accept-offer"/);
+ let html=vm.runInContext('offerCards()',ctx);assert.doesNotMatch(html,/<img onerror|<script>/);assert.match(html,/No Relay test for this work yet/);assert.match(html,/Review offer/);assert.doesNotMatch(html,/data-action="accept-offer"/);
  state.reviewOffer='offer';html=vm.runInContext('offerCards()',ctx);assert.match(html,/Confirm selection/);assert.match(html,/no execution is authorized/);
  state.detail.task.version=3;html=vm.runInContext('offerCards()',ctx);assert.match(html,/Confirm selection/);
  state.detail.task.scopeVersion=2;html=vm.runInContext('offerCards()',ctx);assert.doesNotMatch(html,/data-action="accept-offer"/);assert.match(html,/new offer is required/);
@@ -21,8 +21,8 @@ test('already quoted agents are excluded by scope version, not by informational 
 });
 test('three-stage setup separates connection preference, assessments and operator readiness',()=>{
  const {state,ctx}=ui();const a={id:'agent',name:'Agent',kind:'general',purpose:'Research',integration:'api',setupStage:2,capabilities:[{task:'Any task',category:'Any category'}],readiness:{profile:true},rules:{automaticRequested:true,minimumPayout:1000,concurrency:1}};state.agents=[a];state.setupAgentId=a.id;state.setupStage=2;
- let html=vm.runInContext('builder()',ctx);assert.match(html,/01<\/small> Introduce/);assert.match(html,/02<\/small> Connect/);assert.match(html,/03<\/small> Demonstrate/);assert.match(html,/HTTP API/);assert.match(html,/SDK/);assert.match(html,/MCP/);assert.match(html,/Optional connection diagnostic/);assert.match(html,/Not ready for paid work/);
- state.setupStage=3;html=vm.runInContext('builder()',ctx);assert.match(html,/Automatic bidding inactive/);assert.match(html,/Test CSV normalization/);assert.match(html,/Connect your runtime in step 2/);assert.doesNotMatch(html,/Mark as passed|data-action="start"/);
+ let html=vm.runInContext('builder()',ctx);assert.match(html,/01<\/small> Introduce/);assert.match(html,/02<\/small> Connect/);assert.match(html,/03<\/small> Demonstrate/);assert.match(html,/HTTP API/);assert.match(html,/SDK/);assert.doesNotMatch(html,/value="mcp"/,'MCP is not offered as a choice while it cannot connect');assert.match(html,/What counts as connected/);assert.match(html,/Not ready for paid work/);
+ state.setupStage=3;html=vm.runInContext('builder()',ctx);assert.match(html,/Automatic offers start once your agent is connected/);assert.match(html,/Test CSV normalization/);assert.match(html,/Connect your agent under Connection/);assert.doesNotMatch(html,/Mark as passed|data-action="start"/);
 });
 test('start review preserves approval, funding, inputs and authorization as separate blockers',()=>{
  const {state,ctx}=ui();state.detail.task.status='selected';const html=vm.runInContext('startReview(state.detail.task)',ctx);assert.match(html,/Company approval/);assert.match(html,/Funding/);assert.match(html,/Required inputs/);assert.match(html,/Work has not started/);assert.doesNotMatch(html,/data-action="start"|data-action="pay"/);
@@ -48,7 +48,7 @@ test('new-agent refresh restores only the authenticated account draft after iden
 });
 test('runtime UI distinguishes local permission from paid readiness and escapes delivered evidence',()=>{
  const {state,ctx}=ui();vm.runInContext(readFileSync(resolve(__dirname,'../public/execution-ui.js'),'utf8'),ctx);
- state.features={localExecution:true};state.detail.task.status='selected';state.offers=[{selected:true,runtimeBid:true}];
+ state.features={localExecution:true};state.detail.task.status='selected';state.offers=[{selected:true,runtimeBid:true,runtimeCommitted:true}];
  assert.match(vm.runInContext('RelayExecution.start(state.detail.task)',ctx),/Run locally · no payment/);
  state.detail.execution={status:'buyer_review',startedAt:Date.now()-1000,completedAt:Date.now(),progress:'Files delivered',attempt:1};state.detail.task.id='task';
  state.detail.submissions=[{id:'submission',version:1,status:'ready',evidence:'<script>bad</script>',files:[{id:'file',filename:'clean.csv',size:20}]}];
@@ -66,7 +66,7 @@ test('supplier setup keeps the one-time key out of rendered content and separate
  state.features={localExecution:true};ctx.agent={id:'agent',integration:'api',runtime:{transport:'supplier-api',connected:true,expiresAt:Date.now()+3600000}};
  vm.runInContext("RelaySupplier.issued={agentId:'agent',token:'DO_NOT_RENDER_THIS_KEY'}",ctx);
  const html=vm.runInContext('RelaySupplier.connection(agent)',ctx);
- assert.match(html,/Save connection file/);assert.match(html,/supplier heartbeat received/);assert.doesNotMatch(html,/DO_NOT_RENDER_THIS_KEY/);assert.match(html,/not qualification/);
+ assert.match(html,/Save connection file/);assert.match(html,/Connected · last check-in/);assert.doesNotMatch(html,/DO_NOT_RENDER_THIS_KEY/);assert.match(html,/not qualification/);
  vm.runInContext('RelaySupplier.clear()',ctx);assert.doesNotMatch(vm.runInContext('RelaySupplier.connection(agent)',ctx),/Save connection file/);
 });
 
@@ -201,7 +201,7 @@ test('SDK setup exposes a real local connection while MCP remains explicitly una
   ctx.agent = { id: 'agent', integration: 'sdk', runtime: {} };
   const html = vm.runInContext('RelaySupplier.connection(agent)', ctx);
   assert.match(html, /Connect with the JavaScript SDK/);
-  assert.match(html, /Create supplier API key/);
+  assert.match(html, /Create connection key/);
   assert.match(html, /not a published npm package/);
   assert.doesNotMatch(html, /SDK and MCP adapters are not implemented/);
   ctx.agent.integration = 'mcp';
@@ -215,7 +215,7 @@ test('link offers show their own rubric and escaped evidence instead of a CSV qu
   state.offers = [{ id: 'link-offer', agentName: 'Linksmith', agentType: 'specialist', operatorName: 'Builder', amountMinor: 100, deliveryMinutes: 1, proposal: 'Extract links offline', capability: 'Link extraction', scopeVersion: 1, expiresAt: Date.now() + 100000, qualification: 'qualified', qualificationCurrent: true,
     qualificationEvidence: { rubric: 'link-inventory-v1', limitation: 'No websites fetched.', runtimeName: 'Offline reference', runtimeVersion: '1', input: '<script>source</script>', submissions: [{ round: 1, links: ['<script>bad</script>'], report: {}, checks: [], passed: true, sha256: 'hash' }] } }];
   const html = vm.runInContext('offerCards()', ctx);
-  assert.match(html, /Offline link inventory passed/);
+  assert.match(html, /Passed Relay test · Offline link inventory/);
   assert.match(html, /No websites fetched/);
   assert.doesNotMatch(html, /CSV assessment passed|<script>/);
 });
@@ -327,8 +327,8 @@ test('builder dashboard links each active task to its own delivery card',()=>{
   state.builderTab='dashboard';
   state.work=[{id:'task-one',title:'First task',status:'running',agentName:'CSV'},{id:'task-two',title:'Second task',status:'buyer_review',agentName:'CSV'}];
   const html=vm.runInContext('builder()',ctx);
-  assert.match(html,/data-action="builder-task" data-id="task-one">View task/);
-  assert.match(html,/data-action="builder-task" data-id="task-two">View task/);
+  assert.match(html,/data-action="builder-task" data-id="task-one">Open/);
+  assert.match(html,/data-action="builder-task" data-id="task-two">Open/);
 });
 
 test('download names identify each file and escape supplier-controlled filenames', () => {
@@ -363,15 +363,14 @@ test('existing API onboarding exposes persisted quoting rules without claiming a
   ctx.agent = {id:'agent',name:'Research API',integration:'api',capabilities:[],rules:{automaticRequested:true,minimumPayout:2575,concurrency:2},readiness:{}};
   state.setupStage = 2;
   const html = vm.runInContext('agentSetup(agent)',ctx);
-  assert.match(html,/Connect your existing service/);
+  assert.match(html,/How it connects/);
   assert.match(html,/Already have an API/);
   assert.match(html,/no-code endpoint connector is not available/);
   assert.equal((html.match(/id="agent-rules"/g)||[]).length,1);
   assert.match(html,/data-setup-stage="2"/);
   assert.match(html,/value="25.75"/);
   assert.match(html,/name="concurrency"[^>]*value="2"/);
-  assert.match(html,/Your preference is saved/);
-  assert.match(html,/Automatic bidding inactive/);
+  assert.match(html,/Automatic offers start once your agent is connected/);
   assert.match(html,/Not ready for paid work/);
   state.setupStage = 3;
   const review = vm.runInContext('agentSetup(agent)',ctx);
@@ -403,10 +402,10 @@ test('supplier connection check and assessment handoff reflect real heartbeat st
   ctx.agent = {id:'agent',integration:'api',runtime:{transport:'supplier-api',connected:false}};
   let html=vm.runInContext('RelaySupplier.connection(agent)',ctx);
   assert.match(html,/Check connection/);
-  assert.doesNotMatch(html,/Continue to capability test/);
+  assert.doesNotMatch(html,/Take a Relay test/);
   ctx.agent.runtime.connected=true;
   html=vm.runInContext('RelaySupplier.connection(agent)',ctx);
-  assert.match(html,/Continue to capability test/);
+  assert.match(html,/Take a Relay test/);
   assert.match(html,/data-action="agent-step" data-id="agent" data-step="3"/);
 });
 

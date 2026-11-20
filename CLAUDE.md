@@ -1,6 +1,6 @@
 # CLAUDE.md: working context for Relay
 
-Claude Code reads this file automatically. Read `AGENTS.md` too: those are the engineering standards and they take priority. This file covers what Relay is, how the repo is organised, what's deployed, the rules that always apply, and where the work stands. Last updated 17 Nov 2026.
+Claude Code reads this file automatically. Read `AGENTS.md` too: those are the engineering standards and they take priority. This file covers what Relay is, how the repo is organised, what's deployed, the rules that always apply, and where the work stands. Last updated 20 Nov 2026.
 
 ## 0. Current working mode: local development (from 17 Nov 2026)
 
@@ -9,12 +9,13 @@ The founder's instruction: **run Relay inside your own Claude Code session while
 - **Set up the test accounts yourself:** a buyer and a builder, the builder with an agent connected through "Connect local CSV runtime". Post one request so offers, a delivery to review, the checklist and "End as unmet" can all be seen.
 - **Check every change yourself** in a headless browser (Playwright) at 1440 px and 390 px.
 - **Show the founder what changed:**
-  - In a **cloud session**, he can't open your localhost, so send him screenshots of each changed screen, desktop and mobile, with a line on what to look at.
-  - In a **local session on his Mac** (Claude Code started in `/Users/shantkevorkian/relay-platform`), he can open http://127.0.0.1:4180 himself, so give him the link and the test accounts' login details.
+  - **Preferred: the Claude desktop app's Code tab, with a local session on his Mac** in `/Users/shantkevorkian/relay-platform`. Start Relay with the preview server **`relay`** from `.claude/launch.json` (it runs `npm run start:local` on port 4180) and open it in the app's **Browser pane**, so he watches the app there. Sign in there with the test accounts, and leave it on the screen you changed.
+  - In a **cloud session**, the Browser pane can't reach your localhost, so send him screenshots of each changed screen, desktop and mobile, with a line on what to look at.
+- Relay listens on 127.0.0.1 only. Keep it that way: don't bind it to 0.0.0.0 to make a preview work.
 - If port 4180 is taken (`EADDRINUSE`), an older Relay is still running. Find it with `lsof -nP -iTCP:4180 -sTCP:LISTEN` and stop it if it's yours; otherwise use another port.
 - Ollama isn't needed: chat discovery is being removed. If the server reports scoping as unavailable, that's expected.
 - Use disposable local accounts and data only. Never point local at the pilot's Supabase, and never copy pilot data in.
-- Don't ask for pilot deploys while this work is in progress. Push finished, tested increments to `codex/v1-production-foundation` as usual. Ask the founder to deploy only when a coherent slice is done and `npm test` plus `npm run test:postgres` pass on Node 24.
+- Don't ask for pilot deploys while this work is in progress. Build each slice on its own short-lived branch from `main` and open a PR into `main` (see §2). Ask the founder to deploy only when a coherent slice is done and `npm test` plus `npm run test:postgres` pass on Node 24.
 - When a slice is ready to look at, tell the founder the local URL and what to try.
 
 ## 1. What Relay is
@@ -61,7 +62,7 @@ Seed category: **B2B data & research**, with sales & marketing next (`docs/Seed-
 ## 2. Rules that always apply
 
 These come from the founder's brief and stay in force until he changes them.
-- **Push only to `codex/v1-production-foundation`.** Treat `main` as separate. Never merge, rebase onto or overwrite another branch without asking. Commit or push only when asked or when the task clearly includes it.
+- **`main` is the single source of truth** (decided 18 Nov 2026). Work on one short-lived branch per slice, cut from `main` (e.g. `claude/packages`), and land it through a PR into `main` once tests pass. Don't commit work to any other long-lived branch. `codex/v1-production-foundation` is retired: it fell behind `main` because work landed in both places, and the pilot no longer deploys from it. Never merge, rebase onto or overwrite another branch without asking. Commit or push only when asked or when the task clearly includes it.
 - The live app is a **private pilot**. **Payments and supplier execution stay disabled there.**
 - **Don't change hosting, database, authentication, payment or provider credentials** unless explicitly asked. That includes Render environment variables, Supabase settings, `render.yaml` syncs and API keys.
 - Keep the **production pilot separate** from the older public demo and the older staging service.
@@ -75,7 +76,7 @@ These come from the founder's brief and stay in force until he changes them.
 
 | | Where | Notes |
 | --- | --- | --- |
-| Live private pilot | https://relay-pilot-app.onrender.com (Render service `relay-pilot-app`, free plan) | Entry point `services/pilot-api/src/server.cjs`. Deploys **manually** (Render → Manual Deploy → Deploy latest commit), and only the founder clicks. Free plan: a cold start shows Render's 503 "waking up" page for about 30–50 s. |
+| Live private pilot | https://relay-pilot-app.onrender.com (Render service `relay-pilot-app`, free plan) | Entry point `services/pilot-api/src/server.cjs`. Deploys from **`main`** (switched from `codex/v1-production-foundation` on 18 Nov 2026), **manually** (Render → Manual Deploy → Deploy latest commit), and only the founder clicks. Free plan: a cold start shows Render's 503 "waking up" page for about 30–50 s. |
 | Pilot data and auth | Supabase (hosted Postgres plus Supabase Auth) | Invite-only: rows in `public.relay_invites`. The founder's test accounts are invited. Default Supabase email templates send implicit-flow links (`#access_token=…&type=…`); see §8. |
 | Old staging | `relay-staging` from `render.yaml` on `main` | Not the pilot. `render.yaml` doesn't describe `relay-pilot-app`. |
 | Local | `npm run start:local` (poc-api, SQLite) | Local execution, a sandbox payments harness and the local model (Ollama) for scoping. |
@@ -140,7 +141,7 @@ npm run start:local
 
 ## 7. State of the work
 
-Pushed to `codex/v1-production-foundation` (see `git log` for the head). **The live pilot runs `1ad3d8b`** until the founder deploys. Pushed but not deployed yet:
+Finished work is on `main` (see `git log` for the head). **The live pilot runs `1ad3d8b`** until the founder deploys; the next manual deploy takes `main`'s head, so everything below goes live together. Pushed but not deployed yet:
 - the auth fix for Supabase's default email links (`01dc6da`);
 - the seed category and its matching vocabulary (`2793988`);
 - the fee rule, at 0% and not wired (`e99c5ce`);
@@ -157,17 +158,23 @@ Earlier and already live:
 - recommendation fixes;
 - landing thesis copy.
 
-**In progress: acceptance criteria and exits.** The server side is drafted and *not pushed*. The patch, policy and to-do list are in the repo at **`docs/handoff/`**: apply with `git am docs/handoff/acceptance-wip.patch`, then follow its README. Delete that folder once the work is merged. The policy:
+**Done (on `main`, not deployed): acceptance criteria and exits**, with tests, buyer and builder UI and docs. The policy:
 1. a checklist of up to 12 acceptance criteria on the scope (a scope change);
 2. fixes are free until the criteria are met (revision requests name unmet criteria; safety cap of 10 rounds);
 3. after 2 rounds the buyer can **end as unmet**, which counts as failed and unlocks "try another agent". It's refused while a payment is held;
 4. auto-accept on buyer silence, behind `autoAcceptAfterMs`, **off**.
 
-It still needs an end-to-end test, unit tests, UI (a checklist editor, criteria on offers and the agreement, unmet checkboxes in the revision form, an "End as unmet" button, activity labels), builder views and docs.
+**Build order: `docs/Build-Order.md`** (updated 20 Nov 2026) is the source of truth for what comes next. Five stacked branches are pushed but not merged: `claude/packages` → `claude/one-marketplace` → `claude/enterprise-projects` → `claude/builder-flow` → `claude/builder-orgs`. They land together as one PR into `main`. Since the list below was written, these are also built:
+- Build only for builders, agent overview and tabs, simpler Opportunities and Projects, limited automatic offers (`claude/builder-flow`);
+- enterprise step 1: the "Members can publish agents" switch, the owners' audit log with file access, CSV previews as tables (`claude/builder-flow`);
+- enterprise step 2: builder organizations, "Building as" in Build; local only, as hosted doesn't resolve organizations as operators yet (`claude/builder-orgs`).
 
-Next after that: **the marketplace model** (`docs/specs/Marketplace-Model.md`), in this order:
-- marketplace home, evidence-first cards, real routes, chat removed;
-- packages, reusing the acceptance work;
+**The marketplace model** (`docs/specs/Marketplace-Model.md`), in this order:
+- ✅ marketplace home, evidence-first cards, real routes, chat removed; CSV input on "Post a request" (PR #6, on `main`, not deployed);
+- **packages, reusing the acceptance work** (current slice, branch `claude/packages`). Server side done: `services/application/src/packages.cjs`, tests in `services/poc-api/test/packages-flow.test.cjs`;
+- **one marketplace for buyers and builders** (decided 18 Nov 2026; spec "One marketplace for buyers and builders"): no builder workspace switch, owner Settings tab on the agent page, builder profiles for signed-in users, one shared Work list, a passed Relay test required to publish, appear in browse or sell packages (quoting stays open, labelled, because only two Relay tests exist), and one vocabulary (request / offer / work / Relay test);
+- **enterprise organizations and projects** (approved 19 Nov 2026; `docs/specs/Enterprise-and-Projects.md`, branch `claude/enterprise-projects`, built on `claude/one-marketplace`): `/org/<id>` page, projects as folder + budget cap inside the company allowance, members see project work read-only, the lead approves within the cap, `/enterprise` plan page (SSO/SCIM/residency/procurement shown as planned, not built);
+- **accounts (decided 20 Nov 2026):** one account per person can buy and sell. Builder status is earned in stages on that account: buyer → builder (has an agent) → listed (passed a Relay test) → paid seller (verified, planned with payments). The experiences are separate, not the accounts. Planned: an organization setting "Members can publish agents" (off by default on Enterprise). See `docs/specs/Marketplace-Model.md` → "Accounts";
 - the "Post a request" form;
 - self-serve products for the seed category (on the workspace-apps foundation; independent security review before builder code or language-model runtimes);
 - subscriptions after payments are live.

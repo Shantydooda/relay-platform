@@ -25,7 +25,7 @@ function decode(value, limit = MAX_FILE_BYTES, binary = false) {
   return bytes;
 }
 function createExecution(context) {
-  const { objectStore, fileScanner, repository, command, taskFor, now, localExecution, hash, expected, touch, event, autoAcceptAfterMs = null } = context;
+  const { objectStore, fileScanner, repository, command, taskFor, taskReader = taskFor, now, localExecution, hash, expected, touch, event, autoAcceptAfterMs = null } = context;
   const { runtimeAgent, runtimePrincipal, heartbeat, issueCredential, issueSupplierCredential, revokeCredential } = context.credentials;
   async function verifiedBytes(metadata, artifact, taskId) {
     if (!artifact || artifact.taskId !== taskId || (!artifact.objectKey && typeof artifact.base64 !== 'string')) fail(409, 'FILE_UNAVAILABLE', 'File bytes are unavailable.');
@@ -51,6 +51,8 @@ function createExecution(context) {
     if (!task?.assignment || task.assignment.agentId !== principal.agentId || task.assignment.operatorId !== principal.actor.user.id) fail(404, 'NOT_FOUND', 'Assignment not found.');
     return task;
   }
+  // Shared with brokered connection reads (connections.cjs): one lease rule.
+  context.checkLease = (task, principal, token) => lease(task, principal, token);
   function lease(task, principal, token) {
     const assignment = task.assignment;
     if (assignment.status !== 'running' || assignment.leaseUntil <= now() || assignment.agentId !== principal.agentId || typeof token !== 'string' || token.length !== 43 || !assignment.leaseHash) fail(409, 'LEASE_EXPIRED', 'Claim the current assignment before updating it.');
@@ -74,7 +76,9 @@ function createExecution(context) {
       task.input = { filename, size: bytes.length, sha256: hash(bytes), notes, operation: 'csv-normalize-v1', artifactId };
       await repo.save('artifact', { id: artifactId, ownerId: actor.user.id, tenantId: task.tenantId, taskId: id, filename, sha256: task.input.sha256, size: bytes.length, base64: bytes.toString('base64') });
       task.scopeVersion++; task.selectedOfferId = null; touch(task, now());
-      task.scopes.push({ version: task.scopeVersion, title: task.title, brief: task.brief, inputHash: task.input.sha256, inputArtifactId: artifactId, notes, filename, createdAt: now() });
+      task.scopes.push({ version: task.scopeVersion, title: task.title, brief: task.brief, inputHash: task.input.sha256, inputArtifactId: artifactId, notes, filename, createdAt: now(),
+        ...(task.package ? { acceptanceCriteria: task.acceptanceCriteria } : {}) });
+      if (task.package) require('./packages.cjs').rebindPackageOffer(task);
       event(task, actor.user.id, 'input.attached', now()); await saveTask(repo, task);
       return { taskId: id, version: task.version, sha256: task.input.sha256 };
     });
@@ -111,7 +115,8 @@ function createExecution(context) {
     if (!offer || offer.expiresAt <= now() || offer.scopeVersion !== task.scopeVersion || task.status !== 'posted') fail(409, 'OFFER_UNAVAILABLE', 'Select a valid offer for the current scope.');
     require('./orchestration.cjs').withinBudget(task, offer.amountMinor);
     const agent = offer.agentId ? await repo.get('agent', offer.agentId, true) : null;
-    if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !offer.runtimeBid) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
+    if (task.package?.inputs.includes('csv') && !task.input) fail(409, 'INPUT_REQUIRED', 'This package needs a CSV file. Attach it before starting.');
+    if (!agent?.credentialHash || agent.connectedAt <= now() - 120000 || !require('./packages.cjs').runtimeCommitted(offer)) fail(409, 'RUNTIME_REQUIRED', 'Choose an offer from a connected runtime.');
     if (agent.runtimeKind !== 'supplier-hosted' && (agent.runtimeKind !== 'bounded-csv-automation' || !task.input)) fail(409, 'INPUT_REQUIRED', 'The local CSV runtime requires an attached CSV.');
     if ((offer.currency || 'USD') !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'The operator changed quoting currency. Request a fresh offer.');
     if (offer.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'The operator changed its minimum. Request an updated offer.');
@@ -128,7 +133,7 @@ function createExecution(context) {
     task.assignment = { id: randomUUID(), agentId: agent.id, operatorId: offer.operatorId, offerId: offer.id,
       status: 'queued', authorizedAt: now(), mode, attempt: 0, progress: 'Waiting for the runtime',
       runtimeKind: agent.runtimeKind, runtimeVersion: agent.runtimeVersion || null, queueDeadlineAt: now() + 120000, deadlineAt: now() + 120000 + executionWindowMs(offer.deliveryMinutes),
-      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null, acceptanceCriteria: task.acceptanceCriteria || [] } };
+      agreement: { ...offer, handoffs: (task.orchestrationStep?.handoffs || []).map(({approvedBy,...item})=>item), title: task.title, brief: task.brief, inputHash: task.input?.sha256 || null, acceptanceCriteria: task.acceptanceCriteria || [], checks: require('./checks.cjs').freeze(task.checks, task) } };
     touch(task, now()); event(task, actor.user.id, 'assignment.authorized_local', now());
     await saveTask(repo, task);
     await repo.save('grant', { id: task.assignment.id, ownerId: offer.operatorId, tenantId: task.tenantId, taskId: task.id, agentId: agent.id });
@@ -186,7 +191,14 @@ function createExecution(context) {
         input = { ...task.input, base64: artifact.base64 };
       }
       return { ...result, leaseToken: token, leaseUntil: task.assignment.leaseUntil, deadlineAt: task.assignment.deadlineAt || null, title: task.title, brief: task.assignment.agreement.brief, handoffs: task.assignment.agreement.handoffs || [], input, revisionNotes: task.assignment.revisionNotes || null,
-        acceptanceCriteria: task.assignment.agreement.acceptanceCriteria || [], unmetCriteria: task.submissions.findLast(item => item.status === 'revision_requested')?.unmetCriteria || [] };
+        acceptanceCriteria: task.assignment.agreement.acceptanceCriteria || [], unmetCriteria: task.submissions.findLast(item => item.status === 'revision_requested')?.unmetCriteria || [],
+        // Read access the buyer granted for this assignment. Never credentials: reads go through Relay.
+        accessGrants: context.connections ? await context.connections.grantsForAgent(repo, task) : [],
+        // The agreed machine checks, so the agent can test its own output before delivering.
+        checks: (task.assignment.agreement.checks || []).map(require('./checks.cjs').checkView),
+        // The ERP intake and its files, released now that the buyer has authorized the work.
+        intake: task.intake ? require('./intake.cjs').intakeView(task) : null,
+        attachments: context.intake ? await context.intake.forAgent(repo, task) : [] };
     });
   }
   async function assignmentsWithin(repo, principal) {
@@ -244,6 +256,17 @@ function createExecution(context) {
       }
       const manifest = files.map(({ base64, ...metadata }) => metadata);
       const submission = { id: submissionId, version: task.submissions.length + 1, status: 'ready', createdAt: now(), evidence, files: manifest };
+      // Run the agreed machine checks on the delivered CSV before the buyer reviews it.
+      const agreedChecks = task.assignment.agreement.checks || [];
+      if (agreedChecks.length) {
+        const load = async attachmentId => {
+          const file = (task.attachments || []).find(f => f.id === attachmentId);
+          const artifact = file ? await repo.get('artifact', file.artifactId) : null;
+          if (!artifact || artifact.sha256 !== file.sha256) throw new Error('a request file is unavailable');
+          return Buffer.from(artifact.base64, 'base64');
+        };
+        submission.checks = { ranAt: now(), ...(await require('./checks.cjs').runChecks(agreedChecks, files, load)) };
+      }
       task.submissions.push(submission); task.assignment.status = 'buyer_review'; task.assignment.completedAt = now();
       task.assignment.leaseHash = null; task.assignment.progress = 'Files delivered for review';
       touch(task, now()); event(task, principal.actor.user.id, 'submission.received', now()); await saveTask(repo, task);
@@ -324,7 +347,9 @@ function createExecution(context) {
         acceptSubmission(task, submission, 'The buyer accepted this delivery.');
       } else {
         const notes = text(body.notes, 'Revision notes', 1, 2000);
-        submission.unmetCriteria = unmetCriteriaInput(task, body.unmetCriteria);
+        // A failing machine check is unmet whether or not the buyer names it, so fixing it is free.
+        submission.unmetCriteria = [...new Set([...unmetCriteriaInput(task, body.unmetCriteria), ...require('./checks.cjs').failing(submission.checks)])];
+        require('./packages.cjs').checkPolishRound(task, submission.unmetCriteria);
         if (task.assignment.runtimeKind !== 'supplier-hosted' && !['Sort rows descending', 'Keep duplicate rows', 'Sort rows ascending'].includes(notes)) fail(422, 'UNSUPPORTED_REVISION', 'Choose a supported CSV revision: Sort rows descending, Keep duplicate rows, or Sort rows ascending.');
         submission.status = 'revision_requested'; task.assignment.status = 'queued'; task.assignment.attempt = 0;
         task.assignment.progress = `Revision queued: ${notes}`; task.assignment.completedAt = null;
@@ -336,19 +361,27 @@ function createExecution(context) {
       return { taskId: id, version: task.version, status: task.assignment.status, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? task.settlement.status : 'not_applicable_local_unpaid' };
     });
   }
+  // Every human preview or download is recorded for the workspace's audit log.
   async function download(actor, id, submissionId, fileId) {
+    const file = await readFile(actor, id, submissionId, fileId);
+    await context.org?.recordFileAccess(actor, file.access, 'download');
+    const { access, ...rest } = file;
+    return rest;
+  }
+  async function readFile(actor, id, submissionId, fileId) {
     return repository.read(async repo => {
       const task = await repo.get('task', id);
       if (!task) fail(404, 'NOT_FOUND', 'File not found.');
       const supplier = task.assignment?.operatorId === actor.user.id;
-      if (!supplier) await taskFor(repo, actor, id);
+      if (!supplier) await taskReader(repo, actor, id);
       const submission = task.submissions.find(item => item.id === submissionId);
       const file = submission?.files.find(item => item.id === fileId);
       if (!file) fail(404, 'NOT_FOUND', 'File not found.');
       const artifact = await repo.get('artifact', file.id);
       if (!artifact || artifact.taskId !== id || artifact.submissionId !== submissionId) fail(409, 'FILE_UNAVAILABLE', 'File is unavailable.');
       const bytes = await verifiedBytes(file, artifact, id);
-      return { filename: file.filename, mime: file.mime, sha256: file.sha256, bytes };
+      return { filename: file.filename, mime: file.mime, sha256: file.sha256, bytes,
+        access: { tenantId: task.tenantId, taskId: id, taskTitle: task.title, filename: file.filename, fileId } };
     });
   }
   async function scanFile(actor, id, submissionId, fileId, body, key) {
@@ -376,8 +409,10 @@ function createExecution(context) {
     });
   }
   async function previewFile(actor, id, submissionId, fileId) {
-    const file = await download(actor, id, submissionId, fileId);
-    return require('./file-preview.cjs').filePreview(file);
+    const { access, ...file } = await readFile(actor, id, submissionId, fileId);
+    const preview = require('./file-preview.cjs').filePreview(file);
+    await context.org?.recordFileAccess(actor, access, 'preview');
+    return preview;
   }
   return { reconcileAutoAccept, executionActions, authorizeWithin, scanFile, previewFile, issueCredential, issueSupplierCredential, revokeCredential, runtimePrincipal, heartbeat, addInput, authorizeLocal, assignments, claim, progress, submit, failExecution, reviewDelivery, download };
 }

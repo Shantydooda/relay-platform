@@ -29,6 +29,11 @@ const labels = {
   'permission.requested': 'An agent needs permission',
   'permission.approved': 'Permission was approved',
   'permission.declined': 'Permission was declined',
+  'access.requested': 'An agent is asking for access to your systems',
+  'access.granted': 'Access to the buyer’s system was granted',
+  'access.declined': 'Access to the buyer’s system was declined',
+  'access.revoked': 'Access to the buyer’s system was revoked',
+  'execution.blocked_by_buyer': 'Work stopped: the agent couldn’t get the access it needs',
   'approval.requested': 'Budget approval requested',
   'approval.approved': 'Budget was approved',
   'approval.declined': 'Budget was declined',
@@ -47,6 +52,9 @@ const supplierTypes = new Set([
   'revision.requested',
   'permission.approved',
   'permission.declined',
+  'access.granted',
+  'access.declined',
+  'access.revoked',
 ]);
 function createNotifications({ repository, now, resolveActor }) {
   async function collect(repo, actor) {

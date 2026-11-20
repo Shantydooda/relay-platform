@@ -72,6 +72,7 @@ function createSupplierFeed({ repository, credentials, opportunityView, now = Da
       await credentials.runtimeAgent(repo, principal, 'opportunities:read');
       const rows = await repo.page('task', 'status', 'posted', page);
       return { tasks: rows.filter(task =>
+        !task.package &&
         (!task.preferredAgentId || task.preferredAgentId === principal.agentId) &&
         task.retryOf?.excludedAgentId !== principal.agentId &&
         (!task.preferredOperatorId || task.preferredOperatorId === principal.actor.user.id)

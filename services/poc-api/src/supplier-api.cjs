@@ -44,6 +44,12 @@ async function supplierApi({ req, url, store, jsonBody, send, origin }) {
   }
   const permission = path.match(/^\/tasks\/([0-9a-f-]{36})\/permission-requests$/);
   if (permission && method === 'POST') { send(200, await store.requestToolPermission(principal, permission[1], await jsonBody(req), key)); return true; }
+  // Buyer connections (docs/specs/Buyer-Connections.md): ask for access, read through Relay, or end as blocked.
+  const access = path.match(/^\/tasks\/([0-9a-f-]{36})\/(access-requests|access-read|blocked)$/);
+  if (access && method === 'POST') {
+    const name = { 'access-requests': 'requestAccess', 'access-read': 'readAccess', blocked: 'endBlocked' }[access[2]];
+    send(200, await store[name](principal, access[1], await jsonBody(req), key)); return true;
+  }
   const tool = path.match(/^\/tasks\/([0-9a-f-]{36})\/tool-read$/);
   if (tool && method === 'POST') { send(200, await store.readAgentTool(principal, tool[1], await jsonBody(req), key)); return true; }
   const task = path.match(/^\/tasks\/([0-9a-f-]{36})(?:\/(offers|claim|progress|submit|fail))?$/);

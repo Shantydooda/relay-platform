@@ -48,7 +48,8 @@ function revisionRounds(task) {
 
 function unmetCriteriaInput(task, value) {
   if (value === undefined) return [];
-  const agreed = new Set(criteriaFor(task).map(item => item.id));
+  // Machine-run checks (checks.cjs) can be named as unmet too.
+  const agreed = new Set([...criteriaFor(task).map(item => item.id), ...(task.assignment?.agreement?.checks || []).map(item => item.id)]);
   if (!Array.isArray(value) || value.some(id => !agreed.has(id)) || new Set(value).size !== value.length)
     fail(400, 'INVALID_INPUT', 'Choose criteria from the agreement.');
   return value;
@@ -77,6 +78,7 @@ function createAcceptance({ command, taskFor, expected, now, touch, event, saveT
       expected(task, body.expectedVersion);
       if (task.status === 'cancelled') fail(409, 'TASK_CLOSED', 'This request is closed.');
       if (task.assignment) fail(409, 'TASK_ASSIGNED', 'Authorized work keeps its agreed criteria. Propose a change instead.');
+      require('./packages.cjs').assertNotPackage(task);
       if (task.orchestrationPlan || task.orchestrationStep) require('./orchestration.cjs').fixedScope(task);
       if (task.scheduleId || task.recurringScheduleId) fail(409, 'SCHEDULE_MANAGED', 'Recurring runs use an immutable scope.');
       assertUnfunded(task);

@@ -60,9 +60,6 @@ async function recommendationFlow(port = 4196, { repository, now, autoAcceptAfte
         expectedVersion: (await agent()).version, integration: 'api', setupStage: 3,
         automaticRequested: true, minimumPayout: 100, concurrency: 1
       }, randomUUID());
-      await store.marketplace.updateListing(operator.actor, agentId, {
-        expectedVersion: (await agent()).version, status: 'published'
-      }, randomUUID());
       const credential = await store.issueSupplierCredential(operator.actor, agentId, {
         expectedVersion: (await agent()).version, expiresInSeconds: 3600
       }, randomUUID());
@@ -83,6 +80,10 @@ async function recommendationFlow(port = 4196, { repository, now, autoAcceptAfte
         }, randomUUID());
         assert.equal(result.status, round === 1 ? 'revision_pending' : 'passed');
       }
+      // Publish after the Relay test passes, as the product requires.
+      await store.marketplace.updateListing(operator.actor, agentId, {
+        expectedVersion: (await agent()).version, status: 'published'
+      }, randomUUID());
       builders.push({ operator, agentId, capabilityId, client, heartbeat, agent });
     }
     async function postTask() {

@@ -1,0 +1,167 @@
+'use strict';
+// Buyer connections and access grants (docs/specs/Buyer-Connections.md): buyers
+// connect their systems once; an agent asks for read access during work; the
+// buyer is notified and grants a scoped, expiring read; the agent reads through
+// Relay and never sees the buyer's credentials.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { randomUUID, randomBytes } = require('node:crypto');
+const { DatabaseSync } = require('node:sqlite');
+const { PGlite } = require('@electric-sql/pglite');
+const { createSqliteRepository, createPostgresRepository } = require('../src/repository.cjs');
+const { createApplication } = require('../src/service.cjs');
+const { normalizeCsv } = require('../../agent-runtime/src/csv.cjs');
+const { createVault } = require('../../connectors/src/vault.cjs');
+const { createSampleErp, SAMPLE_TOKEN } = require('../../connectors/src/erp-fixture.cjs');
+
+const DAY = 86400000;
+async function setup(t, adapter = 'sqlite') {
+  const db = adapter === 'sqlite' ? new DatabaseSync(':memory:') : await PGlite.create();
+  t.after(() => db.close());
+  const repository = adapter === 'sqlite' ? createSqliteRepository(db) : await createPostgresRepository(db, { initialize: true });
+  let time = Date.parse('2026-11-19T09:00:00Z');
+  const actor = (name, memberships) => ({ user: { id: randomUUID(), name }, memberships });
+  const buyer = actor('Buyer', [{ id: randomUUID(), role: 'owner', accessEpoch: 1 }]);
+  const builder = actor('Builder', [{ id: randomUUID(), role: 'owner', accessEpoch: 1 }]);
+  const tenantId = buyer.memberships[0].id;
+  const employee = actor('Employee', [{ id: tenantId, role: 'employee', company: true, accessEpoch: 1 }]);
+  const actors = [buyer, builder, employee];
+  const options = { repository, localExecution: true, now: () => time, resolveActor: async id => actors.find(a => a.user.id === id), resolveOperator: async id => actors.find(a => a.user.id === id),
+    connectionVault: createVault(randomBytes(32).toString('hex')), connectionProviders: [createSampleErp()] };
+  const app = createApplication(options);
+  const { agentId } = await app.marketplace.addAgent(builder, { name: 'Vendor cleaner', kind: 'specialist', domain: 'ERP master data', purpose: 'Clean vendor master data', integration: 'sdk', capabilities: [{ category: 'Data', task: 'Normalize CSV' }] }, randomUUID());
+  const credential = await app.issueSupplierCredential(builder, agentId, { expectedVersion: 1, expiresInSeconds: 2592000 }, randomUUID());
+  const principal = await app.runtimePrincipal(credential.token);
+  await app.heartbeat(principal, { runtimeName: 'Vendor cleaner', runtimeVersion: '1' });
+  let agent = (await app.marketplace.agents(builder))[0];
+  const capabilityId = agent.capabilities[0].id;
+  const assessment = await app.startQualification(builder, agentId, { expectedVersion: agent.version, capabilityId, rubric: 'csv-normalize-v1' }, randomUUID());
+  for (let round = 1; round <= 2; round++) {
+    const job = (await app.qualificationJobs(principal))[0], output = normalizeCsv(Buffer.from(job.input), job.revision);
+    const { inputRows, outputRows, duplicatesRemoved, sort } = output.report;
+    await app.submitQualification(principal, assessment.assessmentId, { round, csv: output.csv.toString(), report: { inputRows, outputRows, duplicatesRemoved, sort } }, randomUUID());
+  }
+  agent = (await app.marketplace.agents(builder))[0];
+  await app.marketplace.configure(builder, agentId, { expectedVersion: agent.version, integration: 'sdk', setupStage: 3, automaticRequested: true, minimumPayout: 100, concurrency: 1 }, randomUUID());
+  const version = async id => (await repository.read(r => r.get('task', id))).version;
+  const { taskId } = await app.createTask(buyer, { tenantId, title: 'Dedupe vendor master', brief: 'Find duplicate vendors in our ERP sandbox and return a merge file.' }, randomUUID());
+  await app.addInput(buyer, taskId, { expectedVersion: 1, filename: 'vendors.csv', base64: Buffer.from('id,name\nV-1,Acme\n').toString('base64'), notes: 'Starting extract.' }, randomUUID());
+  await app.mutateTask(buyer, taskId, 'post', { expectedVersion: await version(taskId) }, randomUUID());
+  await app.heartbeat(principal, { runtimeName: 'Vendor cleaner', runtimeVersion: '1' });
+  const offer = await app.marketplace.quote(builder, taskId, { agentId, capabilityId, expectedVersion: await version(taskId), amountMinor: 100, deliveryMinutes: 60, proposal: 'Find and merge duplicate vendors.' }, randomUUID(), principal);
+  await app.marketplace.accept(buyer, taskId, { expectedVersion: await version(taskId), offerId: offer.offerId }, randomUUID());
+  await app.authorizeLocal(buyer, taskId, { expectedVersion: await version(taskId), mode: 'local-unpaid' }, randomUUID());
+  const connect = (body = {}, who = buyer) => app.connect(who, { tenantId, provider: 'sample-erp', environment: 'sandbox', label: 'NetSuite sandbox (sample)', credentials: { accountId: 'TSTDRV123', token: SAMPLE_TOKEN }, ...body }, randomUUID());
+  const ask = (body = {}) => app.requestAccess(principal, taskId, { provider: 'sample-erp', environment: 'sandbox', objects: ['vendor'], purpose: 'Read vendor records to find duplicates by tax ID.', days: 7, ...body }, randomUUID());
+  const claim = async () => {
+    const detail = await app.detail(buyer, taskId);
+    return app.claim(principal, taskId, { assignmentId: detail.execution.id }, randomUUID());
+  };
+  const requestId = async () => (await repository.read(r => r.get('task', taskId))).accessRequests.at(-1).id;
+  return { app, repository, buyer, builder, employee, tenantId, principal, taskId, version, connect, ask, claim, requestId, advance: ms => { time += ms; } };
+}
+
+for (const adapter of ['sqlite', 'postgres']) {
+  test(`${adapter}: buyers connect a system once; credentials are sealed and never shown`, async t => {
+    const f = await setup(t, adapter);
+    const { connectionId } = await f.connect();
+    const [listed] = (await f.app.connections(f.buyer, f.tenantId)).connections;
+    assert.equal(listed.id, connectionId);
+    assert.equal(listed.account, 'TSTDRV123');
+    assert.equal(listed.environment, 'sandbox');
+    assert.deepEqual([...listed.objects], ['vendor', 'customer', 'item']);
+    const stored = await f.repository.read(r => r.get('connection', connectionId));
+    assert.doesNotMatch(JSON.stringify(stored), new RegExp(SAMPLE_TOKEN), 'the token is sealed at rest');
+    assert.doesNotMatch(JSON.stringify(listed), /secret|token/i);
+    await assert.rejects(f.connect({ credentials: { accountId: 'X', token: 'wrong' } }), { code: 'CONNECTION_REJECTED' });
+    await assert.rejects(f.connect({ provider: 'netsuite' }), { code: 'PROVIDER_UNAVAILABLE' });
+    await assert.rejects(f.connect({}, f.employee), { code: 'FORBIDDEN' });
+    const catalog = f.app.connectionCatalog();
+    assert.ok(catalog.find(p => p.kind === 'sample-erp').available);
+    assert.equal(catalog.find(p => p.kind === 'netsuite').available, false);
+  });
+
+  test(`${adapter}: an agent asks, the buyer is notified and grants a scoped read through Relay`, async t => {
+    const f = await setup(t, adapter);
+    const { connectionId } = await f.connect();
+    await f.claim();
+    await f.ask();
+    const task = await f.repository.read(r => r.get('task', f.taskId));
+    assert.equal(task.assignment.status, 'queued', 'execution time pauses while the buyer decides');
+    assert.ok(task.assignment.permissionWait);
+    const notes = (await f.app.notifications(f.buyer)).items;
+    assert.ok(notes.some(n => n.title === 'An agent is asking for access to your systems'));
+    await assert.rejects(f.app.readAccess(f.principal, f.taskId, { leaseToken: 'x'.repeat(43), grantId: randomUUID(), object: 'vendor' }), { code: 'LEASE_EXPIRED' });
+    // Granting needs a matching, active connection.
+    await assert.rejects(f.app.approveAccess(f.buyer, f.taskId, { expectedVersion: await f.version(f.taskId), requestId: await f.requestId(), connectionId: randomUUID(), days: 7 }, randomUUID()), { code: 'NOT_FOUND' });
+    const { grantId } = await f.app.approveAccess(f.buyer, f.taskId, { expectedVersion: await f.version(f.taskId), requestId: await f.requestId(), connectionId, days: 3 }, randomUUID());
+    const claimed = await f.claim();
+    assert.deepEqual(claimed.accessGrants.map(g => ({ ...g, objects: [...g.objects] })), [{ id: grantId, provider: 'sample-erp', environment: 'sandbox', objects: ['vendor'], expiresAt: Date.parse('2026-11-22T09:00:00Z') }]);
+    assert.doesNotMatch(JSON.stringify(claimed), new RegExp(SAMPLE_TOKEN), 'the agent never receives the buyer credential');
+    const read = await f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'vendor' });
+    assert.equal(read.rows.length, 3);
+    assert.equal(read.rows[0].taxId, '12-3456789');
+    await assert.rejects(f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'customer' }), { code: 'GRANT_SCOPE' });
+    const detail = await f.app.detail(f.buyer, f.taskId);
+    assert.equal(detail.access.grants[0].reads, 1, 'the buyer sees every read');
+    assert.equal(detail.access.grants[0].rowsRead, 3);
+    // Expiry ends access without anyone acting.
+    f.advance(3 * DAY + 1);
+    await assert.rejects(f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'vendor' }), { code: /GRANT_REQUIRED|LEASE_EXPIRED|EXECUTION_EXPIRED/ });
+  });
+
+  test(`${adapter}: revoking a grant or disconnecting the system stops reads at once`, async t => {
+    const f = await setup(t, adapter);
+    const { connectionId } = await f.connect();
+    await f.claim(); await f.ask();
+    const { grantId } = await f.app.approveAccess(f.buyer, f.taskId, { expectedVersion: await f.version(f.taskId), requestId: await f.requestId(), connectionId, days: 7 }, randomUUID());
+    let claimed = await f.claim();
+    await f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'vendor' });
+    await f.app.revokeAccess(f.buyer, grantId, { expectedVersion: 1 }, randomUUID());
+    await assert.rejects(f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'vendor' }), { code: 'GRANT_REQUIRED' });
+    assert.ok((await f.app.notifications(f.builder)).items.some(n => n.title === 'Access to the buyer’s system was revoked'));
+    // A fresh grant, then the buyer disconnects the system entirely.
+    await f.ask({ objects: ['vendor', 'item'] });
+    const second = await f.app.approveAccess(f.buyer, f.taskId, { expectedVersion: await f.version(f.taskId), requestId: await f.requestId(), connectionId, days: 7 }, randomUUID());
+    claimed = await f.claim();
+    const connection = (await f.app.connections(f.buyer, f.tenantId)).connections[0];
+    await f.app.disconnect(f.buyer, connectionId, { expectedVersion: connection.version }, randomUUID());
+    await assert.rejects(f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId: second.grantId, object: 'item' }), { code: 'GRANT_REQUIRED' });
+    assert.equal((await f.repository.read(r => r.get('connection', connectionId))).secret, null, 'disconnecting deletes the sealed credential');
+  });
+}
+
+test('a declined or unanswered request lets the agent end as blocked by the buyer, outside its track record', async t => {
+  const f = await setup(t);
+  await f.connect();
+  await f.claim();
+  await assert.rejects(f.app.endBlocked(f.principal, f.taskId, { note: 'No access.' }, randomUUID()), { code: 'BLOCK_NOT_ALLOWED' });
+  await f.ask();
+  await assert.rejects(f.app.endBlocked(f.principal, f.taskId, { note: 'Waiting too long.' }, randomUUID()), { code: 'BLOCK_NOT_ALLOWED' }, 'a fresh request must be given time');
+  await f.app.declineAccess(f.buyer, f.taskId, { expectedVersion: await f.version(f.taskId), requestId: await f.requestId() }, randomUUID());
+  await f.app.endBlocked(f.principal, f.taskId, { note: 'Vendor records are needed to find duplicates; access was declined.' }, randomUUID());
+  const task = await f.repository.read(r => r.get('task', f.taskId));
+  assert.equal(task.assignment.status, 'cancelled');
+  assert.equal(task.assignment.endReason, 'buyer_prerequisite');
+  const { taskOutcome } = require('../src/outcome-ledger.cjs');
+  assert.equal(taskOutcome(task).outcome, 'cancelled', 'not a failure on the agent’s record');
+  assert.ok((await f.app.notifications(f.buyer)).items.some(n => n.title === 'Work stopped: the agent couldn’t get the access it needs'));
+});
+
+test('a request left unanswered for 72 hours of waiting also allows ending as blocked', async t => {
+  const f = await setup(t);
+  await f.claim(); await f.ask();
+  f.advance(72 * 3600000 + 1);
+  await f.app.endBlocked(f.principal, f.taskId, { note: 'No reply to the access request after three days.' }, randomUUID());
+  assert.equal((await f.repository.read(r => r.get('task', f.taskId))).assignment.endReason, 'buyer_prerequisite');
+});
+
+test('only workspace owners grant access, and only to a system of the requested kind', async t => {
+  const f = await setup(t);
+  const { connectionId } = await f.connect({ environment: 'production', label: 'Production (sample)' });
+  await f.claim(); await f.ask();
+  await assert.rejects(f.app.approveAccess(f.buyer, f.taskId, { expectedVersion: await f.version(f.taskId), requestId: await f.requestId(), connectionId, days: 7 }, randomUUID()), { code: 'CONNECTION_MISMATCH' }, 'a sandbox request can’t be answered with production');
+  await assert.rejects(f.app.approveAccess(f.employee, f.taskId, { expectedVersion: await f.version(f.taskId), requestId: await f.requestId(), connectionId, days: 7 }, randomUUID()), { code: /NOT_FOUND|FORBIDDEN/ });
+  await assert.rejects(f.ask({ objects: ['payroll'] }), { code: 'INVALID_INPUT' });
+  await assert.rejects(f.ask({ days: 90 }), { code: 'INVALID_INPUT' });
+});

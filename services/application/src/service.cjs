@@ -7,6 +7,7 @@ const { assertUnfunded, paymentView } = require('./payments.cjs');
 const { capabilityView } = require('./qualification.cjs');
 const { saveTask } = require('./supplier-feed.cjs');
 const { criteriaFor, acceptanceView, createAcceptance } = require('./acceptance.cjs');
+const { packageView, publicPackages, createPackages, checkPurchasable, packageTerms, packageOffer, assertNotPackage } = require('./packages.cjs');
 const { environmentCapabilities } = require('./capabilities.cjs');
 const { workState } = require('../../../packages/domain/src/work-state.cjs');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
@@ -49,7 +50,7 @@ function taskView(task, now) {
   const status = task.recurringScheduleId ? 'scheduled' : task.assignment?.status || (offer && offer.expiresAt > now ? 'selected' : task.status);
   const { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, input } = task;
   const approvalStatus = require('./approvals.cjs').approvalView(task, now)?.status || null;
-  return { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, status,
+  return { id, tenantId, projectId: task.projectId || null, categoryId: task.categoryId || null, title, brief, version, scopeVersion, createdAt, updatedAt, status,
     // Phase, whose move it is, why, and how a finished run ended. See packages/domain/src/work-state.cjs.
     work: workState(task, now, { approvalStatus, retryAvailable: retryAvailable(task) }),
     waitingForPermission: waitingForPermission(task.assignment),
@@ -62,7 +63,18 @@ function taskView(task, now) {
     scoping: task.scoping?.version === task.version ? (task.scoping.status === 'pending' && task.scoping.expiresAt <= now ? { status: 'failed', error: 'The local reply was interrupted. Try again; your message is saved.' } : task.scoping) : null,
     selectedOfferId: offer && offer.expiresAt > now ? offer.id : null,
     acceptanceCriteria: criteriaFor(task),
+    // For list rows: who the work is with and the agreed or chosen price, and how many current offers exist.
+    chosenOffer: chosenOfferView(task, now),
+    offerCount: task.offers.filter(item => item.scopeVersion === task.scopeVersion && item.expiresAt > now).length,
+    package: task.package ? { ...task.package, criteria: task.package.criteria.map(item => ({ ...item })), inputs: [...task.package.inputs] } : null,
     input: input ? { filename: input.filename, size: input.size, sha256: input.sha256, notes: input.notes } : null };
+}
+function chosenOfferView(task, now) {
+  const offer = task.assignment ? task.offers.find(item => item.id === task.assignment.offerId)
+    : task.offers.find(item => item.id === task.selectedOfferId && item.expiresAt > now);
+  if (!offer) return null;
+  return { agentId: offer.agentId, agentName: offer.agentName, operatorName: offer.operatorName, amountMinor: offer.amountMinor,
+    currency: offer.currency || 'USD', packageId: offer.packageId || null };
 }
 function retryAvailable(task, tenantId = task.tenantId) {
   return task.tenantId === tenantId && task.assignment?.status === 'failed' && !task.retriedBy && task.status !== 'cancelled' &&
@@ -70,17 +82,27 @@ function retryAvailable(task, tenantId = task.tenantId) {
 }
 function excludedFrom(task, agentId) { return !!task.retryOf?.excludedAgentId && task.retryOf.excludedAgentId === agentId; }
 function listingState(agent) { return agent.listingStatus || 'published'; }
+// The Relay test rule (docs/specs/Marketplace-Model.md, "One marketplace" §2): one
+// definition of "passes its Relay test". It is required to publish, appear in browse
+// and sell packages. Quoting on a posted request stays open; the offer records the
+// capability's test status so buyers see it.
+function passesRelayTest(agent, capability, time) {
+  return capabilityView(agent, capability, time).qualification === 'qualified';
+}
+function hasRelayTest(agent, time) {
+  return agent.capabilities.some(item => passesRelayTest(agent, item, time));
+}
 function requestableAgent(agent, actor, time) {
-  return !!agent && listingState(agent) === 'published' && agent.ownerId !== actor.user.id &&
-    agent.capabilities.some(item => capabilityView(agent, item, time).qualification === 'qualified');
+  return !!agent && listingState(agent) === 'published' && agent.ownerId !== actor.user.id && hasRelayTest(agent, time);
 }
 function listingView(agent, time) {
   const capabilities = agent.capabilities.map(item => capabilityView(agent, item, time));
   return { id: agent.id, name: agent.name, kind: agent.kind, purpose: agent.purpose,
     domain: agent.domain, operatorName: agent.operatorName, listingStatus: listingState(agent),
     availability: capabilities.some(item => item.qualification === 'qualified') ? 'available' : 'qualification_pending',
-    capabilities: capabilities.map(({ id, category, task, qualification, assessment, metadata }) =>
-      ({ id, category, task, qualification, metadata, evidence: assessment?.evidence || null })) };
+    capabilities: capabilities.map(({ id, category, categoryId, task, qualification, assessment, metadata }) =>
+      ({ id, category, categoryId: require('../../../packages/domain/src/categories.cjs').categoryOf({ categoryId, category, task }), task, qualification, metadata, evidence: assessment?.evidence || null })),
+    packages: publicPackages(agent, (item, capability) => capabilityView(item, capability, time).qualification) };
 }
 function agentView(agent, now) {
   const connected = !!agent.credentialHash && (!agent.credentialExpiresAt || agent.credentialExpiresAt > now) && agent.connectedAt > now - 120000;
@@ -90,10 +112,11 @@ function agentView(agent, now) {
     rules: { ...agent.rules, version, automaticEnabled: connected && agent.rules.automaticRequested },
     readiness: { profile: !!purpose, connection: connected, capability: capabilities.some(item => capabilityView(agent, item, now).qualification === 'qualified'), operator: false, payout: false,
       canQuoteCommercially: false, canReceivePaidWork: false },
+    packages: (agent.packages || []).map(packageView),
     runtime: { connected, connectedAt: agent.connectedAt || null, kind: agent.runtimeKind || null, transport: agent.runtimeTransport || 'local-csv', expiresAt: agent.credentialExpiresAt || null, name: agent.runtimeName || null, version: agent.runtimeVersion || null } };
 }
 
-function createApplication({ repository, now = Date.now, localExecution = false, pilotConnections = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour, autoAcceptAfterMs = null, pilotUnpaidExecution = false }) {
+function createApplication({ repository, now = Date.now, localExecution = false, pilotConnections = false, resolveOperator, resolveActor, objectStore, fileScanner, scopingProvider, paymentProvider, driveProvider, attioProvider, runHostedAutomation, paymentRecoveryUserIds = [], connectionVault = null, connectionProviders = [], conversationsPerHour, storageLimitBytes, modelAttemptsPerHour, driveOperationsPerHour, autoAcceptAfterMs = null, pilotUnpaidExecution = false }) {
   if (pilotConnections && (localExecution || typeof resolveOperator !== 'function' || typeof resolveActor !== 'function')) {
     throw new Error('PILOT_CONNECTIONS_REQUIRE_MANAGED_IDENTITY');
   }
@@ -134,10 +157,25 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     if (write && task.orchestrationStep?.supersededBy) fail(409, 'STEP_SUPERSEDED', 'This step was replaced. Open the current parent plan.');
     return task;
   };
+  // Read-only access: the task's owner and company owners, plus members of the
+  // task's project (docs/specs/Enterprise-and-Projects.md). Every command still
+  // goes through taskFor, so project members can see but not change a task.
+  const taskReader = async (repo, actor, id) => {
+    const current = resolveActor ? await resolveActor(actor.user.id) : actor;
+    const viewer = { ...actor, memberships: current?.memberships || [] };
+    const task = await repo.get('task', id);
+    if (!task) notFound();
+    const member = membership(viewer, task.tenantId);
+    if (task.ownerId === actor.user.id || member.role === 'owner') return task;
+    const project = task.projectId && member.company ? await repo.get('project', task.projectId) : null;
+    if (project?.tenantId === task.tenantId && require('./projects.cjs').isMember(project, actor.user.id)) return task;
+    notFound();
+  };
   const agentFor = async (repo, actor, id) => owner(actor, await repo.get('agent', id, true));
 
   async function createTask(actor, body, key) {
-    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion']);
+    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion', 'projectId', 'categoryId']);
+    if (body.categoryId !== undefined && !require('../../../packages/domain/src/categories.cjs').taskById(body.categoryId)) fail(400, 'INVALID_INPUT', 'Choose a category from the list.');
     membership(actor, body.tenantId, true);
     const repeating = body.repeatFromTaskId !== undefined;
     const retrying = body.retryFromTaskId !== undefined;
@@ -157,6 +195,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       membership(actor, body.tenantId, true);
       if (repeating) await taskFor(repo, actor, body.repeatFromTaskId);
       if (retrying) await taskFor(repo, actor, body.retryFromTaskId, true);
+      if (body.projectId !== undefined) await context.projects.checkFiling(repo, actor, body.tenantId, body.projectId);
     };
     const title = text(body.title, 'Title', 1, 120), brief = text(body.brief, 'Brief', 1, 10000);
     return command(actor.user.id, key, ['create', body], authorize, async repo => {
@@ -196,13 +235,52 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       } else if (body.preferenceMode !== undefined || body.discoverySource !== undefined) {
         fail(400, 'INVALID_INPUT', 'A routing preference requires an available agent.');
       }
-      const task = { id, tenantId: body.tenantId, ownerId: actor.user.id, title, brief, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf,
-        companyApprovalRequired: !!membership(actor, body.tenantId).company, status: 'draft', version: 1, scopeVersion: 1, createdAt: time, updatedAt: time,
-        messages: [{ id: randomUUID(), body: brief, authorId: actor.user.id, authorName: actor.user.name, createdAt: time }],
-        scopes: [{ version: 1, title, brief, createdAt: time }], events: [], offers: [], selectedOfferId: null, assignment: null, submissions: [] };
+      const task = newTask({ id, actor, tenantId: body.tenantId, title, brief, time, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf });
+      if (body.projectId !== undefined) task.projectId = (await context.projects.checkFiling(repo, actor, body.tenantId, body.projectId)).id;
+      if (body.categoryId !== undefined) task.categoryId = body.categoryId;
       event(task, actor.user.id, 'task.created', time);
       await saveTask(repo, task);
       return { taskId: id, version: 1 };
+    }, `workspace-create:${body.tenantId}`);
+  }
+  // One shape for every new task, whether posted as a request or bought as a package.
+  function newTask({ id, actor, tenantId, title, brief, time, preferredAgentId = null, preferredOperatorId = null, acquisition = null, repeatHireOf = null, retryOf = null }) {
+    return { id, tenantId, ownerId: actor.user.id, title, brief, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf,
+      companyApprovalRequired: !!membership(actor, tenantId).company, status: 'draft', version: 1, scopeVersion: 1, createdAt: time, updatedAt: time,
+      messages: [{ id: randomUUID(), body: brief, authorId: actor.user.id, authorName: actor.user.name, createdAt: time }],
+      scopes: [{ version: 1, title, brief, createdAt: time }], events: [], offers: [], selectedOfferId: null, assignment: null, submissions: [] };
+  }
+  // "Hire it": buying a package creates a posted task reserved for the package's
+  // agent, with the frozen terms and the package offer already selected. Starting
+  // it goes through the normal start review (execution.cjs#checkStart).
+  async function buyPackage(actor, agentId, packageId, body, key) {
+    exactKeys(body, ['tenantId', 'expectedPackageVersion']);
+    membership(actor, body.tenantId, true);
+    positive(body.expectedPackageVersion, 'Package version');
+    text(agentId, 'Agent', 36, 36); text(packageId, 'Package', 36, 36);
+    return command(actor.user.id, key, ['buy-package', agentId, packageId, body], async () => membership(actor, body.tenantId, true), async repo => {
+      const time = now(), agent = await repo.get('agent', agentId, true);
+      if (!requestableAgent(agent, actor, time)) notFound();
+      const pkg = checkPurchasable(agent, packageId, (item, capability) => capabilityView(item, capability, time).qualification);
+      if (pkg.version !== body.expectedPackageVersion) fail(409, 'PACKAGE_CHANGED', 'The builder updated this package. Review the new terms before buying.');
+      await limits.consumeConversation(repo, body.tenantId, time);
+      const terms = packageTerms(pkg), capability = agent.capabilities.find(item => item.id === terms.capabilityId);
+      const task = newTask({ id: randomUUID(), actor, tenantId: body.tenantId, title: terms.title, brief: terms.included, time,
+        preferredAgentId: agent.id, acquisition: require('./acquisition.cjs').acquisition('package', agent, 'agent', time) });
+      task.status = 'posted';
+      // The buyer didn't write the package text, so it isn't shown as their message.
+      task.messages = [];
+      task.package = { ...terms, criteria: terms.criteria.map(item => ({ ...item })), inputs: [...terms.inputs] };
+      task.acceptanceCriteria = terms.criteria.map(item => ({ ...item }));
+      task.scopes[0].acceptanceCriteria = task.acceptanceCriteria;
+      const offer = packageOffer({ agent, capability, qualification: capabilityView(agent, capability, time), task, terms, time });
+      task.offers.push(offer);
+      task.selectedOfferId = offer.id;
+      event(task, actor.user.id, 'task.created', time);
+      event(task, actor.user.id, 'package.bought', time, offer.id);
+      await saveTask(repo, task);
+      await repo.save('offer-index', { id: offer.id, ownerId: agent.ownerId, taskId: task.id, offerId: offer.id });
+      return { taskId: task.id, version: task.version, offerId: offer.id };
     }, `workspace-create:${body.tenantId}`);
   }
   async function mutateTask(actor, id, action, body, key) {
@@ -220,6 +298,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       let type;
       if (['scope', 'edit'].includes(action)) {
         if (task.scheduleId) fail(409, 'SCHEDULE_MANAGED', 'Recurring runs use an immutable brief. Create and test a new task to change it.');
+        assertNotPackage(task);
         if (task.assignment) fail(409, 'TASK_ASSIGNED', 'Authorized work requires an agreed change request.');
         if (action === 'edit' && task.status !== 'draft') fail(409, 'INVALID_TRANSITION', 'Only a draft can be edited.');
         task.title = text(body.title, 'Title', 1, 120); task.brief = text(body.brief, 'Brief', 1, 10000);
@@ -236,6 +315,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       } else if (['post', 'cancel'].includes(action)) {
         if (task.assignment) fail(409, 'TASK_ASSIGNED', 'Authorized work cannot use a pre-award command.');
         if (action === 'post' && task.status !== 'draft') fail(409, 'INVALID_TRANSITION', 'Only a draft can be posted.');
+        if (action === 'post') context.intake.assertReady(task);
         if (action === 'post' && task.scoping?.status === 'pending' && task.scoping.expiresAt > now()) fail(409, 'SCOPING_BUSY', 'Wait for the local reply or edit the brief manually before posting.');
         if (action === 'post' && task.scoping?.status === 'completed' && ['request', 'change'].includes(task.scoping.proposal.intent) && task.scoping.proposal.cadence !== 'once') fail(409, 'RECURRING_NOT_ENABLED', 'Confirm the recurring scope before requesting offers.');
         if (action === 'post' && task.scoping?.status === 'completed' && ['request', 'change'].includes(task.scoping.proposal.intent) && task.scoping.proposal.questions.length) fail(409, 'SCOPING_INCOMPLETE', 'Answer the missing questions or review the brief manually before posting it.');
@@ -255,13 +335,27 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     const domain = body.domain ? text(body.domain, 'Domain', 1, 150) : '';
     if (body.kind === 'specialist' && !domain) fail(400, 'INVALID_INPUT', 'Describe the specialist domain.');
     if (!Array.isArray(body.capabilities) || body.capabilities.length < 1 || body.capabilities.length > 50) fail(400, 'INVALID_INPUT', 'Add 1–50 capabilities.');
+    const categories = require('../../../packages/domain/src/categories.cjs');
     const capabilities = body.capabilities.map(item => {
-      exactKeys(item, ['category', 'task', 'metadata']);
-      return { id: randomUUID(), metadata: require('./capability-matching.cjs').metadata(item.metadata), category: text(item.category, 'Category', 1, 100), task: text(item.task, 'Capability', 1, 1000), qualification: 'unverified' };
+      exactKeys(item, ['category', 'categoryId', 'task', 'metadata']);
+      const task = text(item.task, 'Capability', 1, 1000);
+      // Builders pick a task from the category list; "other" carries their
+      // suggestion. Older clients send free text, which is mapped onto the list.
+      let categoryId = item.categoryId, category;
+      if (categoryId !== undefined) {
+        const picked = categories.taskById(categoryId);
+        if (!picked) fail(400, 'INVALID_INPUT', 'Choose a category from the list, or Other with a suggestion.');
+        category = categoryId === 'other' ? text(item.category, 'Suggested category', 2, 100) : picked.label;
+      } else {
+        category = text(item.category, 'Category', 1, 100);
+        categoryId = categories.classify(`${category} ${task}`) || 'other';
+      }
+      return { id: randomUUID(), metadata: require('./capability-matching.cjs').metadata(item.metadata), category, categoryId, task, qualification: 'unverified' };
     });
     return command(actor.user.id, key, ['agent', body], async () => {
-      if (!actor.memberships.length || actor.recoveryRequired) notFound();
+      if ((!actor.memberships.length && !actor.organization) || actor.recoveryRequired) notFound();
     }, async repo => {
+      await context.org.assertCanPublish(repo, actor);
       const agent = { id: randomUUID(), ownerId: actor.user.id, operatorName: actor.user.name, name, purpose, domain, kind: body.kind,
         integration: body.integration, capabilities, listingStatus: 'draft', status: 'listed', version: 1, setupStage: 2, createdAt: now(),
         rules: { automaticRequested: false, minimumPayout: 100, concurrency: 1 } };
@@ -274,6 +368,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     if (!['draft', 'published', 'paused'].includes(body.status)) fail(400, 'INVALID_INPUT', 'Choose draft, published or paused.');
     return command(actor.user.id, key, ['listing', id, body], repo => agentFor(repo, actor, id), async repo => {
       const agent = await agentFor(repo, actor, id); expected(agent, body.expectedVersion);
+      if (body.status === 'published') await context.org.assertCanPublish(repo, actor);
+      if (body.status === 'published' && !hasRelayTest(agent, now())) fail(409, 'RELAY_TEST_REQUIRED', 'Pass a Relay test before publishing this agent.');
       agent.listingStatus = body.status;
       agent.version++;
       await repo.save('agent', agent);
@@ -281,7 +377,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     });
   }
   async function configure(actor, id, body, key) {
-    exactKeys(body, ['integration', 'automaticRequested', 'minimumPayout', 'concurrency', 'expectedVersion', 'setupStage', 'name', 'purpose', 'domain', 'kind', 'currency']);
+    exactKeys(body, ['integration', 'automaticRequested', 'minimumPayout', 'concurrency', 'expectedVersion', 'setupStage', 'name', 'purpose', 'domain', 'kind', 'currency', 'automaticScope', 'automaticLimitMinor']);
+    const automatic = require('./auto-offers.cjs').automaticRules(body);
     if (!['api', 'sdk', 'mcp'].includes(body.integration) || typeof body.automaticRequested !== 'boolean') fail(400, 'INVALID_INPUT', 'Choose method and bidding preference.');
     positive(body.minimumPayout, 'Minimum payout', 10000000); positive(body.concurrency, 'Concurrency', 100); positive(body.setupStage, 'Stage', 3);
     return command(actor.user.id, key, ['configure', id, body], repo => agentFor(repo, actor, id), async repo => {
@@ -300,7 +397,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       agent.integration = body.integration; agent.setupStage = body.setupStage;
       const currency = body.currency === undefined ? (agent.rules.currency || 'USD') : body.currency;
       if (!['USD', 'EUR'].includes(currency)) fail(400, 'CURRENCY_UNSUPPORTED', 'Choose USD or EUR.');
-      agent.rules = { currency, automaticRequested: body.automaticRequested, minimumPayout: body.minimumPayout, concurrency: body.concurrency };
+      agent.rules = { currency, automaticRequested: body.automaticRequested, minimumPayout: body.minimumPayout, concurrency: body.concurrency, ...automatic };
       agent.version++; await repo.save('agent', agent);
       return { agentId: id, version: agent.version, automaticEnabled: agentView(agent, now()).rules.automaticEnabled };
     });
@@ -314,11 +411,13 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     const proposal = text(body.proposal, 'Proposal', 1, 3000);
     return command(actor.user.id, key, ['quote', id, body], async repo => { owner(actor, await repo.get('agent', body.agentId)); }, async repo => {
       const task = await repo.get('task', id, true), agent = await agentFor(repo, actor, body.agentId);
+      await context.org.assertCanPublish(repo, actor);
       if (runtime) {
         await context.credentials.runtimeAgent(repo, runtime, 'offers:write');
         if (agent.connectedAt <= now() - 120000) fail(409, 'RUNTIME_REQUIRED', 'Send a fresh heartbeat before bidding.');
       }
-      if (!task || task.status !== 'posted' || actor.memberships.some(member => member.id === task.tenantId) || task.ownerId === actor.user.id) notFound();
+      // An organization never offers on its own requests.
+      if (!task || task.status !== 'posted' || actor.memberships.some(member => member.id === task.tenantId) || task.tenantId === actor.user.id || task.ownerId === actor.user.id) notFound();
       require('./orchestration.cjs').ready(task);
       if (currency !== 'USD' && (task.companyApprovalRequired || task.orchestrationStep || task.scheduleId || task.recurringScheduleId || (task.workPlan?.cadence && task.workPlan.cadence !== 'once'))) fail(409, 'CURRENCY_UNSUPPORTED', 'Budgets and recurring or coordinated work currently use USD.');
       require('./orchestration.cjs').withinBudget(task, body.amountMinor);
@@ -327,6 +426,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) fail(404, 'NOT_FOUND', 'This direct request is reserved for another builder.');
       if (excludedFrom(task, body.agentId)) fail(409, 'AGENT_EXCLUDED', 'The buyer asked for a different agent after this agent’s run failed.');
       if (task.assignment) fail(409, 'TASK_ASSIGNED', 'This task is already assigned.');
+      assertNotPackage(task);
       if (task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) fail(409, 'TASK_SELECTED', 'The buyer has selected an offer.');
       expected(task, body.expectedVersion);
       const capability = agent.capabilities.find(item => item.id === body.capabilityId);
@@ -334,6 +434,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (runtime && (runtime.agentId !== agent.id || runtime.credentialHash !== agent.credentialHash || !agent.rules.automaticRequested)) fail(403, 'BIDDING_DISABLED', 'Automatic bidding is disabled.');
       if (runtime && currency !== (agent.rules.currency || 'USD')) fail(409, 'CURRENCY_UNSUPPORTED', 'Offer currency must match the agent quoting rules.');
       if (runtime && body.amountMinor < agent.rules.minimumPayout) fail(409, 'PRICE_LIMIT', 'Offer is below the configured minimum.');
+      const refusal = runtime && require('./auto-offers.cjs').automaticRefusal(agent.rules, task, body.amountMinor);
+      if (refusal) fail(409, 'AUTOMATIC_LIMIT', refusal);
       if (task.offers.some(offer => offer.agentId === agent.id && offer.scopeVersion === task.scopeVersion && offer.expiresAt > now())) fail(409, 'OFFER_EXISTS', 'This agent already quoted on this scope.');
       const offer = { id: randomUUID(), agentId: agent.id, operatorId: actor.user.id, agentName: agent.name, agentType: agent.kind,
         operatorName: actor.user.name, category: capability.category, capability: capability.task, capabilityId: capability.id,
@@ -364,7 +466,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
 
   async function detail(actor, id) {
     return repository.read(async repo => {
-      const task = await taskFor(repo, actor, id);
+      const task = await taskReader(repo, actor, id);
       const schedule = task.scheduleId ? await repo.get('schedule', task.scheduleId) : null;
       if (task.scoping?.status === 'pending') {
         const job = await repo.get('scoping-job', task.scoping.id);
@@ -380,7 +482,13 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       }
       const retry = ['owner', 'employee'].includes(membership(actor, task.tenantId).role) && task.assignment?.status === 'failed'
         ? (retryAvailable(task) ? { available: true } : { available: false, retriedBy: task.retriedBy || null }) : null;
-      return { retry, acceptance: acceptanceView(task), actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
+      // The request page shows who posted it and which project it belongs to.
+      const project = task.projectId ? await repo.get('project', task.projectId) : null;
+      const poster = resolveOperator && task.ownerId !== actor.user.id ? await resolveOperator(task.ownerId) : null;
+      const postedBy = task.ownerId === actor.user.id ? actor.user.name : poster?.user?.name || task.messages[0]?.authorName || null;
+      return { retry, acceptance: acceptanceView(task), postedBy, intake: require('./intake.cjs').intakeView(task),
+        checks: (task.assignment?.agreement?.checks || task.checks || []).map(require('./checks.cjs').checkView), access: await context.connections.forTask(repo, task), mine: task.ownerId === actor.user.id,
+        project: project ? { id: project.id, name: project.name, status: project.status, leadId: project.leadId } : null, actions: { version: task.version, scheduling: { create: await recurring.scheduleCreationAction(repo, actor, task) }, execution: { ...await execution.executionActions(repo, actor, task), ...await lifecycle.lifecycleActions(repo, actor, task) }, payments: await payments.paymentActions(repo, actor, task), approvals: await context.approvals.approvalActions(repo, actor, task) }, repeatHire, orchestration: await orchestration.view(repo, actor, task), portfolioRequests: await portfolio.forTask(repo, actor, task), schedule: schedule ? { status: schedule.status, reason: schedule.reason || null } : null, task: taskView(task, now()), changeProposals: task.changeProposals || [], agreementHistory: task.agreementHistory || [], messages: task.messages.map(({authorId,...message})=>message), scopes: task.scopes, events: task.events.map(({actorId,...item})=>item),
         approval: require('./approvals.cjs').approvalView(task, now()), execution: publicExecution(task), payment: paymentView(task.settlement, await repo.get('payment-job', `task:${task.id}`)), submissions: task.submissions.map(publicSubmission) };
     });
   }
@@ -391,14 +499,20 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   function opportunityView(task, actor) {
     if (task.assignment ||
       (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) ||
-      actor.memberships.some(member => member.id === task.tenantId) ||
+      actor.memberships.some(member => member.id === task.tenantId) || task.tenantId === actor.user.id ||
       task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) return null;
     return { id: task.id, title: task.title, brief: task.brief, version: task.version, scopeVersion: task.scopeVersion, acceptanceCriteria: task.acceptanceCriteria || [],
       input: task.input ? { filename: task.input.filename, size: task.input.size, sha256: task.input.sha256, notes: task.input.notes, operation: task.input.operation } : null,
+      categoryId: task.categoryId || null, categoryLabel: task.categoryId ? require('../../../packages/domain/src/categories.cjs').taskById(task.categoryId).label : null,
+      intake: context.intake.forBidders(task), checks: (task.checks || []).map(require('./checks.cjs').checkView),
+      postedAt: [...task.events].reverse().find(item => item.type === 'task.posted')?.createdAt || task.createdAt, direct: !!(task.preferredAgentId || task.preferredOperatorId),
       context: [], myOffers: task.offers.filter(offer => offer.operatorId === actor.user.id).map(offer => ({ id: offer.id, agentId: offer.agentId, taskVersion: offer.taskVersion, scopeVersion: offer.scopeVersion, expiresAt: offer.expiresAt })) };
   }
   async function opportunities(actor) {
     return repository.read(async repo => {
+      // Open requests are shown to builders only: someone with no agent can't
+      // quote, and shouldn't read other companies' briefs.
+      if (!(await repo.list('agent', 'owner_id', actor.user.id, 1)).length) return [];
       const tasks = await repo.list('task', 'status', 'posted');
       const visible = [];
       for (const task of tasks) {
@@ -419,10 +533,11 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   async function offers(actor, id) {
     return repository.read(async repo => {
-      const task = await taskFor(repo, actor, id);
+      const task = await taskReader(repo, actor, id);
       const checkedAt = now();
       const offers = await require('./fair-exposure.cjs').offersWithExposure(repo, task, checkedAt);
-      return require('./offer-recommendation.cjs').recommendOffers(task, offers, checkedAt);
+      return require('./offer-recommendation.cjs').recommendOffers(task, offers, checkedAt)
+        .map(offer => ({ ...offer, runtimeCommitted: require('./packages.cjs').runtimeCommitted(offer) }));
     });
   }
   async function supplierTasks(actor) {
@@ -462,8 +577,13 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   }
   // Runtime-specific commands are installed in one place and share task locks,
   // authorization, receipt replay handling and the same immutable task document.
-  const context = { capabilities, supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, agentFor, now, localExecution, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView, autoAcceptAfterMs };
+  const context = { capabilities, supplierConnections, pilotConnections, runHostedAutomation, conversationAdmission: limits.consumeConversation, driveBudget: require('./drive-budget.cjs').driveBudget(driveOperationsPerHour), modelBudget: require('./model-budget.cjs').modelBudget(modelAttemptsPerHour), attioProvider, storageAdmission: require('./storage-limits.cjs').storageAdmission(storageLimitBytes), driveProvider, objectStore, fileScanner, paymentRecoveryUserIds, sandboxPaymentsEnabled: !!paymentProvider && localExecution, repository, command, taskFor, taskReader, agentFor, now, localExecution, connectionVault, connectionProviders, taskView, agentView, touch, event, hash, positive, expected, copy, resolveOperator, resolveActor, opportunityView, autoAcceptAfterMs };
   context.approvals = require('./approvals.cjs').createApprovals(context);
+  context.projects = require('./projects.cjs').createProjects(context);
+  context.org = require('./org-controls.cjs').createOrgControls(context);
+  context.intake = require('./intake.cjs').createIntake(context);
+  const { assertReady, forBidders, forAgent, ...intakeCommands } = context.intake;
+  const { checkFiling, ...projectCommands } = context.projects;
   context.credentials = require('./supplier-credentials.cjs').createCredentials(context);
   const orchestration = require('./orchestration.cjs').createOrchestration(context);
   const portfolio = require('./portfolio.cjs').createPortfolio(context);
@@ -472,16 +592,19 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const scoping = require('./scoping.cjs').createScoping(context, scopingProvider);
   const execution = require('./execution.cjs').createExecution(context);
   const { authorizeWithin, ...executionCommands } = execution;
+  context.connections = require('./connections.cjs').createConnections(context);
+  const { forTask: accessForTask, grantsForAgent, ...connectionCommands } = context.connections;
   const feed = require('./supplier-feed.cjs').createSupplierFeed(context);
   const recurring = require('./recurring.cjs').createRecurring(context, execution);
   const lifecycle = require('./execution-lifecycle.cjs').createLifecycle(context);
   const { activity } = require('./activity.cjs').createActivity(context);
   const acceptance = createAcceptance({ ...context, saveTask, assertUnfunded });
+  const packages = createPackages({ ...context, qualificationOf: (agent, capability) => capabilityView(agent, capability, now()).qualification });
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
   const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView,
-    connectors: require('./marketplace-browse.cjs').workingConnectors({ capabilities, driveProvider, attioProvider }) });
-  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
+    connectors: require('./marketplace-browse.cjs').workingConnectors({ capabilities, driveProvider, attioProvider, connectionProviders }) });
+  return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, orgPolicy: context.org.orgPolicy, setOrgPolicy: context.org.setOrgPolicy, publishing: context.org.publishing, orgAudit: context.org.orgAudit, actAs: context.org.actAs, recordOrgAction: context.org.recordOrgAction, ...connectionCommands, ...intakeCommands, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
       saveAgent: require('./saved-agents.cjs').createSavedAgents(context),
       discover: require('./agent-discovery.cjs').createDiscovery({ repository, now, listingView }),
@@ -502,13 +625,16 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         const saved = await require('./saved-agents.cjs').savedAgents(repo, actor.user.id);
         const time = now();
         const history = await require('./fair-exposure.cjs').operatorHistory(repo, agent.ownerId);
-        return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: agent.ownerId === actor.user.id,
+        const owner = agent.ownerId === actor.user.id;
+        return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: owner,
+          // The owner edits packages on their own agent page, so they also get drafts and the version to edit against.
+          ...(owner ? { ownerPackages: (agent.packages || []).map(packageView), agentVersion: agent.version } : {}),
           trackRecord: require('./agent-card.cjs').agentEvidence(history, agent, time), market: await marketBrowse.row(repo, actor, agent) };
       }),
       acquisition: require('./acquisition.cjs').createAcquisition(context),
       recordExposure: require('./fair-exposure.cjs').createExposure(context).record,
       addPortfolio: portfolio.add, decidePortfolio: portfolio.decide,
-      updateListing,
+      updateListing, buyPackage, savePackage: packages.savePackage, setPackageStatus: packages.setPackageStatus,
       addAgent, configure, opportunities, offers, accept: select, work: supplierTasks, quotes,
       quote
     }
@@ -520,8 +646,8 @@ function publicExecution(task) {
   return { waitingForPermission: waitingForPermission(task.assignment), pausedByBuyer: pausedByBuyer(task.assignment), id, offerId, agentId, status, authorizedAt, startedAt, heartbeatAt, completedAt, error, progress, attempt, runtimeKind, deadlineAt, endedAt, paymentStatus: task.assignment.mode === 'stripe-sandbox' ? (task.settlement?.status || 'unknown') : 'not_applicable_local_unpaid' };
 }
 function publicSubmission(submission) {
-  const { id, version, status, createdAt, evidence, files, unmetCriteria } = submission;
+  const { id, version, status, createdAt, evidence, files, unmetCriteria, checks } = submission;
   return { id, version, status, createdAt, evidence, files: files.map(({ id, filename, mime, size, sha256, scan }) => ({ id, filename, mime, size, sha256, ...(scan ? { scan } : {}) })),
-    ...(unmetCriteria?.length ? { unmetCriteria } : {}) };
+    ...(unmetCriteria?.length ? { unmetCriteria } : {}), ...(checks ? { checks } : {}) };
 }
 module.exports = { createApplication, publicSubmission };

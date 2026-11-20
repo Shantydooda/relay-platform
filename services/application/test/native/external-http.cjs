@@ -45,15 +45,9 @@ async function externalHttp({ origin, home, buyer, builder, request, json, event
     assert.equal(preview.agent.ownerPreview, true);
     assert.equal(preview.agent.listingStatus, 'draft');
     const listingVersion = (await json('/api/agents', builder)).agents.find(item=>item.id===agent.agentId).version;
-    assert.equal((await request(`/api/agents/${agent.agentId}/listing`, buyer, { expectedVersion: listingVersion, status: 'published' }, 'PATCH')).status, 404);
-    await json(`/api/agents/${agent.agentId}/listing`, builder, { expectedVersion: listingVersion, status: 'published' }, 'PATCH');
-    assert.equal((await json(`/api/agent-market/${agent.agentId}`, buyer)).agent.ownerPreview, false);
-    const discovery = await json('/api/agent-market?limit=1', buyer);
-    assert.ok(discovery.total >= 1);
-    assert.equal(discovery.agents.length, 1);
-    assert.equal((await request('/api/agent-market?limit=0', buyer)).status, 400);
-    assert.equal((await request('/api/agent-market?after=bad', buyer)).status, 400);
-    assert.equal((await json('/api/agent-market?q=NO_MATCH_9234', buyer)).total, 0);
+    assert.equal((await request(`/api/agents/${agent.agentId}/listing`, buyer, { expectedVersion: listingVersion, status: 'published' }, randomUUID(), 'PATCH')).status, 404);
+    // Publishing needs a passed Relay test (Marketplace-Model.md, "One marketplace" §2); it happens after the runtime passes one below.
+    assert.equal((await request(`/api/agents/${agent.agentId}/listing`, builder, { expectedVersion: listingVersion, status: 'published' }, randomUUID(), 'PATCH')).status, 409);
     // A setup check must not impersonate a running worker or change agent metadata.
     const beforeCheck = (await json('/api/agents', builder)).agents.find(item => item.id === agent.agentId);
     const diagnostic = await checkConnection({ origin, token: issued.token });
@@ -70,6 +64,17 @@ async function externalHttp({ origin, home, buyer, builder, request, json, event
     assert.deepEqual(afterCheck, beforeCheck, 'diagnostics must not change connection, qualification or quoting metadata');
     launch();
     await eventually(() => json('/api/agents', builder), value => value.agents.some(item => item.id === agent.agentId && item.runtime.connected));
+    const connected = (await json('/api/agents', builder)).agents.find(item => item.id === agent.agentId);
+    await json(`/api/agents/${agent.agentId}/qualifications`, builder, { expectedVersion: connected.version, capabilityId: connected.capabilities[0].id, rubric: 'csv-normalize-v1' });
+    const tested = await eventually(() => json('/api/agents', builder), value => value.agents.some(item => item.id === agent.agentId && item.capabilities[0].qualification === 'qualified'));
+    await json(`/api/agents/${agent.agentId}/listing`, builder, { expectedVersion: tested.agents.find(item => item.id === agent.agentId).version, status: 'published' }, 'PATCH');
+    assert.equal((await json(`/api/agent-market/${agent.agentId}`, buyer)).agent.ownerPreview, false);
+    const discovery = await json('/api/agent-market?limit=1', buyer);
+    assert.ok(discovery.total >= 1);
+    assert.equal(discovery.agents.length, 1);
+    assert.equal((await request('/api/agent-market?limit=0', buyer)).status, 400);
+    assert.equal((await request('/api/agent-market?after=bad', buyer)).status, 400);
+    assert.equal((await json('/api/agent-market?q=NO_MATCH_9234', buyer)).total, 0);
     const task = await json('/api/tasks', buyer, { tenantId: buyer.actor.memberships[0].id, title: 'External CSV processing', brief: 'Normalize CSV supplied with this task and return files.' });
     await json(`/api/tasks/${task.taskId}/input`, buyer, { expectedVersion: 1, filename: 'source.csv', notes: 'Only this supplied sample.', base64: Buffer.from('name\nZeta\nAcme\nAcme\n').toString('base64') });
     await json(`/api/tasks/${task.taskId}/post`, buyer, { expectedVersion: 2 });

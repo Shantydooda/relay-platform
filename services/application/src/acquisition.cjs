@@ -1,6 +1,6 @@
 'use strict';
 const { fail } = require('../../../packages/contracts/src/input.cjs');
-const SOURCES = ['market', 'storefront', 'builder-link', 'unspecified', 'repeat-hire'];
+const SOURCES = ['market', 'storefront', 'builder-link', 'unspecified', 'repeat-hire', 'package'];
 function acquisition(source, agent, mode, time) {
   if (!SOURCES.includes(source)) fail(400, 'INVALID_ACQUISITION', 'Invalid request entry point.');
   return { version: 1, source, agentId: agent.id, operatorId: agent.ownerId, mode, recordedAt: time };

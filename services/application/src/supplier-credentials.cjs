@@ -63,7 +63,7 @@ function createCredentials({ repository, command, agentFor, expected, now, hash,
     if (kind && transport !== kind) fail(403, 'CREDENTIAL_TRANSPORT', 'Use the connection endpoint for this credential.');
     if (scope && !(record.credential.scopes || SUPPLIER_SCOPES).includes(scope)) fail(403, 'SCOPE_REQUIRED', 'This credential does not permit that operation.');
     const actor = await resolveOperator(record.agent.ownerId);
-    if (!actor?.user || !actor.memberships.length || actor.recoveryRequired) fail(403, 'OPERATOR_UNAVAILABLE', 'The operator is not active.');
+    if (!actor?.user || (!actor.memberships.length && !actor.organization) || actor.recoveryRequired) fail(403, 'OPERATOR_UNAVAILABLE', 'The operator is not active.');
     return { actor, agentId: record.agent.id, credentialHash: digest, transport };
   }
   async function runtimeAgent(repo, principal, scope) {
