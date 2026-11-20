@@ -188,6 +188,7 @@ html[data-appearance] body.market-open #app .mk-tabs button[aria-current='page']
 
 .mk-buy { display: grid; gap: 16px; align-content: start; }
 .mk-buy-box { border: 1px solid var(--mk-border); border-radius: 12px; padding: 16px 18px; }
+.mk-region-note { margin: 0; border: 1px solid var(--mk-border); border-left: 3px solid var(--mk-accent); border-radius: 12px; padding: 12px 14px; background: var(--mk-accent-soft); color: var(--mk-text); font-size: 13px; line-height: 1.45; }
 .mk-buy-box h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--mk-text); }
 .mk-buy-box p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: var(--mk-muted); }
 html[data-appearance] body.market-open #app .mk-buy-box > button:not(.mk-link-button) { width: 100%; font: inherit; font-size: 14px; font-weight: 600; border-radius: 9px; padding: 10px; color: var(--mk-muted); background: var(--mk-rail); border: 1px solid var(--mk-border); cursor: not-allowed; }

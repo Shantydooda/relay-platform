@@ -25,7 +25,7 @@ const RelaySupplier = {
     return {
       ...(form.id === 'agent-profile' ? {
         name: data.get('name'), purpose: data.get('purpose'),
-        domain: data.get('domain'), kind: data.get('kind'),
+        domain: data.get('domain'), kind: data.get('kind'), processingRegion: data.get('processingRegion') || null,
       } : {}),
       integration: form.id === 'agent-connection' ? data.get('integration') : agent.integration,
       automaticRequested: updatingRules ? data.get('automatic') === 'on' : agent.rules.automaticRequested,

@@ -30,7 +30,7 @@ test('owners can stop members publishing agents or sending offers; owners and ou
   await assert.rejects(f.app.orgPolicy(f.outsider, f.company.id), { code: 'FORBIDDEN' });
 
   const saved = await f.app.setOrgPolicy(f.owner, f.company.id, { membersCanPublish: false, expectedVersion: 0 }, randomUUID());
-  assert.deepEqual(saved, { tenantId: f.company.id, membersCanPublish: false, version: 1 });
+  assert.deepEqual(saved, { tenantId: f.company.id, membersCanPublish: false, requiredRegion: null, version: 1 });
   await assert.rejects(f.app.setOrgPolicy(f.owner, f.company.id, { membersCanPublish: true, expectedVersion: 0 }, randomUUID()), { code: 'VERSION_CONFLICT' });
 
   const blocked = await f.app.publishing(f.member);

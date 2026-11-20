@@ -213,3 +213,25 @@ test('the agent page links its builder’s profile, and only the owner gets a Se
   assert.match(owner, new RegExp(`href="/build/agents/${id}/offers" data-route`));
   assert.doesNotMatch(ui({ agentPage: page(), agentTab: 'settings' }).agent(), /\/build\/agents\//, 'a buyer asking for Settings sees the card');
 });
+
+test('buyers filter by where agents process data, and see the builder’s declaration', () => {
+  const eu = agent({ id: 'a-eu', name: 'EU cleaner', processingRegion: 'eu' }), none = agent({ id: 'a-none', name: 'Plain cleaner', processingRegion: null });
+  const m = ui({ market: { agents: [eu, none], connectors: [], taxonomy: [], regionRules: [] } });
+  assert.equal(m.visible().length, 2);
+  m.filters().regions = ['eu'];
+  assert.deepEqual(m.visible().map(a => a.id), ['a-eu'], 'undeclared agents never match a region');
+  assert.match(m.rail(), /Data processed in[\s\S]*Declared by builders, not verified by Relay/);
+  assert.match(m.row(eu), /Data in EU/);
+  assert.doesNotMatch(m.row(none), /Data in/);
+});
+
+test('an agent page says when a buyer’s organization rule refuses the agent', () => {
+  const rules = [{ tenantId: 't1', name: 'Northwind', region: 'eu' }];
+  const blocked = ui({ market: { agents: [], regionRules: rules }, agentPage: page({}, { processingRegion: 'us' }), agentTab: 'card' }).agent();
+  assert.match(blocked, /Northwind only uses agents that process data in the EU\. This agent declares the US, so Relay won’t let its requests use it\./);
+  assert.match(blocked, /Data processed in US/);
+  const allowed = ui({ market: { agents: [], regionRules: rules }, agentPage: page({}, { processingRegion: 'eu' }), agentTab: 'card' }).agent();
+  assert.doesNotMatch(allowed, /mk-region-note/);
+  const undeclared = ui({ market: { agents: [], regionRules: rules }, agentPage: page(), agentTab: 'card' }).agent();
+  assert.match(undeclared, /hasn’t declared a region/);
+});

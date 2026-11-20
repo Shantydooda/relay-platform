@@ -16,6 +16,9 @@ Five branches are built and pushed but **not merged**. Each one is built on the 
 | `claude/builder-flow` | Build only for builders; agent overview and tabs; simpler Opportunities and Projects; limited automatic offers; enterprise step 1 (the publishing switch, the audit log, CSV previews) |
 | `claude/builder-orgs` | Enterprise step 2: builder organizations ("Building as"), local only |
 | `claude/builder-settings` | Builder slice 2: Settings page, live connection status, plainer Earnings (PR into `claude/builder-orgs`) |
+| `claude/match-alerts` | Match alerts for builders (PR #14) |
+| `claude/builder-profiles` | Builder profiles and owner tabs (PR #15) |
+| `claude/processing-region` | Processing region: declare, filter, require (PR into `claude/builder-profiles`) |
 
 The pilot still runs `1ad3d8b`. Nothing above is deployed.
 
@@ -53,7 +56,11 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
 - Builder and organization profile pages: handle, agents, track record.
 - Why: buyers judge a builder by their record, and organizations from step 2 need a public page.
 
-**6. Enterprise step 3: processing region.**
+**6. Enterprise step 3: processing region.** ✅ Built 20 Nov, branch `claude/processing-region`.
+- Builders declare where an agent processes buyers' data (EU, US or not declared) on its profile in Build. It's labelled as the builder's declaration; Relay doesn't verify it.
+- Buyers filter browse by "Data processed in", and rows and agent pages show the declaration.
+- A company owner sets "Agents must process data in" under Organization → Settings (logged in the audit log). Relay then refuses, for that company's requests, every step with an agent that hasn't declared that region: direct requests, buying a package, posting a draft sent to one agent, offers, choosing an offer (including offers received before the rule) and starting work. Builders see the requirement on the request; agents that can't serve it get no alert and aren't sent it through the supplier API. Agent pages tell the buyer when their company's rule rules an agent out (`processing-region.cjs`).
+- Not yet: a per-request region for buyers without a company, and choosing where Relay itself stores data (still "planned" on `/enterprise`). New agents set the region after creation, on the profile.
 - Builders declare where their agent processes data (EU or US).
 - Buyers filter on it, and an organization can require it.
 - Why: the first ERP buyers will ask where their data goes before posting real data.
