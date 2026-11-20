@@ -68,6 +68,10 @@ function browseRow({ agent, listing, history, now, connectors, actor }) {
   return {
     id: agent.id,
     builder: agent.operatorName || 'Independent builder',
+    // Opaque and stable: groups a builder's agents and addresses their profile
+    // without revealing the account id. Display names aren't unique.
+    builderId: require('node:crypto').createHash('sha256').update(`builder:${agent.ownerId}`).digest('hex').slice(0, 16),
+    builderKind: agent.operatorKind === 'organization' ? 'organization' : 'person',
     name: agent.name,
     purpose: agent.purpose,
     kind: agent.kind,

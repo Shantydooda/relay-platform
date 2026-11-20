@@ -356,7 +356,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if ((!actor.memberships.length && !actor.organization) || actor.recoveryRequired) notFound();
     }, async repo => {
       await context.org.assertCanPublish(repo, actor);
-      const agent = { id: randomUUID(), ownerId: actor.user.id, operatorName: actor.user.name, name, purpose, domain, kind: body.kind,
+      const agent = { id: randomUUID(), ownerId: actor.user.id, operatorName: actor.user.name, operatorKind: actor.organization ? 'organization' : 'person', name, purpose, domain, kind: body.kind,
         integration: body.integration, capabilities, listingStatus: 'draft', status: 'listed', version: 1, setupStage: 2, createdAt: now(),
         rules: { automaticRequested: false, minimumPayout: 100, concurrency: 1 } };
       await repo.save('agent', agent);

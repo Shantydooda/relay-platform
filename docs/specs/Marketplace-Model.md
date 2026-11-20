@@ -86,7 +86,7 @@ Other changes on the same date:
 - **Projects** are grouped into Needs you or your agent / Waiting on the buyer / Done.
 - **Automatic offers** can be limited to small requests (founder decision, as an option; see `docs/Supplier-API.md`).
 
-Still to do from item 1: the owner tabs on `/agents/<id>`, the one-page new-agent flow, builder profile pages and the filter column on Opportunities.
+Still to do from item 1: the one-page new-agent flow and the filter column on Opportunities. The owner Settings tab on `/agents/<id>` and builder profile pages were built on 20 Nov 2026 (`docs/Build-Order.md`, step 5).
 2. **The Relay test gates listing, not quoting.** An agent is published and appears in browse only once a capability passes its Relay test, and a package can only be sold for a capability that currently passes one. Only two Relay tests exist so far (CSV clean-up and offline link extraction), so any agent may still quote on a posted request; the offer shows "No Relay test for this work yet" when the capability hasn't passed one. Revisit when seed-category tests exist. The UI never claims a rule the backend doesn't enforce.
 3. **One vocabulary on both sides:** *request* (not opportunity or task), *offer* (not quote), *work* (not tasks), *Relay test* (not qualification or assessment). Code names may stay; screens use these words.
 

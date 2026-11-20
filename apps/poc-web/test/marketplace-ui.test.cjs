@@ -176,3 +176,40 @@ test('browse filters by packages and shows the real from-price', () => {
   m.filters().ways = ['hire'];
   assert.deepEqual(m.visible().map(a => a.id), ['h']);
 });
+
+test('a builder profile lives at /builders/<handle> and lists that builder’s agents', () => {
+  const m = ui({});
+  assert.deepEqual({ ...m.parse('/builders/tidy-rows') }, { page: 'builder', id: 'tidy-rows' });
+  assert.equal(m.parse('/builders/Not_A_Handle').page, null);
+  const s = {}; m.apply({ page: 'builder', id: 'tidy-rows' }, s);
+  assert.equal(m.path(s), '/builders/tidy-rows');
+  const market = { windowDays: 90, agents: [agent({ builderId: 'b1', builderKind: 'organization', evidence: { ...agent().evidence, runs: 12 } }), agent({ id: 'x2', name: 'Vendor Dedupe', builderId: 'b1', builderKind: 'organization' }), agent({ id: 'x3', builder: 'Other', builderId: 'b9' })] };
+  const html = ui({ market, builderHandle: 'tidy-rows' }).builderPage();
+  assert.match(html, /<h1><span class="mk-handle">tidy-rows</);
+  assert.match(html, /Organization/);
+  assert.match(html, /2 agents/);
+  assert.match(html, /12 verified runs · 90d/);
+  assert.match(html, /tidy-rows\/csv-normalizer[\s\S]*tidy-rows\/vendor-dedupe/);
+  assert.doesNotMatch(html, /x3/);
+  assert.match(ui({ market, builderHandle: 'nobody' }).builderPage(), /No builder by that name/);
+});
+
+test('two builders with the same name get separate rows and a profile that keeps them apart', () => {
+  const market = { windowDays: 90, agents: [agent({ id: 'x1', builderId: 'b1' }), agent({ id: 'x2', builderId: 'b2', name: 'Other agent' })] };
+  const list = ui({ market }).buildersPage();
+  assert.match(list, /Builders <span class="mk-total">2/);
+  assert.match(list, /href="\/builders\/tidy-rows" data-route/);
+  const profile = ui({ market, builderHandle: 'tidy-rows' }).builderPage();
+  assert.match(profile, /2 builders use this name/);
+});
+
+test('the agent page links its builder’s profile, and only the owner gets a Settings tab that opens Build', () => {
+  const buyer = ui({ agentPage: page(), agentTab: 'card' }).agent();
+  assert.match(buyer, /href="\/builders\/tidy-rows" data-route/);
+  assert.doesNotMatch(buyer, /data-tab="settings"/);
+  const owner = ui({ agentPage: page({ ownerPreview: true, ownerPackages: [] }, { own: true }), agentTab: 'settings' }).agent();
+  assert.match(owner, /data-tab="settings"[^>]*>Settings</);
+  assert.match(owner, new RegExp(`href="/build/agents/${id}/connection" data-route`));
+  assert.match(owner, new RegExp(`href="/build/agents/${id}/offers" data-route`));
+  assert.doesNotMatch(ui({ agentPage: page(), agentTab: 'settings' }).agent(), /\/build\/agents\//, 'a buyer asking for Settings sees the card');
+});

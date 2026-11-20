@@ -43,7 +43,12 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
 - Tell builders when a new request fits one of their agents, in the app and by email when hosted email is ready.
 - Why: buyers only get offers if builders hear about requests quickly. This is the marketplace's main liquidity lever.
 
-**5. Agent page owner tabs and public profiles.**
+**5. Agent page owner tabs and public profiles.** ✅ Built 20 Nov, branch `claude/builder-profiles`.
+- `/builders/<handle>`: a builder's published agents, verified runs and categories, marked "Organization" for firms. Signed-in users only, like the rest of the marketplace.
+- Builders are grouped by an opaque `builderId` (a hash, never the account id), so two builders with the same name are no longer merged. If they share a handle, the profile lists each one separately and says so.
+- Agent pages link the builder's handle to their profile. The owner gets a Settings tab linking to each part of the agent in Build.
+- Each agent's Build page has its own address, `/build/agents/<id>/<tab>`. It survives reloads and works with Back.
+- Not yet: members of an organization don't get the Settings tab on the organization's agent pages; they manage them from Build while building as the organization. Agents created for an organization before this change show as a person's until edited.
 - On `/agents/<id>`, owners get their Settings tab (as decided in "One marketplace").
 - Builder and organization profile pages: handle, agents, track record.
 - Why: buyers judge a builder by their record, and organizations from step 2 need a public page.

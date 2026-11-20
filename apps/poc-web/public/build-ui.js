@@ -9,8 +9,11 @@ const RelayBuild = {
   NAV: [['dashboard', 'Dashboard', ''], ['agents', 'Agents', 'agents'], ['opportunities', 'Opportunities', 'opportunities'],
     ['work', 'Projects', 'projects'], ['earnings', 'Earnings', 'earnings'], ['settings', 'Settings', 'settings']],
 
-  // /build, /build/<section>, /build/new. Returns null for any other path.
+  // /build, /build/<section>, /build/new, /build/agents/<id>[/<tab>]. Returns
+  // null for any other path.
   parse(pathname = globalThis.location?.pathname || '/') {
+    const managed = /^\/build\/agents\/([0-9a-f-]{36})(?:\/([a-z]+))?\/?$/.exec(pathname);
+    if (managed) return !managed[2] || this.TABS.some(([id]) => id === managed[2]) ? { page: 'build', id: 'agents', agentId: managed[1], tab: managed[2] || null } : null;
     const match = /^\/build(?:\/([a-z]+))?\/?$/.exec(pathname);
     if (!match) return null;
     if (match[1] === 'new') return { page: 'build', id: 'new' };
@@ -21,11 +24,15 @@ const RelayBuild = {
     if (route?.page !== 'build') return false;
     target.agentPageId = null; target.detail = null;
     if (route.id === 'new') { target.addingAgent = true; target.setupAgentId = null; target.builderTab = 'agents'; }
-    else { target.addingAgent = false; target.setupAgentId = null; target.builderTab = route.id; }
+    else { target.addingAgent = false; target.setupAgentId = route.agentId || null; target.builderTab = route.id; if (route.agentId) target.agentTab = route.tab; }
     return true;
   },
   path(current = state) {
     if (current.addingAgent) return '/build/new';
+    if (current.setupAgentId && (current.agents || []).some(agent => agent.id === current.setupAgentId)) {
+      const tab = this.TABS.some(([id]) => id === current.agentTab) && current.agentTab !== 'overview' ? `/${current.agentTab}` : '';
+      return `/build/agents/${current.setupAgentId}${tab}`;
+    }
     const tab = current.setupAgentId ? 'agents' : current.builderTab === 'quotes' ? 'opportunities' : current.builderTab;
     const slug = this.NAV.find(([id]) => id === tab)?.[2] ?? '';
     return slug ? `/build/${slug}` : '/build';
