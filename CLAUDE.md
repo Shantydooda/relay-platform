@@ -1,6 +1,6 @@
 # CLAUDE.md: working context for Relay
 
-Claude Code reads this file automatically. Read `AGENTS.md` too: those are the engineering standards and they take priority. This file covers what Relay is, how the repo is organised, what's deployed, the rules that always apply, and where the work stands. Last updated 17 Nov 2026.
+Claude Code reads this file automatically. Read `AGENTS.md` too: those are the engineering standards and they take priority. This file covers what Relay is, how the repo is organised, what's deployed, the rules that always apply, and where the work stands. Last updated 20 Nov 2026.
 
 ## 0. Current working mode: local development (from 17 Nov 2026)
 
@@ -164,7 +164,12 @@ Earlier and already live:
 3. after 2 rounds the buyer can **end as unmet**, which counts as failed and unlocks "try another agent". It's refused while a payment is held;
 4. auto-accept on buyer silence, behind `autoAcceptAfterMs`, **off**.
 
-**In progress: the marketplace model** (`docs/specs/Marketplace-Model.md`), in this order:
+**Build order: `docs/Build-Order.md`** (updated 20 Nov 2026) is the source of truth for what comes next. Five stacked branches are pushed but not merged: `claude/packages` → `claude/one-marketplace` → `claude/enterprise-projects` → `claude/builder-flow` → `claude/builder-orgs`. They land together as one PR into `main`. Since the list below was written, these are also built:
+- Build only for builders, agent overview and tabs, simpler Opportunities and Projects, limited automatic offers (`claude/builder-flow`);
+- enterprise step 1: the "Members can publish agents" switch, the owners' audit log with file access, CSV previews as tables (`claude/builder-flow`);
+- enterprise step 2: builder organizations, "Building as" in Build; local only, as hosted doesn't resolve organizations as operators yet (`claude/builder-orgs`).
+
+**The marketplace model** (`docs/specs/Marketplace-Model.md`), in this order:
 - ✅ marketplace home, evidence-first cards, real routes, chat removed; CSV input on "Post a request" (PR #6, on `main`, not deployed);
 - **packages, reusing the acceptance work** (current slice, branch `claude/packages`). Server side done: `services/application/src/packages.cjs`, tests in `services/poc-api/test/packages-flow.test.cjs`;
 - **one marketplace for buyers and builders** (decided 18 Nov 2026; spec "One marketplace for buyers and builders"): no builder workspace switch, owner Settings tab on the agent page, builder profiles for signed-in users, one shared Work list, a passed Relay test required to publish, appear in browse or sell packages (quoting stays open, labelled, because only two Relay tests exist), and one vocabulary (request / offer / work / Relay test);
