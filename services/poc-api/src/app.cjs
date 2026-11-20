@@ -37,6 +37,7 @@ const assets = {
   '/teams-ui.js':['teams-ui.js','text/javascript; charset=utf-8'],
   '/payments-ui.js':['payments-ui.js','text/javascript; charset=utf-8'],
   '/supplier-ui.js':['supplier-ui.js','text/javascript; charset=utf-8'],
+  '/relay-tests-ui.js':['relay-tests-ui.js','text/javascript; charset=utf-8'],
   '/supplier-openapi.json':[resolve(__dirname,'../../../packages/contracts/supplier-openapi.json'),'application/json; charset=utf-8'],
   '/execution-ui.css':['execution-ui.css','text/css; charset=utf-8'],
   '/app.js':['app.js','text/javascript; charset=utf-8'],
@@ -139,7 +140,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed,features:store.features||{}});
       if (!managed && method === 'GET' && ['/drive/callback','/drive/picker'].includes(path)) res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
       // Real links into the app: the page loads, then the browser reads the path.
-      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||/^\/docs\/(?:evidence|relay-tests|packages|revisions)$/.test(path)||/^\/org\/[0-9a-f-]{36}(?:\/(?:work|members|spending|connections|settings)|\/projects\/[0-9a-f-]{36})?$/.test(path)||/^\/build(?:\/(?:new|agents|opportunities|projects|earnings|settings))?$/.test(path)||/^\/build\/agents\/[0-9a-f-]{36}(?:\/(?:overview|profile|connection|tests|offers|results))?$/.test(path)||/^\/builders\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path)||['/post','/evidence','/enterprise','/requests','/builders'].includes(path);
+      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||/^\/docs\/(?:evidence|relay-tests|packages|revisions)$/.test(path)||/^\/org\/[0-9a-f-]{36}(?:\/(?:work|members|spending|connections|settings)|\/projects\/[0-9a-f-]{36})?$/.test(path)||/^\/build(?:\/(?:new|agents|opportunities|projects|tests|earnings|settings))?$/.test(path)||/^\/build\/agents\/[0-9a-f-]{36}(?:\/(?:overview|profile|connection|tests|offers|results))?$/.test(path)||/^\/builders\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path)||['/post','/evidence','/enterprise','/requests','/builders'].includes(path);
       if(method==='GET'&&(Object.hasOwn(assets,path)||appRoute||(managed&&path==='/auth/confirm'))) {
         const [file,type]=assets[path==='/auth/confirm'||appRoute?'/':path];
         const content=await readFile(resolve(PUBLIC,file));
@@ -330,6 +331,12 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
           if (action === 'reconcile' && method === 'POST') { await jsonBody(req); return send(200, await store.reconcilePayment(actor, id)); }
           if (action && method === 'POST') return send(200, await store.sandboxPayment(actor, id, action, await jsonBody(req), key));
         }
+        // Builder-proposed Relay tests (relay-tests.cjs); staff review them.
+        if (path === '/api/relay-tests' && method === 'GET') return send(200, await store.relayTests(actor));
+        if (path === '/api/relay-tests' && method === 'POST') return send(201, await store.proposeRelayTest(actor, await jsonBody(req), key));
+        if (path === '/api/relay-tests/review' && method === 'GET') return send(200, await store.relayTestQueue(actor));
+        const relayTest = path.match(/^\/api\/relay-tests\/([0-9a-f-]{36})\/(withdraw|review)$/);
+        if (relayTest && method === 'POST') return send(200, await store[relayTest[2] === 'withdraw' ? 'withdrawRelayTest' : 'reviewRelayTest'](actor, relayTest[1], await jsonBody(req), key));
         const assessment = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/qualifications$/);
         if (assessment && method === 'POST') return send(201, await store.startQualification(actor, assessment[1], await jsonBody(req), key));
         const scoping = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(assist|confirm-scope|cancel-reply)$/);

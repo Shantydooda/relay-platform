@@ -687,3 +687,10 @@ a.mk-handle-builder, .mk-builder a.mk-handle, .mk-row-title a.mk-handle { color:
 a.mk-handle-builder:hover, .mk-builder a.mk-handle:hover, .mk-row-title a.mk-handle:hover { text-decoration: underline; }
 html[data-appearance] body.market-open #app .mk-agent-title a.mk-handle-builder { color: inherit; text-decoration: none; }
 html[data-appearance] body.market-open #app .mk-agent-title a.mk-handle-builder:hover { text-decoration: underline; }
+
+/* Build → Relay tests: a proposal or review item is a full-width card, not an icon row. */
+.mk-test-card { display: block; }
+.mk-test-card:hover { box-shadow: none; }
+.mk-test-card .mk-thread-body { gap: 8px; }
+.mk-test-card textarea { width: 100%; }
+.mk-test-card pre { white-space: pre-wrap; overflow-wrap: anywhere; }

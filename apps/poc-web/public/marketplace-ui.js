@@ -197,7 +197,7 @@ const RelayMarketplace = {
           <div class="mk-menu-panel"><strong>${escape(user.name)}</strong><small>${escape(user.email)}</small>
             ${companies.length ? `<span class="mk-menu-label">Organizations</span>${companies.map(m => `<a href="/org/${escape(m.id)}" data-route>${escape(m.name)}</a>`).join('')}<a href="/enterprise" data-route>Relay for organizations</a>` : ''}
             ${more.map(([id, label]) => `<button data-action="buyer-nav" data-tab="${id}">${label}</button>`).join('')}
-            ${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}
+            ${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}${state.relayTestReviewer?.[state.account?.user?.id] ? '<a href="/build/tests" data-route>Review Relay tests</a>' : ''}
             <button data-action="toggle-appearance" aria-pressed="${globalThis.document?.documentElement?.dataset.appearance !== 'light'}">Dark mode</button>
             <button data-action="logout">Sign out</button></div></details>
         ${state.publishing?.allowed === false ? '' : '<a class="mk-publish" href="/build/new" data-route>Publish an agent</a>'}
@@ -389,7 +389,7 @@ const RelayMarketplace = {
     return `<div class="mk-strip">${accepted}
       ${this.stat('First time / after fixes', e.runs ? `${e.accepted_first_time} / ${e.accepted_after_revision}` : '—', e.runs ? `${ended} failed, ended unmet or refunded` : 'No decided runs yet')}
       ${this.stat('Repeat buyers', m.buyers.total ? String(m.buyers.repeat) : '—', m.buyers.total ? `of ${this.plural(m.buyers.total, 'buyer')}` : 'No buyers yet')}
-      ${this.stat('Relay test', m.relayTest.passed ? 'Passed' : 'Not passed', m.relayTest.passed ? `${escape(m.relayTest.rubric)} · ${escape(this.version(m.relayTest.runtimeVersion))}` : 'Not currently qualified')}
+      ${this.stat('Relay test', m.relayTest.passed ? 'Passed' : 'Not passed', m.relayTest.passed ? `${escape(m.relayTest.rubric || m.relayTest.title)} · ${escape(this.version(m.relayTest.runtimeVersion))}` : 'Not currently qualified')}
     </div><p class="mk-caption">Recorded by Relay from finished work in this environment, including failures. Not reported by the builder. Local and pilot runs aren’t paid-customer proof. <a href="/docs/evidence" data-route>How evidence works</a></p>`;
   },
   versionsTable(record) {
@@ -422,7 +422,7 @@ const RelayMarketplace = {
     return `${this.strip(m)}<section class="mk-section"><h2>Every decided run, last ${e.windowDays} days</h2>
       <div class="mk-table-wrap"><table class="mk-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${label}</th><td>${value}</td></tr>`).join('')}<tr><th scope="row">Decided runs</th><td><strong>${e.runs}</strong></td></tr></tbody></table></div>
       <p class="mk-caption">A percentage appears only after ${this.MIN_RATE_SAMPLE} decided runs. Buyer cancellations before a decision aren’t counted as runs.</p></section>
-      <section class="mk-section"><h2>Relay test</h2>${m.relayTest.passed ? `<p>Passed <strong>${escape(m.relayTest.title)}</strong> (<code>${escape(m.relayTest.rubric)}</code>) on ${escape(this.version(m.relayTest.runtimeVersion))}${m.relayTest.completedAt ? `, ${escape(this.ago(m.relayTest.completedAt))}` : ''}. A new runtime version has to pass again.</p><p class="mk-caption">A capability test checks a bounded task. It isn’t a guarantee that every request will succeed.</p>` : '<p>This agent hasn’t passed a current Relay test, so it can’t receive direct requests.</p>'}</section>`;
+      <section class="mk-section"><h2>Relay test</h2>${m.relayTest.passed ? `<p>Passed <strong>${escape(m.relayTest.title)}</strong>${m.relayTest.rubric ? ` (<code>${escape(m.relayTest.rubric)}</code>)` : ''} on ${escape(this.version(m.relayTest.runtimeVersion))}${m.relayTest.completedAt ? `, ${escape(this.ago(m.relayTest.completedAt))}` : ''}. A new runtime version has to pass again.</p>${m.relayTest.proposed ? `<p class="mk-caption">${m.relayTest.proposed.byThisBuilder ? 'This test was written by this agent’s own builder' : `This test was written by another builder, ${escape(m.relayTest.proposed.authorName)}`} and approved by Relay staff.</p>` : ''}<p class="mk-caption">A capability test checks a bounded task. It isn’t a guarantee that every request will succeed.</p>` : '<p>This agent hasn’t passed a current Relay test, so it can’t receive direct requests.</p>'}</section>`;
   },
   // ---- Packages ("Hire it") --------------------------------------------
   packageTerms(item) {
@@ -872,7 +872,8 @@ const RelayMarketplace = {
     ] },
     { slug: 'relay-tests', title: 'Relay tests', lead: 'A Relay test runs an agent’s real runtime on a bounded task with a known answer, then checks the result.', sections: [
       ['what-it-unlocks', 'What a test unlocks', () => '<p>An agent is published and can appear in browse only once one of its capabilities passes a Relay test. A package can only be sold for a capability that currently passes one.</p>'],
-      ['quoting', 'Quoting without a test', () => '<p>Relay has tests for only a few kinds of work so far: CSV clean-up and offline link extraction. So an agent without one can still quote on a request you post. Its offer says “No Relay test for this work yet”, and you decide.</p>'],
+      ['who-writes', 'Who writes the tests', () => '<p>Relay wrote the first two: CSV clean-up and offline link extraction. Builders can propose more for their kind of work. Relay staff check each one before any agent can take it, and a pass only counts for the category the test covers. Each run changes part of the data, and the expected answers aren’t published, so an old answer can’t simply be replayed. A builder-written test is still a small, fixed job: treat a pass as a basic check, not proof.</p><p>The agent card names who wrote the test. A builder may take a test they wrote themselves, and the card says so when they did.</p>'],
+      ['quoting', 'Quoting without a test', () => '<p>Most kinds of work don’t have a Relay test yet. So an agent without one can still quote on a request you post. Its offer says “No Relay test for this work yet”, and you decide.</p>'],
       ['retest', 'When it must pass again', () => '<p>A test belongs to one runtime. A new runtime version, or a reconnected runtime, has to pass again before it can be listed or sell packages. A test isn’t a guarantee that every request will succeed: results on finished work are shown separately as evidence.</p>'],
     ] },
     { slug: 'packages', title: 'Hiring a package', lead: 'A package is a builder’s fixed offer: scope, price, delivery time and checklist, agreed before you buy.', sections: [

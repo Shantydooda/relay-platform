@@ -53,7 +53,7 @@ async function start() {
     const readers = require('../../connectors/src/saas-readers.cjs');
     const connectionProviders = [require('../../connectors/src/erp-fixture.cjs').createSampleErp(), readers.createGitHubReader(), readers.createHubSpotReader(), readers.createAttioReader()];
     // Relay's fee (pricing.cjs): off unless RELAY_FEE_SCHEDULE is set, e.g. "100000:2000,1000000:1200,*:800".
-    const store = await createUnifiedLocalStore({ feeSchedule: process.env.RELAY_FEE_SCHEDULE || '', connectionVault, connectionProviders, attioProvider, driveProvider, objectStore, fileScanner, authDb, applicationDb, repository: native?.repository, storage: native ? 'postgres' : 'sqlite', localExecution: true, scopingProvider, paymentProvider, paymentRecoveryUserIds: (process.env.RELAY_PAYMENT_RECOVERY_USER_IDS || '').split(',').filter(Boolean) });
+    const store = await createUnifiedLocalStore({ feeSchedule: process.env.RELAY_FEE_SCHEDULE || '', connectionVault, connectionProviders, attioProvider, driveProvider, objectStore, fileScanner, authDb, applicationDb, repository: native?.repository, storage: native ? 'postgres' : 'sqlite', localExecution: true, scopingProvider, paymentProvider, paymentRecoveryUserIds: (process.env.RELAY_PAYMENT_RECOVERY_USER_IDS || '').split(',').filter(Boolean), relayTestReviewerIds: (process.env.RELAY_TEST_REVIEWER_USER_IDS || '').split(',').filter(Boolean) });
     const runtimeManager = createLocalRuntimeManager(origin);
     const paymentWebhookVerifier = paymentProvider && process.env.RELAY_STRIPE_WEBHOOK_SECRET
       ? require('../../payments/src/webhook.cjs').createWebhookVerifier({ secret: process.env.RELAY_STRIPE_WEBHOOK_SECRET }) : null;

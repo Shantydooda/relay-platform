@@ -91,4 +91,4 @@ Direction decided 17 Nov 2026 (`docs/specs/Marketplace-Model.md`). Still open:
 
 ## 8. Who reviews builder-proposed Relay tests (decided 20 Nov 2026)
 
-**Relay staff.** A proposed test waits in a review queue; a Relay admin approves or rejects it with a reason before any agent can use it to get listed. Unblocks Build-Order step 8.
+**Relay staff.** A proposed test waits in a review queue; a Relay admin approves or rejects it with a reason before any agent can use it to get listed. Unblocks Build-Order step 8. Built on `claude/relay-test-proposals`. One product call made while building, open to change: a builder may take a test they wrote, and the agent card discloses it (see Build-Order step 8).

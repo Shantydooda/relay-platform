@@ -3257,9 +3257,18 @@
             "format": "uuid"
           },
           "rubric": {
-            "enum": [
-              "csv-normalize-v1",
-              "link-inventory-v1"
+            "anyOf": [
+              {
+                "enum": [
+                  "csv-normalize-v1",
+                  "link-inventory-v1"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^relay-test:[0-9a-f-]{36}$",
+                "description": "A builder-written test approved by Relay staff. Read brief, input and revision; answer with {round, output}."
+              }
             ]
           },
           "round": {
@@ -3283,6 +3292,12 @@
               "string",
               "null"
             ]
+          },
+          "answer": {
+            "enum": [
+              "output"
+            ],
+            "description": "Present on builder-written tests: submit the result as a single output string."
           }
         }
       },
@@ -3400,6 +3415,9 @@
           },
           {
             "$ref": "#/components/schemas/LinkQualificationSubmission"
+          },
+          {
+            "$ref": "#/components/schemas/OutputQualificationSubmission"
           }
         ]
       },
@@ -3486,6 +3504,29 @@
               }
             ],
             "description": "The stored error code, when there is one."
+          }
+        }
+      },
+      "OutputQualificationSubmission": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "round",
+          "output"
+        ],
+        "description": "Answer to a builder-written Relay test (rubric relay-test:<id>). The output is compared with the expected result; it is never published.",
+        "properties": {
+          "round": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "output": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384
           }
         }
       }

@@ -3,6 +3,8 @@
 const { randomUUID } = require('node:crypto');
 const { exactKeys, fail, text } = require('../../../packages/contracts/src/input.cjs');
 const linkAssessment = require('./link-assessment.cjs');
+const relayTests = require('./relay-tests.cjs');
+const { categoryOf } = require('../../../packages/domain/src/categories.cjs');
 const RUBRIC = 'csv-normalize-v1';
 const LIMIT = 'Bounded CSV normalization only: trim cells, remove exact duplicates, sort, preserve quoted cells and neutralize spreadsheet formulas. No enrichment, research or general data expertise assessed.';
 function sameRuntime(agent, test) {
@@ -21,20 +23,28 @@ function evidence(test, now = Date.now()) {
   if (!test) return null;
   const { id, capabilityId, rubric, status, createdAt, completedAt, expiresAt, runtimeName, runtimeVersion, input, submissions } = test;
   const displayedStatus = pending(test) && test.deadlineAt <= now ? 'expired' : status;
-  return { id, capabilityId, rubric, status: displayedStatus, deadlineAt: test.deadlineAt, createdAt, completedAt, expiresAt, runtimeName, runtimeVersion, input, submissions, title: rubric === linkAssessment.rubric ? linkAssessment.title : 'CSV normalization', limitation: rubric === linkAssessment.rubric ? linkAssessment.limitation : LIMIT };
+  const base = { id, capabilityId, rubric, status: displayedStatus, deadlineAt: test.deadlineAt, createdAt, completedAt, expiresAt, runtimeName, runtimeVersion, input, submissions };
+  if (test.relayTest) {
+    // A builder-written test: submitted outputs stay private, or they'd hand later takers the answer.
+    const { title, limitation, revision, authorName } = test.relayTest;
+    // No hash either: with the run's input public, a hash would let anyone check guesses offline.
+    return { ...base, submissions: submissions.map(({ output, sha256, ...rest }) => rest), title, limitation, revision, proposed: { authorName } };
+  }
+  return { ...base, title: rubric === linkAssessment.rubric ? linkAssessment.title : 'CSV normalization', limitation: rubric === linkAssessment.rubric ? linkAssessment.limitation : LIMIT };
 }
 function capabilityView(agent, capability, now) {
   const test = (agent.assessments || []).find(item => item.id === capability.assessmentId);
   const assessment = evidence(test, now);
   if (assessment && pending(assessment) && !sameRuntime(agent, test)) assessment.status = 'invalidated';
-  return { ...capability, qualification: current(agent, test, now) ? 'qualified' : test?.status === 'passed' ? 'expired' : 'unverified', assessment };
+  if (assessment?.proposed) assessment.proposed.byThisBuilder = test.relayTest.authorId === agent.ownerId;
+  return { ...capability, categoryId: categoryOf(capability), qualification: current(agent, test, now) ? 'qualified' : test?.status === 'passed' ? 'expired' : 'unverified', assessment };
 }
 function createQualification(context) {
   const { repository, command, agentFor, expected, now, credentials, hash, supplierConnections } = context;
   async function start(actor, id, body, key) {
     exactKeys(body, ['expectedVersion', 'capabilityId', 'rubric']);
     if (!supplierConnections) fail(403, 'LOCAL_ONLY', 'Qualification is not enabled in this environment.');
-    if (![RUBRIC, linkAssessment.rubric].includes(body.rubric)) fail(400, 'RUBRIC_UNAVAILABLE', 'There is no assessment for this rubric yet. Other capabilities remain declared.');
+    if (![RUBRIC, linkAssessment.rubric].includes(body.rubric) && !relayTests.isRelayTest(body.rubric)) fail(400, 'RUBRIC_UNAVAILABLE', 'There is no assessment for this rubric yet. Other capabilities remain declared.');
     return command(actor.user.id, key, ['qualification', id, body], repo => agentFor(repo, actor, id), async repo => {
       const agent = await agentFor(repo, actor, id);
       expected(agent, body.expectedVersion);
@@ -53,6 +63,7 @@ function createQualification(context) {
         runtimeName: agent.runtimeName, runtimeVersion: agent.runtimeVersion, input, submissions: [],
         expected: { initial: `name,company\r\n${rows.join('\r\n')}\r\n`, revision: `name,company\r\n${[...rows].reverse().join('\r\n')}\r\n` } };
       if (body.rubric === linkAssessment.rubric) Object.assign(test, linkAssessment.fixture(nonce));
+      if (relayTests.isRelayTest(body.rubric)) Object.assign(test, await relayTests.startRun(repo, { rubric: body.rubric, agent, capability, nonce, time: now() }));
       agent.assessments.push(test);
       capability.assessmentId = test.id;
       agent.version++;
@@ -66,8 +77,9 @@ function createQualification(context) {
       return (agent.assessments || []).filter(test => pending(test) && test.deadlineAt > now() && sameRuntime(agent, test)).map(test => ({
         id: test.id, capabilityId: test.capabilityId, rubric: test.rubric, round: test.status === 'test_pending' ? 1 : 2,
         input: test.input, deadlineAt: test.deadlineAt,
+        ...(test.relayTest ? relayTests.jobFields(test) : {
         brief: test.rubric === linkAssessment.rubric ? linkAssessment.brief : 'Trim cells, remove exact duplicate rows, preserve quoted fields, neutralize spreadsheet formulas, sort rows ascending and return CRLF CSV plus a JSON report.',
-        revision: test.status === 'revision_pending' ? (test.rubric === linkAssessment.rubric ? 'Sort links descending' : 'Sort rows descending') : null
+        revision: test.status === 'revision_pending' ? (test.rubric === linkAssessment.rubric ? 'Sort links descending' : 'Sort rows descending') : null })
       }));
     });
   }
@@ -77,7 +89,8 @@ function createQualification(context) {
       const agent = await credentials.runtimeAgent(repo, principal, 'execution:write');
       const test = (agent.assessments || []).find(item => item.id === id);
       if (!test) fail(404, 'NOT_FOUND', 'Assessment not found.');
-      if (test.rubric === linkAssessment.rubric) linkAssessment.validate(body);
+      if (test.relayTest) relayTests.validateSubmission(body);
+      else if (test.rubric === linkAssessment.rubric) linkAssessment.validate(body);
       else {
         exactKeys(body, ['round', 'csv', 'report']);
         text(body.csv, 'CSV', 1, 8192);
@@ -89,12 +102,14 @@ function createQualification(context) {
       if (test.status !== (body.round === 1 ? 'test_pending' : 'revision_pending')) fail(409, 'ASSESSMENT_STATE', 'This round is no longer accepting submissions.');
       // Do not trim submitted CSV: exact bytes are evidence, including its final newline.
       const exactCsv = body.csv;
-      const checks = test.rubric === linkAssessment.rubric ? linkAssessment.checks(test, body) : [
+      const checks = test.relayTest ? relayTests.checks(test, body) : test.rubric === linkAssessment.rubric ? linkAssessment.checks(test, body) : [
         { name: 'CSV contents, order, quoting and formula safety', passed: exactCsv === test.expected[body.round === 1 ? 'initial' : 'revision'] },
         { name: 'Report agrees with supplied fixture', passed: body.report.inputRows === 4 && body.report.outputRows === 3 && body.report.duplicatesRemoved === 1 && body.report.sort === (body.round === 1 ? 'ascending' : 'descending') }
       ];
       const passed = checks.every(check => check.passed);
-      test.submissions.push({ round: body.round, ...(test.rubric === linkAssessment.rubric ? { links: body.links } : { csv: exactCsv }), report: body.report, sha256: hash(test.rubric === linkAssessment.rubric ? JSON.stringify(body.links) : exactCsv), checks, passed, createdAt: now() });
+      test.submissions.push(test.relayTest
+        ? { round: body.round, output: body.output, sha256: hash(body.output), checks, passed, createdAt: now() }
+        : { round: body.round, ...(test.rubric === linkAssessment.rubric ? { links: body.links } : { csv: exactCsv }), report: body.report, sha256: hash(test.rubric === linkAssessment.rubric ? JSON.stringify(body.links) : exactCsv), checks, passed, createdAt: now() });
       test.status = !passed ? 'failed' : body.round === 1 ? 'revision_pending' : 'passed';
       if (test.status !== 'revision_pending') { test.completedAt = now(); delete test.expected; }
       if (test.status === 'passed') test.expiresAt = now() + 30 * 86400000;

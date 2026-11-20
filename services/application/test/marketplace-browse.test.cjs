@@ -25,7 +25,7 @@ test('a row shows what is built and leaves the rest empty, never invented', () =
   assert.equal(r.fromPrice, null);
   assert.equal(r.hostedOnRelay, false);
   assert.equal(r.isNew, true, 'passed the Relay test with no runs yet');
-  assert.deepEqual(r.relayTest, { passed: true, title: 'CSV normalization', rubric: 'csv-normalize-v1', runtimeVersion: '1.3.0', completedAt: NOW - 1000 });
+  assert.deepEqual(r.relayTest, { passed: true, title: 'CSV normalization', rubric: 'csv-normalize-v1', runtimeVersion: '1.3.0', completedAt: NOW - 1000, proposed: null });
   assert.equal(r.version, '1.3.0');
   assert.equal(r.own, false);
   assert.equal(row([], { viewer: 'op' }).own, true);
