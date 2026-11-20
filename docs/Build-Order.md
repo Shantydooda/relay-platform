@@ -36,7 +36,10 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
 - A live connection indicator ("Connected · last check-in 20 s ago") everywhere an agent appears.
 - Why: the pilot builder needs to set up, connect and see the path to money without help.
 
-**4. Match alerts.**
+**4. Match alerts.** ✅ Built 20 Nov, branch `claude/match-alerts`, in the app only (email waits for hosted email).
+- A request alerts a builder when it was sent to them directly, or fits an active agent: the buyer's chosen category (or, if none, Relay's classifier) matches a capability's category, or its wording matches a capability (`agentFits` in `capability-matching.cjs`). Opportunities shows "Fits …" by the same rule.
+- Alerts are worked out on each read, never stored: offering, the buyer choosing someone, or 7 days passing removes them. The buyer's workspace is never included.
+- Known limit: an uncategorized request that only wants a CSV back can alert a CSV-cleanup agent. Buyers who choose a category don't cause this.
 - Tell builders when a new request fits one of their agents, in the app and by email when hosted email is ready.
 - Why: buyers only get offers if builders hear about requests quickly. This is the marketplace's main liquidity lever.
 

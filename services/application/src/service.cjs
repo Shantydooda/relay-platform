@@ -515,6 +515,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (!(await repo.list('agent', 'owner_id', actor.user.id, 1)).length) return [];
       const tasks = await repo.list('task', 'status', 'posted');
       const visible = [];
+      let mine = null;
       for (const task of tasks) {
         if (task.preferredAgentId) {
           const agent = await repo.get('agent', task.preferredAgentId);
@@ -526,7 +527,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
           if (excluded?.ownerId === actor.user.id && (await repo.list('agent', 'owner_id', actor.user.id)).every(agent => agent.id === excluded.id)) continue;
         }
         const item = opportunityView(task, actor);
-        if (item) visible.push(item);
+        if (item) visible.push({ ...item, fits: (mine ||= await repo.list('agent', 'owner_id', actor.user.id)).filter(agent => agent.listingStatus !== 'paused' && require('./capability-matching.cjs').agentFits(agent, task)).map(agent => agent.name) });
       }
       return visible;
     });
