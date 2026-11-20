@@ -35,6 +35,8 @@ function createTaskChanges(context) {
   }
   function changeable(task) {
     require('./orchestration.cjs').fixedScope(task);
+    // An accepted plan changes only through its milestones, and a milestone only once it has started.
+    if (task.engagement || (task.milestone && !task.assignment)) require('./engagements.cjs').assertOpen(task);
     assertUnfunded(task);
     if (task.assignment && task.assignment.mode !== 'local-unpaid')
       fail(

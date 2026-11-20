@@ -99,6 +99,7 @@ function createIntake(context) {
     if (task.status === 'cancelled') fail(409, 'TASK_CLOSED', 'This request is closed.');
     if (task.assignment) fail(409, 'TASK_ASSIGNED', 'Authorized work keeps its agreed files. Propose a change instead.');
     require('./packages.cjs').assertNotPackage(task);
+    require('./engagements.cjs').assertOpen(task);
     if (task.orchestrationPlan || task.orchestrationStep || task.scheduleId || task.recurringScheduleId) fail(409, 'SCOPE_FIXED', 'This request’s scope is managed elsewhere.');
     require('./payments.cjs').assertUnfunded(task);
   }

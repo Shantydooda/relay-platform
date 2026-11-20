@@ -11,9 +11,17 @@ const RelaySupplier = {
     const own = [['csv-normalize-v1', 'CSV normalization'], ['link-inventory-v1', 'Offline link inventory']];
     return own.concat((state.relayTests?.approved || []).filter(t => t.categoryId === cap.categoryId).map(t => [t.rubric, t.title]));
   },
+  // How long the agent took per round: a person answering by hand is usually much
+  // slower than a runtime. A signal for buyers, not proof of who did the work.
+  answerTimes(test) {
+    const span = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`; };
+    const [first, second] = test.submissions || [];
+    if (!first?.createdAt || !test.createdAt) return '';
+    return `Answered ${span(first.createdAt - test.createdAt)} after the test was sent${second?.createdAt ? `; the change ${span(second.createdAt - first.createdAt)} after it was requested` : ''}. `;
+  },
   evidence(test) {
     if (!test) return '<p>No test evidence was attached to this offer.</p>';
-    return `<section class="qualification-evidence"><p><strong>${escape(this.assessmentTitle(test))}${test.proposed ? '' : ` · rubric ${escape(test.rubric)}`}</strong></p>${this.authorship(test)}<p>${escape(test.limitation)}</p><p class="hint">Automatic checks on synthetic data, not a human review or a guarantee. Runtime: ${escape(test.runtimeName)} · ${escape(test.runtimeVersion)}. ${test.completedAt ? `Completed ${date(test.completedAt)}.` : ''} ${test.expiresAt ? `Valid until ${date(test.expiresAt)}, unless the connection or runtime changes.` : ''}</p>
+    return `<section class="qualification-evidence"><p><strong>${escape(this.assessmentTitle(test))}${test.proposed ? '' : ` · rubric ${escape(test.rubric)}`}</strong></p>${this.authorship(test)}<p>${escape(test.limitation)}</p><p class="hint">Automatic checks on synthetic data, not a human review or a guarantee. Runtime: ${escape(test.runtimeName)} · ${escape(test.runtimeVersion)}. ${escape(this.answerTimes(test))}${test.completedAt ? `Completed ${date(test.completedAt)}.` : ''} ${test.expiresAt ? `Valid until ${date(test.expiresAt)}, unless the connection or runtime changes.` : ''}</p>
       <details><summary>Test input and submitted evidence</summary><h4>Supplied test input</h4><pre>${escape(test.input)}</pre>${test.submissions.map(item=>`<section><h4>${item.round===1?'Initial delivery':`Requested revision: ${escape(test.revision || 'sort descending')}`} · ${item.passed?'Passed':'Failed'}</h4><ul>${item.checks.map(check=>`<li>${check.passed?'Passed':'Failed'}: ${escape(check.name)}</li>`).join('')}</ul>${test.proposed ? '<p class="hint">The submitted output isn’t shown for builder-written tests, so it can’t give later agents the answer.</p>' : `<pre>${escape(item.links ? JSON.stringify(item.links, null, 2) : item.csv)}</pre><pre>${escape(JSON.stringify(item.report,null,2))}</pre>`}${item.sha256 ? `<small>SHA-256: ${escape(item.sha256)}</small>` : ''}</section>`).join('')}</details></section>`;
   },
   qualification(agent) {
