@@ -300,13 +300,28 @@ function createConnections(context) {
     if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).length > 5 ||
       Object.entries(params).some(([k, v]) => !/^[a-z]{1,20}$/.test(k) || typeof v !== 'string' || v.length > 300))
       fail(400, 'INVALID_INPUT', 'Read parameters must be a few short text values.');
-    return repository.transaction(`task:${taskId}`, async repo => {
+    // Three steps, so a slow system never holds the work's lock while it answers:
+    // 1. check the lease, grant and connection, and open the credential;
+    // 2. call the provider with no transaction open;
+    // 3. check everything again and record the read. If access ended meanwhile
+    //    (revoked, expired, disconnected, lease lost), the rows are dropped.
+    const check = async repo => {
       const task = await runtimeTask(repo, principal, taskId);
       context.checkLease(task, principal, body.leaseToken);
       const { g, c } = await liveGrant(repo, task, body.grantId);
       if (!g.objects.includes(body.object)) fail(403, 'GRANT_SCOPE', `This grant covers ${g.objects.join(', ')} only.`);
-      const credentials = connectionVault.open(c.secret, `connection:${c.id}`);
-      const result = await provider(c.provider).read(credentials, { object: body.object, cursor: body.cursor ?? 0, limit: READ_LIMIT, params });
+      return { task, g, c };
+    };
+    const before = await repository.read(async repo => {
+      const { task, g, c } = await check(repo);
+      return { assignmentId: task.assignment.id, connectionId: c.id, epoch: c.accessEpoch, kind: c.provider,
+        credentials: connectionVault.open(c.secret, `connection:${c.id}`) };
+    });
+    const result = await provider(before.kind).read(before.credentials, { object: body.object, cursor: body.cursor ?? 0, limit: READ_LIMIT, params });
+    return repository.transaction(`task:${taskId}`, async repo => {
+      const { task, g, c } = await check(repo);
+      if (task.assignment.id !== before.assignmentId || c.id !== before.connectionId || c.accessEpoch !== before.epoch)
+        fail(403, 'GRANT_REQUIRED', 'Access changed while reading. Ask the buyer again.');
       g.reads++; g.rowsRead += result.rows.length; g.lastReadAt = now();
       await repo.save('access-grant', g);
       await repo.save('access-log', { id: randomUUID(), tenantId: g.tenantId, ownerId: g.ownerId, taskId: task.id, grantId: g.id, object: body.object, params, rows: result.rows.length, createdAt: now() });

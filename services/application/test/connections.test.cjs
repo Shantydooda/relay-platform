@@ -15,7 +15,7 @@ const { createVault } = require('../../connectors/src/vault.cjs');
 const { createSampleErp, SAMPLE_TOKEN } = require('../../connectors/src/erp-fixture.cjs');
 
 const DAY = 86400000;
-async function setup(t, adapter = 'sqlite') {
+async function setup(t, adapter = 'sqlite', { providers = [createSampleErp()] } = {}) {
   const db = adapter === 'sqlite' ? new DatabaseSync(':memory:') : await PGlite.create();
   t.after(() => db.close());
   const repository = adapter === 'sqlite' ? createSqliteRepository(db) : await createPostgresRepository(db, { initialize: true });
@@ -27,7 +27,7 @@ async function setup(t, adapter = 'sqlite') {
   const employee = actor('Employee', [{ id: tenantId, role: 'employee', company: true, accessEpoch: 1 }]);
   const actors = [buyer, builder, employee];
   const options = { repository, localExecution: true, now: () => time, resolveActor: async id => actors.find(a => a.user.id === id), resolveOperator: async id => actors.find(a => a.user.id === id),
-    connectionVault: createVault(randomBytes(32).toString('hex')), connectionProviders: [createSampleErp()] };
+    connectionVault: createVault(randomBytes(32).toString('hex')), connectionProviders: providers };
   const app = createApplication(options);
   const { agentId } = await app.marketplace.addAgent(builder, { name: 'Vendor cleaner', kind: 'specialist', domain: 'ERP master data', purpose: 'Clean vendor master data', integration: 'sdk', capabilities: [{ category: 'Data', task: 'Normalize CSV' }] }, randomUUID());
   const credential = await app.issueSupplierCredential(builder, agentId, { expectedVersion: 1, expiresInSeconds: 2592000 }, randomUUID());
@@ -108,6 +108,30 @@ for (const adapter of ['sqlite', 'postgres']) {
     // Expiry ends access without anyone acting.
     f.advance(3 * DAY + 1);
     await assert.rejects(f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'vendor' }), { code: /GRANT_REQUIRED|LEASE_EXPIRED|EXECUTION_EXPIRED/ });
+  });
+
+  test(`${adapter}: a slow system doesn’t hold the work while it answers, and access revoked meanwhile returns nothing`, async t => {
+    // The provider call waits on a gate we open by hand.
+    const erp = createSampleErp(), inner = erp.read.bind(erp);
+    let open, called;
+    const reached = new Promise(resolve => { called = resolve; });
+    erp.read = async (...args) => { called(); await new Promise(resolve => { open = resolve; }); return inner(...args); };
+    const f = await setup(t, adapter, { providers: [erp] });
+    const { connectionId } = await f.connect();
+    await f.claim(); await f.ask();
+    const { grantId } = await f.app.approveAccess(f.buyer, f.taskId, { expectedVersion: await f.version(f.taskId), requestId: await f.requestId(), connectionId, days: 7 }, randomUUID());
+    const claimed = await f.claim();
+    const reading = f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'vendor' });
+    reading.catch(() => {});
+    await reached;
+    // While the system is still answering, the buyer can act on the same work.
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('revoking waited for the read')), 2000));
+    await Promise.race([f.app.revokeAccess(f.buyer, grantId, { expectedVersion: 1 }, randomUUID()), timeout]);
+    open();
+    await assert.rejects(reading, { code: 'GRANT_REQUIRED' });
+    const detail = await f.app.detail(f.buyer, f.taskId);
+    assert.equal(detail.access.grants[0].reads, 0, 'a read that lost its access isn’t counted or returned');
+    assert.equal(detail.access.grants[0].rowsRead, 0);
   });
 
   test(`${adapter}: revoking a grant or disconnecting the system stops reads at once`, async t => {
