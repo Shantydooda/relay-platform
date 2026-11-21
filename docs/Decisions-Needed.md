@@ -48,10 +48,10 @@ Before live money, get legal and Stripe review of how long funds may be held and
 
 1. **Acceptance criteria.** The buyer can add a checklist of up to 12 items to the scope. Changing it is a scope change: the scope version goes up, existing offers stop being valid, and authorized work keeps the copy frozen in its agreement.
 2. **Free fixes until the criteria are met.** A change request can name the unmet items. Supplier-hosted runtimes get up to 10 rounds as a safety cap; the local CSV runtime keeps its 2.
-3. **Exit.** After 2 rounds of changes the buyer can end the work as unmet (`BUYER_ENDED_UNMET`). The outcome ledger counts it as a failed run, and "try another agent" becomes available; restarting the same agent does not. It is refused while a payment is held, because refunds aren't connected to it yet.
+3. **Exit.** After 2 rounds of changes the buyer can end the work as unmet (`BUYER_ENDED_UNMET`). The outcome ledger counts it as a failed run, and "try another agent" becomes available; restarting the same agent does not. On funded work it refunds the buyer in full in the same step (built 21 Nov 2026, sandbox only, off unless `refundOnEnd` is set); otherwise, or while the payment is still being set up or reviewed, it is refused.
 4. **Auto-accept on buyer silence.** Off unless a deployment sets `autoAcceptAfterMs`. No deployment sets it and no worker calls `reconcileAutoAccept` yet. It never touches work with a payment.
 
-**Open:** connect the exit to refunds before live money, and decide the review window before turning auto-accept on.
+**Open:** the independent review of the exit's refund before live money, and the review window before turning auto-accept on.
 
 **Milestones (built 20 Nov 2026, local):** a failed milestone follows today's per-task rules (refund before payout; "end as unmet" after two rounds). Earlier accepted milestones are never reopened. Ending a plan cancels only unstarted milestones. The guarantee choice above still decides what Relay owes on top.
 

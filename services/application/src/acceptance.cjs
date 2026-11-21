@@ -14,8 +14,10 @@
 // 4. Silence counts as acceptance only when the deployment turns it on
 //    (autoAcceptAfterMs). It stays off until payments are live.
 //
-// No money moves here. Ending work that has a held payment is refused until refunds
-// are wired to this exit, so the buyer is never told money moved when it didn't.
+// Money: ending funded work refunds the buyer in full, in the same step, when the
+// deployment turns on refundOnEnd (sandbox only; payments.cjs `refunds`). Otherwise,
+// and whenever the payment isn't simply held, ending is refused, so the buyer is
+// never told money moved when it didn't.
 
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 
@@ -55,13 +57,16 @@ function unmetCriteriaInput(task, value) {
   return value;
 }
 
-function checkEnd(task) {
+// refunds (payments.cjs) decides whether a held payment can be refunded as part of ending.
+function checkEnd(task, refunds = null) {
   const job = task.assignment;
   if (!job || !ENDABLE.includes(job.status)) fail(409, 'STATE_CONFLICT', 'Only work in progress or awaiting review can be ended.');
   if (revisionRounds(task) < END_AFTER_ROUNDS)
     fail(409, 'END_NOT_YET', `You can end the work as unmet after ${END_AFTER_ROUNDS} rounds of changes. Request changes first, naming what isn’t met.`);
-  if (job.mode === 'stripe-sandbox' || (task.settlement && task.settlement.status !== 'refunded'))
-    fail(409, 'REFUND_REQUIRED', 'This work has a held payment. Ending it needs a refund, and refunds aren’t connected to this step yet.');
+  const money = refunds ? refunds.plan(task) : (job.mode === 'stripe-sandbox' || (task.settlement && task.settlement.status !== 'refunded')) ? 'refuse' : null;
+  if (money === 'refuse')
+    fail(409, 'REFUND_REQUIRED', `This work can’t be ended yet: ${refunds ? refunds.reason(task) : 'it has a held payment. Ending it needs a refund, and refunds aren’t connected to this step yet.'}`);
+  return money;
 }
 
 function acceptanceView(task) {
@@ -69,7 +74,7 @@ function acceptanceView(task) {
     unmetCriteria: task.assignment?.unmetCriteria || [] };
 }
 
-function createAcceptance({ command, taskFor, expected, now, touch, event, saveTask, assertUnfunded }) {
+function createAcceptance({ command, taskFor, expected, now, touch, event, saveTask, assertUnfunded, refunds = null }) {
   async function setCriteria(actor, id, body, key) {
     exactKeys(body, ['expectedVersion', 'criteria']);
     const criteria = normalizeCriteria(body.criteria);
@@ -99,10 +104,11 @@ function createAcceptance({ command, taskFor, expected, now, touch, event, saveT
   async function endUnmet(actor, id, body, key) {
     exactKeys(body, ['expectedVersion', 'reason', 'unmetCriteria']);
     const reason = text(body.reason, 'Reason', 3, 1000);
-    return command(actor.user.id, key, ['end-unmet', id, body], repo => taskFor(repo, actor, id, true), async repo => {
+    const result = await command(actor.user.id, key, ['end-unmet', id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true);
       expected(task, body.expectedVersion);
-      checkEnd(task);
+      const money = checkEnd(task, refunds);
+      if (money === 'refund') await refunds.authorize(repo, actor, task);
       const unmet = unmetCriteriaInput(task, body.unmetCriteria);
       const job = task.assignment, time = now();
       job.status = 'failed';
@@ -114,11 +120,14 @@ function createAcceptance({ command, taskFor, expected, now, touch, event, saveT
       job.progress = 'The buyer ended this work because the agreed checklist wasn’t met. It counts as a failed run. Stop work on it.';
       const latest = task.submissions.at(-1);
       if (latest?.status === 'ready') latest.status = 'rejected';
-      touch(task, time);
       event(task, actor.user.id, 'execution.ended_unmet', time);
+      if (money === 'refund') await refunds.queue(repo, task, actor.user.id, time);
+      touch(task, time);
       await saveTask(repo, task);
-      return { taskId: id, version: task.version, status: 'failed' };
+      return { taskId: id, version: task.version, status: 'failed', refund: money === 'refund' ? 'started' : null };
     });
+    if (result.refund) await refunds.settle([id]);
+    return result;
   }
 
   return { setCriteria, endUnmet };
