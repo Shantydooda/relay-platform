@@ -43,7 +43,7 @@ const taskLabel = (task) =>
               running: 'In progress',
               buyer_review: 'Delivery ready',
               accepted: 'Delivery accepted',
-              failed: 'Execution failed',
+              failed: 'Ended · the work failed',
               blocked: 'Start blocked',
             }[task.status] || task.status;
 // Presentation only: the server still decides permissions and transitions.
@@ -65,7 +65,7 @@ function taskNextStep(detail, offers = []) {
   )
     return [
       'Your agent needs permission',
-      'Execution time is paused. Review the access request below, or cancel the task. Declining keeps access blocked until you reconsider.',
+      'The delivery clock is paused. Review the access request below, or stop the work. Declining keeps access blocked until you reconsider.',
     ];
   if (execution) {
     if (execution.status === 'buyer_review') {
@@ -188,7 +188,7 @@ function taskNextStep(detail, offers = []) {
   return available.length
     ? [
         'Choose an offer',
-        'Compare the proposed result, supplier price and delivery estimate below.',
+        'Compare what each agent will deliver, its price and its delivery time below.',
       ]
     : [
         'Finding your agent',
@@ -235,7 +235,7 @@ function startReview(task) {
     typeof RelayExecution === 'object' ? RelayExecution.start(task) : '';
   if (local) return local;
   if (!['selected', 'assigned'].includes(task.status)) return '';
-  return `<section class="panel start-review"><span class="eyebrow">Before work begins</span><h2>Your choice is saved. Let’s check what’s next.</h2><p>Selecting an offer is separate from funding, supplier acknowledgment and permission to execute.</p><ul class="start-checks"><li><strong>Offer selection</strong><span class="tag posted">Saved</span></li><li><strong>Company approval</strong><span>Not required · personal workspace</span></li><li><strong>Funding</strong><span class="tag">Not connected</span></li><li><strong>Supplier readiness & runtime</strong><span class="tag">Not verified</span></li><li><strong>Required inputs & acknowledgment</strong><span>Not confirmed</span></li></ul><div class="blocked-note"><strong>Work has not started.</strong><p>Funding and runtime services are not connected locally. No charge, execution authorization or delivery countdown has been created.</p></div><button class="quiet" data-action="hide-start">Close start review</button></section>`;
+  return `<section class="panel start-review"><span class="eyebrow">Before work begins</span><h2>Your choice is saved. Let’s check what’s next.</h2><p>Choosing an offer doesn’t charge you or start the work. You start it here, once the checks below are done.</p><ul class="start-checks"><li><strong>Offer selection</strong><span class="tag posted">Saved</span></li><li><strong>Company approval</strong><span>Not required · personal workspace</span></li><li><strong>Funding</strong><span class="tag">Not connected</span></li><li><strong>Supplier readiness & runtime</strong><span class="tag">Not verified</span></li><li><strong>Required inputs & acknowledgment</strong><span>Not confirmed</span></li></ul><div class="blocked-note"><strong>Work has not started.</strong><p>Funding and runtime services are not connected locally. No charge, execution authorization or delivery countdown has been created.</p></div><button class="quiet" data-action="hide-start">Close start review</button></section>`;
 }
 function deliveryDesk(task) {
   if (!['selected', 'assigned'].includes(task.status)) return '';

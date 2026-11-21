@@ -636,11 +636,17 @@ const RelayMarketplace = {
         taskId = state.postTaskId = created.taskId;
       }
       let detail = await api('/api/tasks/' + taskId);
+      // A reopened draft takes whatever was changed in the form.
+      if (detail.task.status === 'draft' && (detail.task.title !== title || detail.task.brief !== brief)) {
+        await command('/api/tasks/' + taskId, 'PATCH', { expectedVersion: detail.task.version, title, brief });
+        detail = await api('/api/tasks/' + taskId);
+      }
       if (state.postFile && !detail.task.input) {
         await command(`/api/tasks/${taskId}/input`, 'POST', { expectedVersion: detail.task.version, filename: state.postFile.name, base64: state.postFile.base64, notes: brief.slice(0, 2000) });
         detail = await api('/api/tasks/' + taskId);
       }
-      if (criteria.length && !detail.task.acceptanceCriteria?.length) {
+      const saved = (detail.task.acceptanceCriteria || []).map(c => c.text);
+      if (detail.task.status === 'draft' && criteria.join('\n') !== saved.join('\n')) {
         await command(`/api/tasks/${taskId}/acceptance-criteria`, 'PUT', { expectedVersion: detail.task.version, criteria });
         detail = await api('/api/tasks/' + taskId);
       }
@@ -737,9 +743,21 @@ const RelayMarketplace = {
     return ['accepted', 'cancelled', 'failed'].includes(task.status) ? 'Completed' : ['queued', 'running'].includes(task.status) ? 'Under way' : 'Needs you';
   },
   workType(task) { return task.package ? 'package' : 'request'; },
+  // An unposted request without an ERP intake reopens in the "Post a request" form,
+  // filled in; posting then reuses the same draft instead of creating another.
+  resumeDraft(target = state) {
+    const d = target.detail, t = d?.task;
+    if (target.account?.user.workspace !== 'buyer' || t?.status !== 'draft' || d.intake) return false;
+    if (t.orchestrationPlan || t.orchestrationStep || t.recurringScheduleId || t.scheduleId || (t.workPlan && t.workPlan.cadence !== 'once')) return false;
+    target.postTaskId = t.id;
+    target.postDraft = { title: t.title, brief: t.brief, criteria: (t.acceptanceCriteria || []).map(c => c.text).join('\n') };
+    target.buyerTab = 'request'; target.detail = null;
+    return true;
+  },
   listedWork() {
-    // A milestone plan is listed once; its milestones open from the plan's page.
-    return (state.tasks || []).filter(task => task.status !== 'draft' && !task.orchestrationStep?.supersededBy && !task.milestone)
+    // "All" means all: an unposted draft (e.g. an ERP request waiting for its files)
+    // stays findable. A milestone plan is listed once; its milestones open from the plan's page.
+    return (state.tasks || []).filter(task => !task.orchestrationStep?.supersededBy && !task.milestone)
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   },
   visibleWork() {
@@ -774,8 +792,8 @@ const RelayMarketplace = {
     const tone = served ? RelayWorkState.tone(shown) : plan && !step ? 'complete' : '';
     const next = plan ? 'Open plan' : served ? RelayWorkState.action(task) : 'Open';
     const type = this.workType(task);
-    const meta = [type === 'package' ? 'Hired package' : plan ? `${task.engagement.milestones} milestones` : 'Posted request',
-      offer ? `<span class="mk-handle">${escape(this.slug(offer.operatorName))}/${escape(this.slug(offer.agentName))}</span>` : escape(task.offerCount ? this.plural(task.offerCount, 'offer') : 'No offers yet'),
+    const meta = [type === 'package' ? 'Hired package' : plan ? `${task.engagement.milestones} milestones` : task.status === 'draft' ? 'Not posted yet' : 'Posted request',
+      task.status === 'draft' ? 'agents can’t see it' : offer ? `<span class="mk-handle">${escape(this.slug(offer.operatorName))}/${escape(this.slug(offer.agentName))}</span>` : escape(task.offerCount ? this.plural(task.offerCount, 'offer') : 'No offers yet'),
       ...(offer ? [escape(this.money(offer.totalMinor ?? offer.amountMinor, offer.currency))] : []),
       `updated ${escape(this.ago(task.updatedAt))}`];
     return `<li><a href="/tasks/${escape(task.id)}" data-route class="mk-thread mk-thread-${escape(tone || 'none')}">

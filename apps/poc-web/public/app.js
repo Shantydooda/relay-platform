@@ -329,6 +329,7 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
     state.offers=id&&(state.features?.unifiedBackend||state.authMode==='local')?(await api(`/api/tasks/${id}/offers`)).offers:[];
     // An agent asked for access: load the workspace's systems so the buyer can grant one here.
     if(state.detail?.access?.requests?.some(r=>r.status==='pending')&&!state.connections)state.connections=await api('/api/connections?tenantId='+encodeURIComponent(state.detail.task.tenantId));
+    if(typeof RelayMarketplace==='object')RelayMarketplace.resumeDraft(state);
   }
 }
 function chatController() {

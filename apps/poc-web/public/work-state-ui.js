@@ -33,7 +33,7 @@ const RelayWorkState = {
       AGENT_REPORTED_FAILURE: 'Ended · agent couldn’t finish',
       CANCELLED: 'Cancelled',
       REPLACED_BY_CHANGE: 'Replaced by a change',
-      FAILED: 'Execution failed',
+      FAILED: 'Ended · the work failed',
     },
     builder: {
       BRIEF_DRAFT: 'Draft',
