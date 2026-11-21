@@ -50,8 +50,6 @@ test('Attio UI uses authenticated POST contracts and continues only the reviewed
   assert.equal(calls.length, 3);
   assert.equal(calls[1][1].consent, 'upsert-reviewed-companies');
   assert.equal(ctx.ui.attioDelivery({ id: 'task' }, { status: 'ready' }), '');
-  state.account.memberships[0].role = 'employee';
-  assert.equal(ctx.ui.attioCard(), '');
 });
 
 test('persisted receipts render without a connected provider and never offer an unauthorized retry', () => {

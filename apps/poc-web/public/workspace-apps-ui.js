@@ -18,11 +18,6 @@ const RelayApps = {
       'owner'
     );
   },
-  driveCard() {
-    if (!this.owner() || !state.features?.driveConnections) return '';
-    const drive = state.drive || {};
-    return `<section class="panel"><span class="tag">Google Drive · ${drive.connected ? 'Connected' : 'Not connected'}</span><h2>Your documents, with your task.</h2><p>Choose individual Google Docs, text, CSV or JSON files (up to 16 KB). Choose a saved snapshot or explicitly allow latest-file reads for authorized work. Agents still need task-specific read permission.</p>${drive.configured ? `<div class="app-actions"><button class="primary" data-action="app-drive-${drive.connected ? 'pick' : 'connect'}">${drive.connected ? 'Choose a Drive file' : 'Connect Google Drive'}</button>${drive.connected ? '<button data-action="app-drive-disconnect">Disconnect Google Drive</button></div><p>Disconnecting stops imports and live reads. Saved snapshots remain in Relay; disconnect those sources below to stop agent access.</p>' : '</div><p>Google’s selected-file permission allows managing chosen files. Relay implements reads only and never gives a builder your Google credentials.</p>'}` : '<p>Google OAuth setup is required. No Google account is connected and no external data is accessed.</p>'}</section>`;
-  },
   sources() {
     return this.data()
       .sources.filter((source) => source.status === 'active')
@@ -151,119 +146,6 @@ const RelayApps = {
     };
     return `<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24" aria-hidden="true" focusable="false">${marks[id] || marks.local}</svg>`;
   },
-  toolLibrary() {
-    const tools = [
-      [
-        'local',
-        'Relay sources',
-        'Files & knowledge',
-        'Bring text, CSV or JSON into your conversations.',
-      ],
-      [
-        'drive',
-        'Google Drive',
-        'Files & knowledge',
-        'Use selected documents and data files as context.',
-      ],
-      [
-        'notion',
-        'Notion',
-        'Files & knowledge',
-        'Company knowledge, project notes and documents.',
-      ],
-      [
-        'slack',
-        'Slack',
-        'Communication',
-        'Team conversations and delivery notifications.',
-      ],
-      [
-        'teams',
-        'Microsoft Teams',
-        'Communication',
-        'Shared conversations and team updates.',
-      ],
-      [
-        'gmail',
-        'Gmail',
-        'Communication',
-        'Email context and reviewed drafts.',
-      ],
-      [
-        'hubspot',
-        'HubSpot',
-        'Sales & CRM',
-        'Contacts, companies and pipeline context.',
-      ],
-      [
-        'attio',
-        'Attio',
-        'Sales & CRM',
-        'Send reviewed company CSV deliveries to your CRM.',
-      ],
-      [
-        'salesforce',
-        'Salesforce',
-        'Sales & CRM',
-        'Customer records and sales workflows.',
-      ],
-      [
-        'github',
-        'GitHub',
-        'Development',
-        'Repository context, issues and delivery handoffs.',
-      ],
-    ];
-    return `<section class="tool-library" aria-label="Tool library">
-      <div class="tool-library-toolbar"><label>Find a tool<input type="search" data-tool-search placeholder="Search tools or categories…"></label><label>Category<select data-tool-category><option>All categories</option>${['Files & knowledge', 'Communication', 'Sales & CRM', 'Development'].map((category) => `<option>${escape(category)}</option>`).join('')}</select></label></div>
-      <div class="tool-library-grid">${tools
-        .map(([id, name, category, description]) => {
-          const available =
-            id === 'local' || (id === 'attio' && state.features?.attioDelivery && this.owner()) ||
-            (id === 'drive' &&
-              state.features?.driveConnections &&
-              this.owner());
-          const status = id === 'attio' && available ? (state.attio?.connected ? 'Connected' : state.attio?.configured ? 'Ready to connect' : 'Setup required') :
-            id === 'drive' && state.features?.driveConnections && !this.owner()
-              ? 'Administrator managed'
-              : id === 'local'
-                ? 'Available now'
-                : id === 'drive' && available
-                  ? state.drive?.connected
-                    ? 'Connected'
-                    : state.drive?.configured
-                      ? 'Ready to connect'
-                      : 'Setup required'
-                  : 'Not available yet';
-          return `<article class="tool-library-card" data-tool-card data-search="${escape(`${name} ${category} ${description}`.toLowerCase())}" data-category="${escape(category)}"><div class="tool-card-top"><span class="tool-monogram tool-${id}" aria-hidden="true">${this.toolIcon(id)}</span><span class="tool-availability">${status}</span></div><h2>${name}</h2><p>${description}</p><small>${escape(category)}</small>${available ? `<button data-action="${id === 'drive' && state.drive?.configured && !state.drive?.connected ? 'app-drive-connect' : 'app-tool-open'}" data-tool="${id}">${id === 'attio' ? 'View connection' : id === 'local' ? (this.owner() ? 'Add a source' : 'View sources') : state.drive?.configured && !state.drive?.connected ? 'Connect' : 'View connection'}</button>` : `<span class="tool-coming">${id === 'drive' && state.features?.driveConnections ? 'Ask your administrator to manage this connection' : 'Connector not built yet'}</span>`}</article>`;
-        })
-        .join(
-          '',
-        )}</div><p data-tool-empty hidden role="status">No tools match. Try another name or category.</p>
-      <p class="hint">Connecting a tool does not give every agent access. You choose the sources and approve access for each task.</p>
-    </section>`;
-  },
-  filterTools(root) {
-    const query =
-      root.querySelector('[data-tool-search]')?.value.trim().toLowerCase() ||
-      '';
-    const category =
-      root.querySelector('[data-tool-category]')?.value || 'All categories';
-    let visible = 0;
-    for (const card of root.querySelectorAll('[data-tool-card]')) {
-      card.hidden =
-        !card.dataset.search.includes(query) ||
-        (category !== 'All categories' && card.dataset.category !== category);
-      if (!card.hidden) visible++;
-    }
-    const empty = root.querySelector('[data-tool-empty]');
-    if (empty) empty.hidden = visible > 0;
-  },
-  attioCard() {
-    if (!state.features?.attioDelivery || !this.owner()) return '';
-    const connection = state.attio;
-    return `<section class="panel" id="tool-attio"><h2>Attio delivery</h2><p>Send an accepted company CSV to Attio after reviewing its rows. Existing companies are matched by domain; supplied names are updated.</p>${connection?.configured ? `<p>Destination: <strong>${escape(connection.destination)}</strong></p><button data-action="app-attio-control" data-operation="${connection.connected ? 'disconnect' : 'connect'}">${connection.connected ? 'Disconnect Attio' : 'Enable Attio delivery'}</button><p class="hint">Disconnecting blocks future sends. It does not delete companies already delivered.</p>` : '<p class="hint">Local setup required: configure a private Attio integration on the server. No credentials are collected in chat. Company CSV delivery supports up to 50 rows; people, deals and custom fields are not supported yet.</p>'}</section>`;
-  },
   attioReceipt(receipt) {
     const complete = receipt.status === 'sent';
     const canContinue = receipt.canContinue && state.attio?.connected;
@@ -285,7 +167,7 @@ const RelayApps = {
   },
   toolsPage() {
     const data = this.data();
-    return `<section class="market-workspace tools-workspace"><header class="builder-page-title"><div><span class="eyebrow">YOUR TOOLS, TOGETHER</span><h1>Bring your context.</h1><p>Find a tool, choose what to share, and put it to work.</p></div></header>${this.toolLibrary()}<div id="tool-drive">${this.driveCard()}</div>${this.attioCard()}<h2>Your sources</h2><p class="hint">Use @ in a conversation to select a saved source. Nothing is shared automatically.</p>
+    return `<section class="market-workspace tools-workspace"><header class="mk-results-head"><div><h1>Your sources</h1><p class="mk-caption">Google Drive, Attio and the systems agents read during work are in <a href="/settings/integrations" data-route>Settings → Integrations</a>.</p></div></header><p class="hint">Use @ in a conversation to select a saved source. Nothing is shared automatically.</p>
       ${this.owner() ? `<details class="panel" id="tool-local"><summary>Add a local source</summary><form id="app-source-create" class="market-form"><label>Name<input name="name" maxlength="80" required placeholder="Weekly lead list"></label><label>CSV, JSON or text<textarea name="content" maxlength="16000" required placeholder="Paste test data here"></textarea></label><button class="primary">Save local source</button><div class="form-error" role="alert"></div></form></details>` : '<p id="tool-local">Your workspace administrator manages sources and connections.</p>'}
       ${data.sources.map((source) => (source.provenance?.provider === 'google-drive' ? `<details class="panel"><summary>${escape(source.name)} · ${source.provenance.mode === 'live-file' ? 'Live Drive file' : 'Drive snapshot'} · ${escape(source.status)}</summary><p>${source.provenance.mode === 'live-file' ? 'Last checked ' + escape(date(source.provenance.checkedAt)) + '. Authorized latest-data reads check Drive again. Preview below is the last saved version.' : 'Imported ' + escape(date(source.provenance.importedAt)) + '. This saved copy does not sync with Drive.'}</p><pre>${escape(source.content)}</pre>${source.status === 'active' ? `<button data-action="app-disconnect" data-id="${escape(source.id)}">Disconnect this source</button>` : '<p>Import the file again to reconnect. Old permissions stay revoked.</p>'}</details>` : `<details class="panel"><summary>${escape(source.name)} · v${source.version} · ${escape(source.status)}</summary><form id="app-source-edit" data-id="${escape(source.id)}" class="market-form"><label>Name<input name="name" value="${escape(source.name)}" required maxlength="80"></label><label>Source content<textarea name="content" required maxlength="16000">${escape(source.content)}</textarea></label><button class="primary">${source.status === 'active' ? 'Save new version' : 'Reconnect local source'}</button>${source.status === 'active' ? `<button type="button" data-action="app-disconnect" data-id="${escape(source.id)}">Disconnect</button>` : '<p>Reconnecting does not restore old permissions. Grant access again.</p>'}<div class="form-error" role="alert"></div></form></details>`)).join('')}
       <h2>Permissions</h2>${

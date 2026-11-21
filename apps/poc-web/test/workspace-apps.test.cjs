@@ -116,28 +116,16 @@ test('context selection and permission review escape source text and require own
   assert.doesNotMatch(f.render(pending), /Allow read access/);
 });
 
-test('Drive setup stays honest about configuration and imported snapshots', () => {
+test('the sources page lists imported Drive snapshots and sends Drive setup to Settings → Integrations', () => {
   const f = fixture();
   f.state.features.driveConnections = true;
-  let html = f.render('RelayApps.toolsPage()');
-  assert.match(html, /Google OAuth setup is required/);
-  assert.doesNotMatch(html, /data-action="app-drive-connect"/);
-  f.state.drive = { configured: true, connected: false };
-  html = f.render('RelayApps.toolsPage()');
-  assert.match(html, /app-drive-connect/);
-  assert.match(html, /selected-file permission allows managing/);
-  f.state.drive.connected = true;
-  f.state.workspaceApps.sources[0].provenance = {
-    provider: 'google-drive',
-    importedAt: 1,
-  };
-  html = f.render('RelayApps.toolsPage()');
+  f.state.workspaceApps.sources[0].provenance = { provider: 'google-drive', importedAt: 1 };
+  const html = f.render('RelayApps.toolsPage()');
+  assert.match(html, /href="\/settings\/integrations" data-route/);
+  assert.doesNotMatch(html, /app-drive-connect|YOUR TOOLS, TOGETHER/, 'connecting Drive lives on the Integrations page');
   assert.match(html, /Drive snapshot/);
-  assert.match(html, /Disconnect Google Drive/);
   assert.doesNotMatch(html, /id="app-source-edit"/);
   assert.doesNotMatch(html, /<script>/);
-  f.state.account.memberships[0].role = 'employee';
-  assert.equal(f.render('RelayApps.driveCard()'), '');
 });
 
 test('live Drive labels and read history distinguish freshness without rendering source markup', () => {
