@@ -20,17 +20,9 @@ const request = { id: 'r1', provider: 'sample-erp', providerLabel: 'Sample ERP (
 const account = role => ({ user: { id: 'u', name: 'U' }, memberships: [{ id: T, role, company: true }] });
 const detail = (access) => ({ task: { id: 't1', tenantId: T, version: 5 }, access });
 
-test('the Connected systems tab lists systems without secrets, offers a connect form and labels planned connectors', () => {
-  const html = ui({ connections: { canManage: true, catalog, connections: [connection] } }).tab();
-  assert.match(html, /NetSuite sandbox \(Wave 2\)/);
-  assert.match(html, /1 active grant/);
-  assert.match(html, /id="connection-create"/);
-  assert.match(html, /name="cred-token" type="password"/, 'secret fields are masked');
-  assert.match(html, /Oracle NetSuite<\/strong>: Token-based login/);
-  assert.match(html, /independent security review/);
-  const member = ui({ connections: { canManage: false, catalog, connections: [] } }).tab();
-  assert.doesNotMatch(member, /id="connection-create"/);
-  assert.match(member, /Workspace owners connect systems/);
+test('with no matching system connected, the request page sends the owner to Settings → Integrations', () => {
+  const html = ui({ account: account('owner'), connections: { connections: [] } }).taskAccess(detail({ requests: [request], grants: [] }));
+  assert.match(html, /href="\/settings\/integrations" data-route>Connect one in Settings → Integrations/);
 });
 
 test('an access request asks the owner to pick a matching system and a duration', () => {

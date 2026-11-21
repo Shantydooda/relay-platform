@@ -2,6 +2,10 @@
 
 Status: built locally, 19 Nov 2026, branch `claude/enterprise-projects`. Grounded in `reports/ERP buyer readiness for agent projects.md` (least-privilege access, buyer-run loads, OWASP "least agency").
 
+## Where it lives (21 Nov 2026)
+
+**Settings → Integrations** (`/settings/integrations`, and `/settings/integrations/<org id>` for an organization), reached from the account menu. Every account has it: a personal account manages its own systems; an organization's owners manage the organization's and members see them read-only. It's one list in the Hugging Face settings style, grouped by use (agents read during work, files for requests, send results, coming next), one row per integration with its status and one action; setup opens under the row. It replaces the organization's "Connected systems" tab (old `/org/<id>/connections` links land on the new page) and the old "Connected tools" page's Drive, Attio and tool library. Built in `apps/poc-web/public/integrations-ui.js`; server rules are unchanged.
+
 ## What it does
 
 Buyers connect the systems their work lives in (an ERP sandbox, later a drive, CRM or SFTP folder) once per workspace. During work an agent asks for read access; the buyer is notified, chooses a system and a duration, and the agent reads through Relay. The agent never receives the buyer's credentials.
