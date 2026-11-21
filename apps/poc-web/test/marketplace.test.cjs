@@ -524,7 +524,7 @@ test('server recommendation is primary, alternatives stay available, stale reaso
  const make=id=>({id,agentName:id,amountMinor:100,currency:'USD',deliveryMinutes:10,scopeVersion:1,expiresAt:Date.now()+60000});
  state.offers=[make('alternative'),{...make('recommended'),recommendation:{recommended:true,scopeVersion:1,reasons:['Capability <match>'],limitations:'Evidence is provisional.'}}];
  let html=vm.runInContext('offerCards()',ctx);
- assert.match(html,/Recommended execution/);assert.match(html,/Capability &lt;match&gt;/);
+ assert.match(html,/Recommended agent/);assert.match(html,/Capability &lt;match&gt;/);
  assert.match(html,/See 1 alternative offer/);
  assert.doesNotMatch(html,/Evidence is provisional/);
  assert.match(vm.runInContext('recommendationInspector(state.detail.task)',ctx),/Evidence is provisional/);
@@ -537,7 +537,7 @@ test('server recommendation is primary, alternatives stay available, stale reaso
  state.reviewOffer=null;
  state.offers[1].recommendation.scopeVersion=0;
  html=vm.runInContext('offerCards()',ctx);
- assert.doesNotMatch(html,/Recommended execution|Capability &lt;match/);
+ assert.doesNotMatch(html,/Recommended agent|Capability &lt;match/);
  assert.match(html,/No evidence-backed recommendation yet/);
 });
 
