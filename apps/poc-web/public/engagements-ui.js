@@ -85,9 +85,20 @@ const RelayEngagements = {
       <ol class="milestone-list">${rows}</ol>
       <p class="hint">Each milestone is paid for when you start it and paid out to the builder only when you accept it. Accepted milestones stay accepted whatever happens later.</p>
       ${canEnd ? (state.confirmEndPlan
-        ? `<div class="offer-confirm"><p>End the plan? Milestones not started are cancelled and nothing more is charged. ${e.milestones.some(m => ['in_progress', 'in_review'].includes(m.status)) ? 'The milestone in progress carries on until you accept it or end it on its page.' : ''}</p><button class="danger" data-action="end-engagement">End the plan</button><button data-action="keep-engagement">Keep it</button></div>`
+        ? `<div class="offer-confirm"><p>End the plan? Milestones not started are cancelled and nothing more is charged. ${this.refundNote(e)}${e.milestones.some(m => ['in_progress', 'in_review'].includes(m.status)) ? 'The milestone in progress carries on until you accept it or end it on its page.' : ''}</p><button class="danger" data-action="end-engagement">End the plan</button><button data-action="keep-engagement">Keep it</button></div>`
         : '<button class="quiet" data-action="confirm-end-engagement">End the remaining milestones</button>') : ''}
       </section></article>`;
+  },
+
+  // A milestone paid for but not started is refunded in full when the plan ends, where the deployment allows it.
+  refundNote(e) {
+    const paid = e.milestones.filter(m => m.status === 'funded');
+    if (!paid.length) return '';
+    const names = paid.map(m => `milestone ${m.sequence}`).join(' and ');
+    if (paid.some(m => m.paymentReview)) return `The payment for ${names} is paused for review. Resolve it on its page before ending the plan. `;
+    return e.refundsOnEnd
+      ? `You paid for ${names} but it hasn’t started: ${money(paid.reduce((sum, m) => sum + m.totalMinor, 0), e.currency)} is refunded in full. `
+      : `You paid for ${names} but it hasn’t started. Request its refund on its page before ending the plan. `;
   },
 
   // ---- Buyer: one milestone's page -------------------------------------

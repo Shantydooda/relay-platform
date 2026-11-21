@@ -157,23 +157,35 @@ function createEngagements(context) {
       const parent = await taskFor(repo, actor, id, true);
       for (const childId of [...(parent.engagement?.milestoneIds || [])].sort()) await taskFor(repo, actor, childId, true);
     };
-    return command(actor.user.id, key, ['engagement-end', id, body], lockAll, async repo => {
+    const result = await command(actor.user.id, key, ['engagement-end', id, body], lockAll, async repo => {
       const parent = await taskFor(repo, actor, id, true); expected(parent, body.expectedVersion);
       if (!parent.engagement) fail(404, 'NOT_FOUND', 'This request has no milestone plan.');
       if (parent.engagement.endedAt) fail(409, 'ENGAGEMENT_ENDED', 'This plan has already ended.');
       const time = now(), children = [];
       for (const childId of parent.engagement.milestoneIds) children.push(await taskFor(repo, actor, childId, true));
       const unstarted = children.filter(child => child.status !== 'cancelled' && !child.assignment);
-      const held = unstarted.find(child => child.settlement && !SETTLED.has(child.settlement.status));
-      if (held) fail(409, 'REFUND_REQUIRED', `Milestone ${held.milestone.sequence} has a held payment. Refund it from its page first.`);
+      // A paid milestone that hasn't started is refunded in full when the deployment allows it (payments.cjs `refunds`).
+      const refunds = context.refunds, refunding = [];
+      for (const child of unstarted) {
+        if (!child.settlement || SETTLED.has(child.settlement.status)) continue;
+        if (refunds?.plan(child) !== 'refund') fail(409, 'REFUND_REQUIRED', refunds?.enabled
+          ? `The plan can’t end yet: for milestone ${child.milestone.sequence}, ${refunds.reason(child)}`
+          : `Milestone ${child.milestone.sequence} has a held payment. Refund it from its page first.`);
+        await refunds.authorize(repo, actor, child);
+        refunding.push(child);
+      }
       for (const child of unstarted) {
         child.status = 'cancelled'; child.selectedOfferId = null;
-        touch(child, time); event(child, actor.user.id, 'milestone.cancelled', time); await saveTask(repo, child);
+        event(child, actor.user.id, 'milestone.cancelled', time);
+        if (refunding.includes(child)) await refunds.queue(repo, child, actor.user.id, time);
+        touch(child, time); await saveTask(repo, child);
       }
       parent.engagement.endedAt = time;
       touch(parent, time); event(parent, actor.user.id, 'engagement.ended', time); await saveTask(repo, parent);
-      return { taskId: id, version: parent.version, cancelled: unstarted.map(child => child.id) };
+      return { taskId: id, version: parent.version, cancelled: unstarted.map(child => child.id), refunds: refunding.map(child => child.id) };
     });
+    if (result.refunds?.length) await context.refunds.settle(result.refunds);
+    return result;
   }
 
   // The plan, for the request's page; or, on a milestone's page, where it sits in the plan.
@@ -194,13 +206,15 @@ function createEngagements(context) {
       const status = milestoneStatus(child, previousAccepted);
       milestones.push({ taskId: child.id, sequence: child.milestone.sequence, title: child.title, status,
         amountMinor: terms.amountMinor, feeMinor: terms.feeMinor ?? 0, totalMinor: terms.totalMinor ?? terms.amountMinor,
-        deliveryMinutes: terms.deliveryMinutes, criteria: (child.acceptanceCriteria || []).length });
+        deliveryMinutes: terms.deliveryMinutes, criteria: (child.acceptanceCriteria || []).length,
+        paymentReview: status === 'funded' && (await repo.get('payment-job', `task:${child.id}`))?.status === 'review' });
       previousAccepted = status === 'accepted';
     }
     const sum = list => list.reduce((total, item) => total + item.totalMinor, 0);
     const status = task.engagement.endedAt ? 'ended' : milestones.every(item => item.status === 'accepted') ? 'completed' : 'active';
     const { agentId, agentName, operatorName, currency, acceptedAt, endedAt } = task.engagement;
     return { engagement: { status, agentId, agentName, operatorName, currency, acceptedAt, endedAt, milestones,
+      refundsOnEnd: !!context.refunds?.enabled,
       totals: { totalMinor: sum(milestones), acceptedMinor: sum(milestones.filter(item => item.status === 'accepted')),
         cancelledMinor: sum(milestones.filter(item => item.status === 'cancelled')) } } };
   }

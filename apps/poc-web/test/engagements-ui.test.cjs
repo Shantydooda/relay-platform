@@ -51,6 +51,14 @@ test('buyers see each milestone’s price and checklist, escaped, and the plan p
   assert.match(panel, /USD 12\.00 accepted so far/);
   assert.match(panel, /href="\/tasks\/b"[\s\S]*Start →/, 'the next milestone is the one to start');
   assert.match(panel, /End the remaining milestones/);
+  detail.engagement.milestones[1].status = 'funded';
+  ctx.state.confirmEndPlan = true;
+  assert.match(vm.runInContext(`RelayEngagements.panel(${JSON.stringify(detail)})`, ctx), /Request its refund on its page/);
+  detail.engagement.refundsOnEnd = true;
+  assert.match(vm.runInContext(`RelayEngagements.panel(${JSON.stringify(detail)})`, ctx), /milestone 2 but it hasn’t started: USD 18\.00 is refunded in full/);
+  detail.engagement.milestones[1].paymentReview = true;
+  assert.match(vm.runInContext(`RelayEngagements.panel(${JSON.stringify(detail)})`, ctx), /paused for review/);
+  ctx.state.confirmEndPlan = false;
   detail.engagement.status = 'ended';
   assert.doesNotMatch(vm.runInContext(`RelayEngagements.panel(${JSON.stringify(detail)})`, ctx), /End the remaining/);
 });

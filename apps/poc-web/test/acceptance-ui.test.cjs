@@ -84,6 +84,23 @@ test('"End as unmet" appears only when the server allows it and pre-ticks the la
   assert.equal(JSON.stringify(f.calls[0]), JSON.stringify(['/api/tasks/task/end-unmet', 'POST', { expectedVersion: 5, reason: 'Still has duplicates', unmetCriteria: ['c2'] }]));
 });
 
+test('ending paid work says the test payment is refunded in full, and confirms it after', async () => {
+  const f = fixture({ acceptance: { criteria: CRITERIA, revisionRounds: 2, endAfterRounds: 2, unmetCriteria: [] },
+    payment: { status: 'funded', amountMinor: 1250, currency: 'USD' } });
+  f.state.detail.actions.execution.end = { allowed: true };
+  const html = f.run('RelayAcceptance.end(state.detail.task)');
+  assert.match(html, /USD 12\.50 test payment is refunded in full/);
+  assert.match(html, /Nothing is paid to the builder/);
+  assert.doesNotMatch(html, /No money moves/);
+  f.state.detail.payment = null;
+  assert.match(f.run('RelayAcceptance.end(state.detail.task)'), /No money moves/);
+
+  f.context.command = async () => ({ status: 'failed', refund: 'started' });
+  f.context.data = { get: () => 'Still has duplicates', getAll: () => [] };
+  await f.run('RelayAcceptance.endUnmet({}, data)');
+  assert.match(f.context.notice.textContent, /refund of your test payment has started/);
+});
+
 test('an ended run explains itself to the buyer and marks what was not met', () => {
   const f = fixture({ acceptance: { criteria: CRITERIA, revisionRounds: 2, endAfterRounds: 2, unmetCriteria: ['c1'] } });
   assert.equal(f.run('RelayAcceptance.ended({error:"AGENT_ERROR"})'), '');
