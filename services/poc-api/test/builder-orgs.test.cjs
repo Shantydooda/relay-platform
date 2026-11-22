@@ -112,3 +112,20 @@ test('an agent created for an organization is marked as an organization’s', as
   const kinds = await f.repository.read(async repo => [(await repo.get('agent', agentId)).operatorKind, (await repo.get('agent', own)).operatorKind]);
   assert.deepEqual(kinds, ['organization', 'person']);
 });
+
+test('members who can build as the organization get a way to manage its agents from the agent page', async t => {
+  const f = await fixture(t);
+  const { agentId } = await f.store.marketplace.addAgent(await f.store.actAs(f.actors.olivia(), f.orgId), f.agentBody, randomUUID());
+  // A draft agent: its members can open its page to manage it; outsiders can't see it.
+  const forMel = await f.store.marketplace.listing(f.actors.mel(), agentId);
+  assert.deepEqual({ ...forMel.manageAs }, { id: f.orgId, name: 'Acme ERP' });
+  assert.equal(forMel.ownerPreview, false, 'Mel isn’t the owner: package drafts stay in Build');
+  assert.ok(!('ownerPackages' in forMel));
+  assert.deepEqual({ ...(await f.store.marketplace.listing(f.actors.olivia(), agentId)).manageAs }, { id: f.orgId, name: 'Acme ERP' }, 'owners of the organization too');
+  await assert.rejects(f.store.marketplace.listing(f.actors.bea(), agentId), { code: 'NOT_FOUND' });
+
+  // With member publishing switched off, only the organization’s owners manage it.
+  await f.store.setOrgPolicy(f.actors.olivia(), f.orgId, { membersCanPublish: false, expectedVersion: 0 }, randomUUID());
+  await assert.rejects(f.store.marketplace.listing(f.actors.mel(), agentId), { code: 'NOT_FOUND' });
+  assert.ok((await f.store.marketplace.listing(f.actors.olivia(), agentId)).manageAs);
+});

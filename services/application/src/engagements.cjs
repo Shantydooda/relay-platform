@@ -122,7 +122,7 @@ function createEngagements(context) {
         companyApprovalRequired: parent.companyApprovalRequired, status: 'posted', version: 1, scopeVersion: 1, createdAt: time, updatedAt: time,
         messages: [], scopes: [{ version: 1, title: item.title, brief, acceptanceCriteria: criteria, createdAt: time }], events: [],
         offers: [], selectedOfferId: null, assignment: null, submissions: [], acceptanceCriteria: criteria,
-        requiredRegion: parent.requiredRegion || null,
+        requiredRegion: parent.requiredRegion || null, ...(parent.regionChoice ? { regionChoice: parent.regionChoice } : {}),
         ...(parent.projectId ? { projectId: parent.projectId } : {}), ...(parent.categoryId ? { categoryId: parent.categoryId } : {}),
         milestone: { engagementId: parent.id, sequence: index + 1, of: n, title: item.title, previousId: ids[index - 1] || null },
       };

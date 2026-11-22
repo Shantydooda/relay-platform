@@ -150,6 +150,7 @@ const RelayRequestPage = {
             ${detail.project ? `<dt>Project</dt><dd><a href="/org/${escape(org.id)}/projects/${escape(detail.project.id)}" data-route>${escape(detail.project.name)}</a></dd>` : ''}
             ${detail.engagement || detail.milestone ? '' : `<dt>Offers</dt><dd>${offers.length}</dd>`}
             ${t.acceptanceCriteria?.length ? `<dt>Checklist</dt><dd>${RelayMarketplace.plural(t.acceptanceCriteria.length, 'item')}</dd>` : ''}
+            ${(t.requiredRegion || t.regionChoice) ? `<dt>Data processed in</dt><dd>The ${escape(RelayMarketplace.REGIONS[t.requiredRegion || t.regionChoice] || '')} only</dd>` : ''}
             <dt>Scope</dt><dd>v${t.scopeVersion}</dd></dl>
             ${detail.project && !own ? '<p class="mk-caption">You can see this because you’re in the project. Only the person who posted it can change it.</p>' : ''}</section>
           ${own && ['posted', 'selected'].includes(t.status) && !detail.execution ? '<section class="mk-buy-box"><button type="button" class="mk-link-button mk-danger" data-action="cancel">Close request</button></section>' : ''}

@@ -127,3 +127,49 @@ test('the marketplace tells a buyer which of their companies require a region', 
   assert.deepEqual((await f.app.marketplace.browse(f.member)).regionRules.map(r => ({ ...r })), [{ tenantId: f.company.id, name: 'Northwind', region: 'eu' }]);
   assert.deepEqual([...(await f.app.marketplace.browse(f.eu)).regionRules], [], 'outsiders don’t see it');
 });
+
+test('a buyer without a company can require a region for one request', async t => {
+  const f = setup(t);
+  const euAgent = await f.agent(f.eu, 'EU dedupe', 'eu');
+  const usAgent = await f.agent(f.us, 'US dedupe', 'us');
+  const plain = await f.agent(f.us, 'Plain dedupe');
+  const personal = f.member.memberships.find(m => !m.company).id;
+  const draft = async (body = {}) => {
+    const { taskId } = await f.app.createTask(f.member, { tenantId: personal, title: 'Dedupe our vendors', brief: 'Deduplicate the vendor master export.', ...body }, randomUUID());
+    await f.app.addInput(f.member, taskId, { expectedVersion: 1, filename: 'vendors.csv', base64: Buffer.from('id\n1\n').toString('base64'), notes: 'Input.' }, randomUUID());
+    return taskId;
+  };
+  await assert.rejects(draft({ processingRegion: 'apac' }), { code: 'INVALID_INPUT' });
+
+  const taskId = await draft({ processingRegion: 'eu' });
+  assert.equal((await f.app.detail(f.member, taskId)).task.regionChoice, 'eu');
+  await f.post(f.member, taskId);
+  assert.equal((await f.app.detail(f.member, taskId)).task.requiredRegion, 'eu');
+  assert.equal((await f.app.marketplace.opportunities(f.us)).find(o => o.id === taskId).requiredRegion, 'eu', 'builders see it');
+  await assert.rejects(f.offer(f.us, usAgent, taskId), err => err.code === 'REGION_REQUIRED' && /Declare it on the agent/.test(err.message));
+  await assert.rejects(f.offer(f.us, plain, taskId), { code: 'REGION_REQUIRED' }, 'undeclared agents don’t meet it either');
+  await f.offer(f.eu, euAgent, taskId);
+
+  // A direct request is checked against the choice at once, in the buyer’s words.
+  await f.publish(usAgent);
+  await assert.rejects(draft({ processingRegion: 'eu', preferredAgentId: usAgent, preferenceMode: 'agent' }), err => err.code === 'REGION_REQUIRED' && /^You asked for an agent that processes data in the EU\. US dedupe declares the US\./.test(err.message));
+
+  // The choice can also be made, or cleared, when posting a draft.
+  const later = await draft();
+  await f.app.mutateTask(f.member, later, 'post', { expectedVersion: 2, processingRegion: 'us' }, randomUUID());
+  assert.equal((await f.app.detail(f.member, later)).task.requiredRegion, 'us');
+  const open = await draft({ processingRegion: 'eu' });
+  await f.app.mutateTask(f.member, open, 'post', { expectedVersion: 2, processingRegion: null }, randomUUID());
+  assert.equal((await f.app.detail(f.member, open)).task.requiredRegion, null);
+  await f.offer(f.us, plain, open);
+});
+
+test('a company’s rule wins over a member’s choice for one request', async t => {
+  const f = setup(t);
+  const usAgent = await f.agent(f.us, 'US dedupe', 'us');
+  await f.require('eu', 0);
+  const taskId = await f.draft(f.member, { processingRegion: 'us' });
+  await f.post(f.member, taskId);
+  assert.equal((await f.app.detail(f.member, taskId)).task.requiredRegion, 'eu');
+  await assert.rejects(f.offer(f.us, usAgent, taskId), { code: 'REGION_REQUIRED' });
+});

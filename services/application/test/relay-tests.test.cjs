@@ -146,6 +146,30 @@ test('proposals are data with a nonce, a real change and an output that differs 
   await assert.rejects(f.propose(f.author, { title: 'One more' }), { code: 'REVIEW_LIMIT' });
 });
 
+test('the author is notified when staff approve, reject or retire their test, and nobody else is', async t => {
+  const f = await fixture(t);
+  await f.builder(f.author); await f.builder(f.other);
+  const decisions = async actor => (await f.app.notifications(actor)).items.filter(i => i.destination === 'relay-test');
+  const { testId } = await f.propose(f.author);
+  assert.deepEqual(await decisions(f.author), [], 'proposing isn’t news');
+  f.advance(1000);
+  await f.review(f.staff, testId, 'approve');
+  f.advance(1000);
+  await f.review(f.staff, testId, 'retire', 'Suffix list is too short to tell agents apart.');
+  const second = await f.propose(f.author, { title: 'Second test' });
+  f.advance(1000);
+  await f.review(f.staff, second.testId, 'reject', 'The expected output keeps a lowercase vendor name.');
+  const mine = await decisions(f.author);
+  assert.deepEqual(mine.map(i => [i.title, i.taskTitle]), [
+    ['Your Relay test was rejected', 'Second test'], ['Your Relay test was retired', PROPOSAL.title], ['Your Relay test was approved', PROPOSAL.title]]);
+  assert.ok(mine.every(i => i.side === 'builder' && i.taskId === null && /^[a-f0-9]{64}$/.test(i.id)));
+  assert.deepEqual(await decisions(f.other), []);
+  assert.deepEqual(await decisions(f.staff), [], 'reviewers aren’t notified of their own decisions');
+  // They can be marked read like any other notification.
+  await f.app.readNotifications(f.author, { ids: [mine[0].id] });
+  assert.equal((await decisions(f.author)).find(i => i.id === mine[0].id).read, true);
+});
+
 test('rejection needs a reason, staff can’t approve their own test, and authors can withdraw', async t => {
   const f = await fixture(t);
   await f.builder(f.author); await f.builder(f.staff);

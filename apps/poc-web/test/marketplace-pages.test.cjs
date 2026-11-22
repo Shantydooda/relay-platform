@@ -123,7 +123,7 @@ test('a plain draft reopens in the Post a request form, filled in; an ERP draft 
   assert.equal(target.buyerTab, 'request');
   assert.equal(target.detail, null);
   assert.equal(target.postTaskId, 'd1', 'posting reuses the same draft');
-  assert.deepEqual({ ...target.postDraft }, { title: 'Customer cleanup', brief: 'Clean the export.', criteria: 'No duplicates' });
+  assert.deepEqual({ ...target.postDraft }, { title: 'Customer cleanup', brief: 'Clean the export.', criteria: 'No duplicates', regionChoice: null }, 'the region choice comes back too (none here)');
   const erp = { account: { user: { workspace: 'buyer' } }, detail: { task: { id: 'd2', status: 'draft', title: 'x', brief: 'y' }, intake: { readiness: { complete: false } } } };
   assert.equal(m.resumeDraft(erp), false);
   const posted = { account: { user: { workspace: 'buyer' } }, detail: { task: { id: 'd3', status: 'posted' } } };

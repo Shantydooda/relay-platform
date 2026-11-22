@@ -22,6 +22,7 @@ Five branches are built and pushed but **not merged**. Each one is built on the 
 | `claude/fees` | Fees and payouts, option B, off by default (PR into `claude/processing-region`) |
 | `claude/relay-test-proposals` | Builder-proposed Relay tests, reviewed by Relay staff (PR into `claude/fees`) |
 | `claude/engagements` | Milestone plans (step 9), plus per-builder Relay test attempts and answer times (PR into `claude/relay-test-proposals`) |
+| `claude/small-gaps` | A region per request, Settings tab for organization members, notifications on Relay test decisions (PR into `claude/eval-suites`) |
 | `claude/eval-suites` | Open evaluation suites for company research and lead lists, shown on agent pages (PR into `claude/relay-test-cases`) |
 | `claude/relay-test-cases` | Relay tests with 1–5 cases, and four Relay-written B2B data tests (PR into `claude/ux-quick-fixes`) |
 | `claude/ux-quick-fixes` | UX review quick fixes: readable notification badge, drafts in Your work, buyer wording (PR into `claude/connection-reads`) |
@@ -60,7 +61,7 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
 - Builders are grouped by an opaque `builderId` (a hash, never the account id), so two builders with the same name are no longer merged. If they share a handle, the profile lists each one separately and says so.
 - Agent pages link the builder's handle to their profile. The owner gets a Settings tab linking to each part of the agent in Build.
 - Each agent's Build page has its own address, `/build/agents/<id>/<tab>`. It survives reloads and works with Back.
-- Not yet: members of an organization don't get the Settings tab on the organization's agent pages; they manage them from Build while building as the organization. Agents created for an organization before this change show as a person's until edited.
+- Members who can build as the organization (its owners, and members while "Members can publish agents" is on) get the Settings tab on its agent pages, including drafts; each link switches Build to building as the organization (22 Nov, `claude/small-gaps`). Package drafts for an organization's agent are still edited only from the owner's view. Agents created for an organization before step 2 show as a person's until edited.
 - On `/agents/<id>`, owners get their Settings tab (as decided in "One marketplace").
 - Builder and organization profile pages: handle, agents, track record.
 - Why: buyers judge a builder by their record, and organizations from step 2 need a public page.
@@ -69,7 +70,7 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
 - Builders declare where an agent processes buyers' data (EU, US or not declared) on its profile in Build. It's labelled as the builder's declaration; Relay doesn't verify it.
 - Buyers filter browse by "Data processed in", and rows and agent pages show the declaration.
 - A company owner sets "Agents must process data in" under Organization → Settings (logged in the audit log). Relay then refuses, for that company's requests, every step with an agent that hasn't declared that region: direct requests, buying a package, posting a draft sent to one agent, offers, choosing an offer (including offers received before the rule) and starting work. Builders see the requirement on the request; agents that can't serve it get no alert and aren't sent it through the supplier API. Agent pages tell the buyer when their company's rule rules an agent out (`processing-region.cjs`).
-- Not yet: a per-request region for buyers without a company, and choosing where Relay itself stores data (still "planned" on `/enterprise`). New agents set the region after creation, on the profile.
+- A buyer can require a region for one request on "Post a request" ("Data processed in": any, the EU or the US), with or without a company (22 Nov, `claude/small-gaps`). Relay enforces it at the same steps as a company rule, in the buyer's own words; a company's rule always wins over the choice. Not yet: choosing where Relay itself stores data (still "planned" on `/enterprise`). New agents set the region after creation, on the profile.
 - Builders declare where their agent processes data (EU or US).
 - Buyers filter on it, and an organization can require it.
 - Why: the first ERP buyers will ask where their data goes before posting real data.
@@ -106,7 +107,7 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
   - Reference solvers in `relay-tests.test.cjs`, written from each brief alone, pass every seeded case, so a seed's answers can't silently disagree with its instructions.
   - Runtimes get `cases` and `answer: "outputs"` for tests with several cases and reply with `{round, outputs}`; one-case tests keep `{round, output}`, and tests proposed before this still run as one case (`supplier-openapi.json`, `Supplier-API.md`).
   - Limit to know: the seeded answers live in the repository, so anyone who can read the code can see them. The nonce stops replaying a stored answer, not building a solver for these exact tasks; treat a pass as a basic check, like builder tests.
-- Not built: partial credit or structured (JSON) comparison; proposals by an organization rather than a person; notifications when a proposal is decided (the builder sees it on the page).
+- Not built: partial credit or structured (JSON) comparison; proposals by an organization rather than a person. The author now gets a notification when staff approve, reject or retire their test (22 Nov, `claude/small-gaps`); it opens Build → Relay tests.
 
 **9. Engagements and milestones.** ✅ First slice built 20 Nov (branch `claude/engagements`, `specs/Engagements-and-Milestones.md`).
 - Multi-step ERP work with staged payments. Needs fees (7) first.

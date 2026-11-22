@@ -89,6 +89,23 @@ async function matchAlerts(repo, actor, current, { now, opportunityView }) {
   return items;
 }
 
+// Decisions on Relay tests this account proposed (relay-tests.cjs): approved,
+// rejected with a reason, or retired. Derived from each test's history on read.
+const TEST_DECISIONS = { approved: 'Your Relay test was approved', rejected: 'Your Relay test was rejected', retired: 'Your Relay test was retired' };
+async function testDecisions(repo, actor) {
+  const items = [];
+  for (const test of await repo.list('relay_test', 'owner_id', actor.user.id)) {
+    for (const entry of test.history || []) {
+      if (!TEST_DECISIONS[entry.action]) continue;
+      items.push({
+        id: createHash('sha256').update(`relay-test:${test.id}:${entry.action}:${entry.at}`).digest('hex'),
+        title: TEST_DECISIONS[entry.action], taskTitle: test.title, taskId: null, tenantId: null, side: 'builder', destination: 'relay-test', createdAt: entry.at,
+      });
+    }
+  }
+  return items;
+}
+
 function createNotifications({ repository, now, resolveActor, opportunityView }) {
   async function collect(repo, actor) {
     if (!actor?.user?.id || actor.recoveryRequired)
@@ -165,6 +182,7 @@ function createNotifications({ repository, now, resolveActor, opportunityView })
       }
     }
     items.push(...await matchAlerts(repo, actor, current, { now, opportunityView }));
+    items.push(...await testDecisions(repo, actor));
     items.sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
     return items.slice(0, 100);
   }
