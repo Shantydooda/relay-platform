@@ -151,6 +151,21 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if (await supplierApi({ req, url, store, jsonBody, send, origin: expected.origin })) return;
       if(!path.startsWith('/api/')) fail(404,'NOT_FOUND','Not found.');
       const mutation=!['GET','HEAD','OPTIONS'].includes(method);
+      // The buyer's Relay Connector (docs/specs/Buyer-Connections.md → "Relay
+      // Connector") calls out from the buyer's network with its connector key.
+      // Never a browser session: no cookies, and no cross-origin requests.
+      if (path.startsWith('/api/connector/') && store.connectorHello) {
+        if (req.headers.origin) fail(403, 'ORIGIN_REQUIRED', 'The connector API isn’t available to browsers.');
+        const connectorKey = /^Bearer (rcn_[0-9a-f-]{36}\.[A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '')?.[1] || '';
+        if (path === '/api/connector/hello' && method === 'POST') return send(200, await store.connectorHello(connectorKey, await jsonBody(req)));
+        if (path === '/api/connector/reads' && method === 'GET') {
+          const job = await store.connectorNextRead(connectorKey, { waitMs: Math.min(Number(url.searchParams.get('wait') || 0), 25) * 1000 });
+          return job ? send(200, job) : (res.writeHead(204), res.end());
+        }
+        const answerRoute = path.match(/^\/api\/connector\/reads\/([0-9a-f-]{36})$/);
+        if (answerRoute && method === 'POST') return send(200, await store.connectorAnswer(connectorKey, answerRoute[1], await jsonBody(req, 2400000)));
+        fail(404, 'NOT_FOUND', 'Not found.');
+      }
       // Runtime credentials are agent-scoped bearer credentials, never browser
       // sessions. Do not accept cookies as runtime authorization or enable CORS.
       if (path.startsWith('/api/runtime/') && store.runtimePrincipal) {

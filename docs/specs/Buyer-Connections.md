@@ -34,10 +34,27 @@ Built (provider contract `verify(credentials) → { account, objects }`, `read(c
 
 All three use fixed hosts, no redirects, a 10 s timeout and a 2 MB response cap, and are tested against a stubbed network only: **not yet verified against live accounts.**
 
-Planned, shown as "Coming next", each after a test account and an independent security review: NetSuite (token-based login on a dedicated read-only integration role), SAP S/4HANA (communication arrangement with a read-only business role), Dynamics 365 (app registration with export-only duties), SFTP drop folder, Salesforce, Jira.
+Planned direct API connections, shown as "Coming next", each after a test account and an independent security review: direct NetSuite (token-based login on a dedicated read-only integration role), direct SAP S/4HANA (communication arrangement with a read-only business role), direct Dynamics 365 (app registration with export-only duties), SFTP drop folder, Salesforce, Jira. Until they ship, ERP data comes through the Relay Connector (below).
+
+## Relay Connector (decided 23 Nov 2026: "bring your own connector")
+
+ERP security teams won't hand a marketplace their ERP login, and each direct ERP connector needs its own test account and review. So for ERP data the buyer runs a small connector inside their own network (`packages/relay-connector`, Node, no dependencies, also a Dockerfile). It holds whatever access it needs locally; Relay holds only a hash of the connector's key. The same pattern as Fivetran's hybrid deployment or Power BI's on-premises gateway. (The alternatives, buyers registering their own OAuth apps, or agents running in the buyer's cloud, were set aside: the first still leaves Relay holding keys, the second is enterprise step 4.)
+
+How it works:
+- **Connecting.** Settings → Integrations lists NetSuite, SAP S/4HANA, Dynamics 365 and "Other ERP or database exports" under "ERP systems, through the Relay Connector". Setting one up asks for a name and environment only, never a login, and issues a key `rcn_<connection id>.<secret>`, shown once with the setup steps. Relay stores the secret's SHA-256 hash and compares it in constant time.
+- **Checking in.** The connector says hello with the objects it serves, from one fixed vocabulary for every ERP (`vendor, customer, item, account, purchase-order, sales-order, invoice, bill, journal-entry`; payroll and employee records are left out on purpose). A connection serves nothing, so nothing can be granted, until it has checked in. It shows online while it has checked in within the last 60 s; each poll counts.
+- **Reading.** Agents ask for access and buyers grant it exactly as for any connection (by system kind, environment and objects). An agent's read runs the same three steps as every read (check, fetch with no transaction open, check again and record); only the fetch changes: Relay queues the read for that connection's connector and waits up to 20 s. The connector long-polls (`GET /api/connector/reads?wait=25`, outbound HTTPS only), reads the export, and posts the rows back (`POST /api/connector/reads/<id>`). The rows are sealed with the connection vault while they wait and deleted when handed over. The connector also learns which agent is reading for which request, for its own log.
+- **Failures.** An offline connector fails the read at once (`CONNECTOR_OFFLINE`, never queued). No answer in 20 s withdraws the read (`CONNECTOR_TIMEOUT`) and a late answer is refused. A connector error or malformed answer (rows must be up to 500 flat objects of text, numbers, booleans or empty, at most 2 MB) reaches the agent as `CONNECTOR_ERROR` with a plain message, and isn't counted as a read. Access revoked while the connector answers drops the rows (`GRANT_REQUIRED`), as for any read.
+- **Ending it.** Disconnecting voids the key at once, withdraws waiting reads and revokes every grant on the connection. The connector stops with a message.
+- **The connector's own rules.** It reads only `.csv` files named in its settings, inside one folder, rechecked on every read so a swapped-in link can't escape. It never writes to them. It refuses an http Relay address except for this machine, refuses a key placed in the settings file, and requires a private key file. It appends every read to a local audit log without the rows.
+- **The API** (`services/poc-api/src/app.cjs`): `/api/connector/*`, bearer connector key only; any request with an `Origin` header is refused, so no browser can use it.
+
+Not yet: direct API adapters behind the connector (NetSuite SuiteQL, SAP OData, Dynamics Web API); formats other than CSV; rotating a key without reconnecting; a published package or image (today it runs from this repo); hosted wiring (the pilot's connections are off); **an independent security review before any real buyer data.**
+
 
 ## Known limits
 
 - Reads call the provider outside the task's lock (21 Nov 2026): Relay checks access, calls the system with no transaction open, then checks again and records the read. If access ended meanwhile (revoked, expired, disconnected, lease lost), the rows are dropped and the agent gets `GRANT_REQUIRED`.
 - Grants are per assignment; a new assignment asks again.
+- Relay Connector reads wait in the request for up to 20 s; a pilot behind a proxy with a shorter timeout needs that changed first.
 - Hosted deployment needs the vault key as a hosting secret and the same review as other credential handling. Not deployed.

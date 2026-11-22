@@ -13,6 +13,10 @@ const RelayIntegrations = {
     github: 'Repositories, issues, pull requests and single files.',
     hubspot: 'Contacts, companies and deals.',
     attio: 'Company and people records.',
+    netsuite: 'Vendors, customers, items, orders and ledger exports, read inside your network.',
+    'sap-s4hana': 'Business partners, materials, orders and ledger exports, read inside your network.',
+    'dynamics-365': 'Vendors, customers, items, orders and ledger exports, read inside your network.',
+    'erp-exports': 'CSV exports from any ERP or database, read inside your network.',
   },
 
   // ---- Routes ------------------------------------------------------------
@@ -72,6 +76,14 @@ const RelayIntegrations = {
     const items = [];
     for (const p of catalog.filter(item => item.available)) {
       const mine = connected.filter(c => c.provider === p.kind);
+      if (p.connector) {
+        const live = mine.filter(c => c.connector?.online).length;
+        items.push({ key: p.kind, group: 'erp', name: p.label, about: this.ABOUT[p.kind] || 'Exports read inside your network.',
+          status: !mine.length ? 'Not connected' : live ? `Connector online · ${live}` : mine.some(c => c.connector?.lastSeenAt) ? 'Connector offline' : 'Waiting for connector',
+          tone: live ? 'live' : mine.length ? 'ready' : '',
+          action: !data.connections?.canManage ? 'Details' : mine.length ? 'Manage' : 'Set up', panel: () => this.connectorPanel(p, mine) });
+        continue;
+      }
       items.push({ key: p.kind, group: 'read', name: p.label, about: this.ABOUT[p.kind] || `Read-only access to ${p.objects.join(', ')}.`,
         status: mine.length ? `Connected · ${mine.length}` : 'Not connected', tone: mine.length ? 'live' : '',
         action: !data.connections?.canManage ? 'Details' : mine.length ? 'Manage' : 'Connect',
@@ -94,6 +106,7 @@ const RelayIntegrations = {
     return items;
   },
   GROUPS: [
+    ['erp', 'ERP systems, through the Relay Connector', 'The Relay Connector runs inside your network and keeps your ERP login there. It reads only the export files you point it at, and only when you grant an agent access. Relay never holds your ERP credentials.'],
     ['read', 'Agents read during work', 'An agent asks for read access while it works; you choose a system and how long. Relay reads for it and logs every read. Agents never see your credentials.'],
     ['files', 'Files for your requests', 'Files you choose to share with a request. Nothing else in the account is shared.'],
     ['send', 'Send results', 'Where accepted results can go, after you review them.'],
@@ -159,6 +172,54 @@ const RelayIntegrations = {
     // Once something is connected, adding another is one click away rather than always open.
     return mine.length ? `${list}<details class="mk-integration-more"><summary>Connect another ${escape(p.label)}</summary>${form}</details>` : form;
   },
+  // The Relay Connector: setting one up issues a key, shown once, and the steps
+  // to run the connector next to the exports.
+  ago(time) {
+    const s = Math.max(0, Math.round((Date.now() - time) / 1000));
+    return s < 60 ? `${s} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`;
+  },
+  connectorStatus(c) {
+    const k = c.connector || {};
+    if (k.online) return `Online · checked in ${this.ago(k.lastSeenAt)}${c.objects.length ? ` · serves ${c.objects.join(', ')}` : ''}${k.version ? ` · v${k.version}` : ''}`;
+    if (k.lastSeenAt) return `Offline · last checked in ${this.ago(k.lastSeenAt)}. Agents can’t read until it’s running again.`;
+    return 'Waiting for the connector to check in. Nothing can be granted until it says which exports it serves.';
+  },
+  connectorSetup(p) {
+    const setup = state.connectorSetup;
+    if (!setup || setup.kind !== p.kind) return '';
+    const settings = JSON.stringify({ relay: location.origin, keyFile: 'relay-connector.key', root: './exports', objects: { vendor: 'vendors.csv', customer: 'customers.csv' } }, null, 2);
+    return `<div class="mk-connector-setup" role="status"><h3>Set up “${escape(setup.label)}”</h3>
+      <p class="mk-caption"><strong>Copy this key now.</strong> It’s shown once. Anyone with it can answer reads for this connection, so keep it like a password.</p>
+      <div class="mk-connector-key"><input id="connector-key" readonly value="${escape(setup.key)}" aria-label="Connector key" spellcheck="false">
+        <button type="button" class="mk-chip" data-action="connector-copy">Copy</button></div>
+      <ol class="mk-connector-steps">
+        <li>On a machine in your network that can read your exports, save the key to <code>relay-connector.key</code>, readable only by you (<code>chmod 600</code>).</li>
+        <li>Put your CSV exports in one folder, and name which file serves each object in <code>relay-connector.json</code>:<pre>${escape(settings)}</pre>
+          <span class="mk-caption">Objects: vendor, customer, item, account, purchase-order, sales-order, invoice, bill, journal-entry.</span></li>
+        <li>Check the settings, then start it: <pre>relay-connector --config relay-connector.json --check
+relay-connector --config relay-connector.json</pre><span class="mk-caption">Or with Docker, mounting the exports read-only (see the connector’s README).</span></li>
+      </ol>
+      <p class="mk-caption">It only calls out to Relay, so no firewall change is needed. It keeps its own log of every read, without the data.</p>
+      <div class="mk-form-actions"><button type="button" class="mk-primary" data-action="connector-saved">I’ve saved the key</button></div></div>`;
+  },
+  connectorPanel(p, mine) {
+    const manage = state.integrations?.connections?.canManage;
+    const list = mine.length ? `<ul class="mk-member-list">${mine.map(c => `<li><span class="mk-connection-name"><strong>${escape(c.label)}</strong>
+        <span class="mk-caption">${escape(this.ENV[c.environment] || c.environment)} · ${escape(this.connectorStatus(c))}</span></span>
+        <span class="mk-tag">${c.activeGrants ? `${c.activeGrants} active grant${c.activeGrants === 1 ? '' : 's'}` : 'No active grants'}</span>
+        ${manage ? (state.disconnecting === c.id
+          ? `<span class="mk-inline-confirm" role="alert">Disconnect? The key stops working and every grant on it stops at once. <button type="button" class="mk-link-button mk-danger" data-action="connection-disconnect" data-id="${escape(c.id)}" data-version="${c.version}">Disconnect</button> <button type="button" class="mk-link-button" data-action="connection-disconnect-cancel">Keep</button></span>`
+          : `<button type="button" class="mk-link-button" data-action="connection-disconnect" data-id="${escape(c.id)}" data-version="${c.version}">Disconnect</button>`) : ''}</li>`).join('')}</ul>` : '';
+    if (!manage) return `${list || '<p class="mk-caption">Nothing connected yet.</p>'}<p class="mk-caption">Owners of this workspace set up the Relay Connector.</p>`;
+    const form = `<form id="connection-create" class="mk-form"><input type="hidden" name="provider" value="${escape(p.kind)}">
+      ${mine.length ? '' : `<h3>Set up ${escape(p.label)} through the Relay Connector</h3>`}
+      <p class="mk-caption">Your ${escape(p.label)} login stays in your network. Relay gives you a connector key, and the connector reads the exports you choose. Start with a sandbox.</p>
+      <label for="connection-environment">Environment</label><select id="connection-environment" name="environment">${p.environments.map(e => `<option value="${escape(e)}">${escape(this.ENV[e] || e)}</option>`).join('')}</select>
+      <label for="connection-label">Name</label><input id="connection-label" name="label" maxlength="80" required placeholder="e.g. ${escape(p.label)} sandbox exports">
+      <div class="form-error" role="alert"></div><div class="mk-form-actions"><button class="mk-primary" type="submit">Create connector key</button></div></form>`;
+    const setup = this.connectorSetup(p);
+    return `${setup}${list}${setup ? '' : mine.length ? `<details class="mk-integration-more"><summary>Set up another ${escape(p.label)} connector</summary>${form}</details>` : form}`;
+  },
   drivePanel(d) {
     if (!state.integrations?.owner) return '<p class="mk-caption">The workspace owner connects Google Drive.</p>';
     if (!d?.configured) return '<p class="mk-caption">Google sign-in isn’t set up on this server yet, so no Google account can be connected. No Google data is read.</p>';
@@ -185,6 +246,13 @@ const RelayIntegrations = {
       state.integrationOpen = state.integrationOpen === button.dataset.kind ? null : button.dataset.kind;
       state.disconnecting = null; render(); return true;
     }
+    if (action === 'connector-copy') {
+      const input = document.getElementById('connector-key');
+      try { await navigator.clipboard.writeText(input.value); notice.textContent = 'Key copied.'; }
+      catch { input.select(); notice.textContent = 'Select the key and copy it.'; }
+      return true;
+    }
+    if (action === 'connector-saved') { state.connectorSetup = null; render(); return true; }
     if (action === 'integration-drive') {
       const op = button.dataset.operation;
       if (op === 'connect' || op === 'pick') {

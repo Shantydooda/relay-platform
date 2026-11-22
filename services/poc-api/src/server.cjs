@@ -51,7 +51,8 @@ async function start() {
     if (statSync(connectionKeyPath).mode & 0o077) throw new Error('Connection key file must be private (chmod 600).');
     const connectionVault = require('../../connectors/src/vault.cjs').createVault(JSON.parse(readFileSync(connectionKeyPath, 'utf8')).encryptionKey);
     const readers = require('../../connectors/src/saas-readers.cjs');
-    const connectionProviders = [require('../../connectors/src/erp-fixture.cjs').createSampleErp(), readers.createGitHubReader(), readers.createHubSpotReader(), readers.createAttioReader()];
+    const connectionProviders = [require('../../connectors/src/erp-fixture.cjs').createSampleErp(), readers.createGitHubReader(), readers.createHubSpotReader(), readers.createAttioReader(),
+      ...require('../../application/src/relay-connector.cjs').connectorSystems()];
     // Relay's fee (pricing.cjs): off unless RELAY_FEE_SCHEDULE is set, e.g. "100000:2000,1000000:1200,*:800".
     // Ending paid sandbox work refunds it (payments.cjs `refunds`): off unless RELAY_REFUND_ON_END=1.
     const store = await createUnifiedLocalStore({ feeSchedule: process.env.RELAY_FEE_SCHEDULE || '', refundOnEnd: process.env.RELAY_REFUND_ON_END === '1', connectionVault, connectionProviders, attioProvider, driveProvider, objectStore, fileScanner, authDb, applicationDb, repository: native?.repository, storage: native ? 'postgres' : 'sqlite', localExecution: true, scopingProvider, paymentProvider, paymentRecoveryUserIds: (process.env.RELAY_PAYMENT_RECOVERY_USER_IDS || '').split(',').filter(Boolean), relayTestReviewerIds: (process.env.RELAY_TEST_REVIEWER_USER_IDS || '').split(',').filter(Boolean) });
