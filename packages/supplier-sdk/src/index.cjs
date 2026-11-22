@@ -33,6 +33,8 @@ function createSupplierClient(options) {
     task: taskId => request(`/tasks/${id(taskId)}`),
     qualifications: () => request('/qualifications'),
     submitQualification: (testId, body, key) => request(`/qualifications/${id(testId)}`, body, key, 'POST'),
+    evaluations: () => request('/evaluations'),
+    submitEvaluation: (runId, body, key) => request(`/evaluations/${id(runId)}`, body, key, 'POST'),
     quote: (taskId, body, key) => taskCommand('offers', taskId, body, key),
     requestPermission: (taskId, body, key) => taskCommand('permission-requests', taskId, body, key),
     message: (taskId, body, key) => taskCommand('messages', taskId, body, key),

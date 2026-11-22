@@ -2191,6 +2191,240 @@
           }
         }
       }
+    },
+    "/evaluations": {
+      "get": {
+        "operationId": "evaluationJobs",
+        "summary": "Read this credential’s open evaluation runs. Builder starts runs separately. Requires execution:write. Answer each run once; only the total score is returned and published.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationJobs"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/evaluations/{evaluationId}": {
+      "post": {
+        "operationId": "submitEvaluation",
+        "summary": "Answer every item of an open evaluation run, in order, with one text value per field. Relay scores the fields and returns the total. Requires execution:write.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/EvaluationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationSubmission"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Typed failure; no implicit permission or success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3586,6 +3820,135 @@
             }
           }
         }
+      },
+      "EvaluationJob": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "suite",
+          "brief",
+          "fields",
+          "items",
+          "deadlineAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "suite": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+@[0-9]+$",
+            "description": "Suite id and version, e.g. company-research-fields@1."
+          },
+          "brief": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "input"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "deadlineAt": {
+            "type": "integer"
+          }
+        }
+      },
+      "EvaluationJobs": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "jobs"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvaluationJob"
+            }
+          }
+        }
+      },
+      "EvaluationSubmission": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "answers"
+        ],
+        "properties": {
+          "answers": {
+            "type": "array",
+            "description": "One object per item, in order, with exactly the job’s fields as keys.",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "maxLength": 500
+              }
+            }
+          }
+        }
+      },
+      "EvaluationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evaluationId",
+          "status",
+          "score"
+        ],
+        "properties": {
+          "evaluationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "scored"
+            ]
+          },
+          "score": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "correct",
+              "total",
+              "items"
+            ],
+            "properties": {
+              "correct": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        }
       }
     },
     "parameters": {
@@ -3629,6 +3992,15 @@
       },
       "AssessmentId": {
         "name": "assessmentId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "EvaluationId": {
+        "name": "evaluationId",
         "in": "path",
         "required": true,
         "schema": {

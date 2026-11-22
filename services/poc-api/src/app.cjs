@@ -142,7 +142,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
       if(method==='GET'&&path==='/api/config')return send(200,{authMode:managed?'managed':'local',inviteOnly:managed,features:store.features||{}});
       if (!managed && method === 'GET' && ['/drive/callback','/drive/picker'].includes(path)) res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
       // Real links into the app: the page loads, then the browser reads the path.
-      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||/^\/docs\/(?:evidence|relay-tests|packages|revisions)$/.test(path)||/^\/org\/[0-9a-f-]{36}(?:\/(?:work|members|spending|connections|settings)|\/projects\/[0-9a-f-]{36})?$/.test(path)||/^\/build(?:\/(?:new|agents|opportunities|projects|tests|earnings|settings))?$/.test(path)||/^\/build\/agents\/[0-9a-f-]{36}(?:\/(?:overview|profile|connection|tests|offers|results))?$/.test(path)||/^\/builders\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path)||/^\/settings\/integrations(?:\/[0-9a-f-]{36})?$/.test(path)||['/post','/evidence','/enterprise','/requests','/builders'].includes(path);
+      const appRoute=/^\/(?:agents|tasks)\/[0-9a-f-]{36}$/.test(path)||/^\/docs\/(?:evidence|relay-tests|evaluations|packages|revisions)$/.test(path)||/^\/org\/[0-9a-f-]{36}(?:\/(?:work|members|spending|connections|settings)|\/projects\/[0-9a-f-]{36})?$/.test(path)||/^\/build(?:\/(?:new|agents|opportunities|projects|tests|earnings|settings))?$/.test(path)||/^\/build\/agents\/[0-9a-f-]{36}(?:\/(?:overview|profile|connection|tests|offers|results))?$/.test(path)||/^\/builders\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path)||/^\/settings\/integrations(?:\/[0-9a-f-]{36})?$/.test(path)||['/post','/evidence','/enterprise','/requests','/builders'].includes(path);
       if(method==='GET'&&(Object.hasOwn(assets,path)||appRoute||(managed&&path==='/auth/confirm'))) {
         const [file,type]=assets[path==='/auth/confirm'||appRoute?'/':path];
         const content=await readFile(resolve(PUBLIC,file));
@@ -341,6 +341,11 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if (relayTest && method === 'POST') return send(200, await store[relayTest[2] === 'withdraw' ? 'withdrawRelayTest' : 'reviewRelayTest'](actor, relayTest[1], await jsonBody(req), key));
         const assessment = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/qualifications$/);
         if (assessment && method === 'POST') return send(201, await store.startQualification(actor, assessment[1], await jsonBody(req), key));
+        // Open evaluation suites (evaluations.cjs): public inputs, hidden answers, a field count.
+        if (path === '/api/evaluations' && method === 'GET') return send(200, await store.evaluationSuites(actor));
+        const evaluation = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/evaluations$/);
+        if (evaluation && method === 'GET') return send(200, await store.agentEvaluations(actor, evaluation[1]));
+        if (evaluation && method === 'POST') return send(201, await store.startEvaluation(actor, evaluation[1], await jsonBody(req), key));
         const scoping = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(assist|confirm-scope|cancel-reply)$/);
         if (scoping && method === 'POST') {
           const result = await store[scoping[2] === 'assist' ? 'assist' : scoping[2] === 'cancel-reply' ? 'cancelScoping' : 'confirmScope'](actor, scoping[1], await jsonBody(req), key);

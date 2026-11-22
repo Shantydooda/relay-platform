@@ -14,6 +14,7 @@
 
 const linkAssessment = require('./link-assessment.cjs');
 const { taskOutcome, summarizeOutcomes, LEDGER_WINDOW_MS } = require('./outcome-ledger.cjs');
+const { evaluationEvidence } = require('./evaluations.cjs');
 
 const SORTS = Object.freeze(['runs', 'newest', 'price']);
 const MAX_ROWS = 500;
@@ -91,6 +92,8 @@ function browseRow({ agent, listing, history, now, connectors, actor }) {
     packages: listing.packages || [],
     fromPrice: fromPrice(listing.packages || []),
     relayTest: test,
+    // Relay evaluation scores on synthetic suites: shown with their sample, never used to rank.
+    evaluations: evaluationEvidence(agent, now),
     evidence,
     buyers: buyersFor(history, agent, now),
     hostedOnRelay: agent.runtimeKind === 'bounded-csv-automation',

@@ -39,7 +39,28 @@ const RelaySupplier = {
       ${this.testsFor(cap).map(([rubric, label]) => `<button data-action="start-qualification" data-id="${agent.id}" data-capability="${cap.id}" data-rubric="${escape(rubric)}" ${!agent.runtime?.connected||['test_pending','revision_pending'].includes(cap.assessment?.status)?'disabled':''}>Test ${escape(label)}</button>`).join('')}
       <p class="mk-caption">A new test replaces this capability’s current result.</p>
     </section>`).join('')}
-    ${!agent.runtime?.connected?'<p>Connect your agent under Connection to take a test.</p>':''}<button class="quiet" data-action="refresh">Refresh results</button></section>`;
+    ${!agent.runtime?.connected?'<p>Connect your agent under Connection to take a test.</p>':''}<button class="quiet" data-action="refresh">Refresh results</button></section>${this.evaluations(agent)}`;
+  },
+  // Open evaluation suites (evaluations.cjs): a score on fixed public inputs, shown on
+  // the agent card with its sample. Not a pass/fail gate, and never used to rank.
+  evaluationScore(e) { return `${e.correct} of ${e.total} fields correct · ${e.items} items`; },
+  evaluations(agent) {
+    const suites = (state.evaluationSuites?.suites || []).filter(s => agent.capabilities.some(cap => cap.categoryId === s.categoryId));
+    if (!state.evaluationSuites) return '';
+    const runs = agent.evaluations?.runs || [], evidence = agent.evaluations?.evidence || [];
+    const STATUS = { pending: 'Waiting for your runtime', scored: 'Scored', expired: 'Expired: the runtime didn’t answer within an hour' };
+    const suite = s => {
+      const shown = evidence.find(e => e.suite === s.key), last = runs.find(r => r.suite === s.key);
+      const waiting = last?.status === 'pending';
+      return `<section class="capability-assessment"><h3>${escape(s.title)} <span class="mk-caption">v${s.version} · ${escape(s.category)}</span></h3>
+        <p class="mk-caption">${escape(s.limitation)}</p>
+        <p>${shown ? `On the agent card: <strong>${escape(this.evaluationScore(shown))}</strong>, ${date(shown.scoredAt)}, runtime ${escape(shown.runtimeName)} · ${escape(shown.runtimeVersion)}.` : 'No score on the card yet.'}</p>
+        ${last ? `<p class="mk-caption">Latest run: ${escape(STATUS[last.status] || last.status)}${last.score ? ` · ${escape(this.evaluationScore(last.score))}` : ''}.</p>` : ''}
+        <button data-action="start-evaluation" data-id="${agent.id}" data-suite="${escape(s.key)}" ${!agent.runtime?.connected || waiting ? 'disabled' : ''}>Run ${escape(s.title)}</button></section>`;
+    };
+    return `<section class="panel"><h2>Open evaluations</h2><p>Fixed, public inputs for one kind of work. Your runtime answers every item once, and Relay checks each field against answers it keeps private. The agent card shows the latest score on this runtime version, with how many items and fields it covers.</p>
+      <p class="mk-caption">Unlike a Relay test, there’s no pass mark and it doesn’t unlock publishing. You see only the total, not which fields were wrong, and each suite can be run ${escape(state.evaluationSuites.limits?.runsPerDay || 3)} times a day across your agents. A score isn’t buyer work and doesn’t change where the agent appears. <a href="/docs/evaluations" data-route>See every suite’s inputs</a>.</p>
+      ${suites.length ? suites.map(suite).join('') : '<p class="mk-empty-note">No suite covers this agent’s categories yet. The first suites cover company research and lead lists.</p>'}</section>`;
   },
   configuration(agent, form, data) {
     const updatingRules = form.id === 'agent-rules';

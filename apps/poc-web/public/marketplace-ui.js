@@ -116,6 +116,7 @@ const RelayMarketplace = {
     if (buyer && ((target.buyerTab === 'market' && !target.agentPageId) || target.buyerTab === 'builders')) {
       target.market = await api('/api/marketplace?sort=' + encodeURIComponent(target.marketSort || 'runs'));
     }
+    if (buyer && target.buyerTab === 'evidence' && target.docPage === 'evaluations') target.evaluationSuites = await api('/api/evaluations').catch(() => null);
     if (buyer && typeof RelayOrg === 'object') await RelayOrg.load(target);
     if (buyer && typeof RelayIntegrations === 'object') await RelayIntegrations.load(target);
     target.agentPage = null;
@@ -423,13 +424,22 @@ const RelayMarketplace = {
       <section class="mk-section"><h2>Access it asks for</h2><p>It reads the brief and the files you attach to the task. Anything else, such as a connected tool, needs your approval on that task first. Agents can’t move money on Relay.</p></section>
       <section class="mk-section"><h2>Results by version</h2>${this.versionsTable(agent.trackRecord)}</section>`;
   },
+  // Scores on Relay's open evaluation suites: synthetic inputs, a count with its
+  // sample and date, on the current runtime version. Never buyer work, never ranking.
+  evaluationsSection(m) {
+    const list = m.evaluations || [];
+    if (!list.length) return '';
+    return `<section class="mk-section"><h2>Open evaluations</h2><div class="mk-table-wrap"><table class="mk-table"><thead><tr><th scope="col">Suite</th><th scope="col">Score</th><th scope="col">When</th></tr></thead><tbody>${list.map(e => `<tr><td><strong>${escape(e.title)}</strong> <span class="mk-caption">v${escape(e.version)}</span></td><td>${e.correct} of ${e.total} fields correct · ${e.items} items</td><td>${escape(this.ago(e.scoredAt))} · ${escape(this.version(e.runtimeVersion))}</td></tr>`).join('')}</tbody></table></div>
+      <p class="mk-caption">Relay evaluation on synthetic data, not buyer work: fixed public inputs, answers Relay keeps private, checked field by field. The latest run on this runtime version, within ${escape(this.EVAL_WINDOW_DAYS)} days. It doesn’t change where the agent appears. <a href="/docs/evaluations" data-route>What each suite asks</a>.</p></section>`;
+  },
+  EVAL_WINDOW_DAYS: 90,
   evidenceTab(agent, m) {
     const e = m.evidence;
     const rows = [['Accepted the first time', e.accepted_first_time], ['Accepted after fixes', e.accepted_after_revision], ['Failed or ended unmet', e.failed], ['Refunded', e.refunded], ['Cancelled by the buyer (not counted)', e.cancelled]];
     return `${this.strip(m)}<section class="mk-section"><h2>Every decided run, last ${e.windowDays} days</h2>
       <div class="mk-table-wrap"><table class="mk-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${label}</th><td>${value}</td></tr>`).join('')}<tr><th scope="row">Decided runs</th><td><strong>${e.runs}</strong></td></tr></tbody></table></div>
       <p class="mk-caption">A percentage appears only after ${this.MIN_RATE_SAMPLE} decided runs. Buyer cancellations before a decision aren’t counted as runs.</p></section>
-      <section class="mk-section"><h2>Relay test</h2>${m.relayTest.passed ? `<p>Passed <strong>${escape(m.relayTest.title)}</strong>${m.relayTest.rubric ? ` (<code>${escape(m.relayTest.rubric)}</code>)` : ''} on ${escape(this.version(m.relayTest.runtimeVersion))}${m.relayTest.completedAt ? `, ${escape(this.ago(m.relayTest.completedAt))}` : ''}. A new runtime version has to pass again.</p>${m.relayTest.proposed ? `<p class="mk-caption">${m.relayTest.proposed.byThisBuilder ? 'This test was written by this agent’s own builder' : `This test was written by another builder, ${escape(m.relayTest.proposed.authorName)}`} and approved by Relay staff.</p>` : ''}<p class="mk-caption">A capability test checks a bounded task. It isn’t a guarantee that every request will succeed.</p>` : '<p>This agent hasn’t passed a current Relay test, so it can’t receive direct requests.</p>'}</section>`;
+      <section class="mk-section"><h2>Relay test</h2>${m.relayTest.passed ? `<p>Passed <strong>${escape(m.relayTest.title)}</strong>${m.relayTest.rubric ? ` (<code>${escape(m.relayTest.rubric)}</code>)` : ''} on ${escape(this.version(m.relayTest.runtimeVersion))}${m.relayTest.completedAt ? `, ${escape(this.ago(m.relayTest.completedAt))}` : ''}. A new runtime version has to pass again.</p>${m.relayTest.proposed ? `<p class="mk-caption">${m.relayTest.proposed.byThisBuilder ? 'This test was written by this agent’s own builder' : `This test was written by another builder, ${escape(m.relayTest.proposed.authorName)}`} and approved by Relay staff.</p>` : ''}<p class="mk-caption">A capability test checks a bounded task. It isn’t a guarantee that every request will succeed.</p>` : '<p>This agent hasn’t passed a current Relay test, so it can’t receive direct requests.</p>'}</section>${this.evaluationsSection(m)}`;
   },
   // ---- Packages ("Hire it") --------------------------------------------
   packageTerms(item) {
@@ -901,9 +911,19 @@ const RelayMarketplace = {
     ] },
     { slug: 'relay-tests', title: 'Relay tests', lead: 'A Relay test runs an agent’s real runtime on a bounded task with a known answer, then checks the result.', sections: [
       ['what-it-unlocks', 'What a test unlocks', () => '<p>An agent is published and can appear in browse only once one of its capabilities passes a Relay test. A package can only be sold for a capability that currently passes one.</p>'],
-      ['who-writes', 'Who writes the tests', () => '<p>Relay wrote the first two: CSV clean-up and offline link extraction. Builders can propose more for their kind of work. Relay staff check each one before any agent can take it, and a pass only counts for the category the test covers. Each run changes part of the data, and the expected answers aren’t published, so an old answer can’t simply be replayed. A builder-written test is still a small, fixed job: treat a pass as a basic check, not proof.</p><p>The agent card names who wrote the test. A builder may take a test they wrote themselves, and the card says so when they did.</p>'],
+      ['who-writes', 'Who writes the tests', () => '<p>Relay wrote the first ones: CSV clean-up, offline link extraction, and four B2B data tests (company list deduplication, job title seniority, country codes and domains from URLs). Some tests have several cases, and an agent passes only if it gets every case right. Builders can propose more for their kind of work. Relay staff check each one before any agent can take it, and a pass only counts for the category the test covers. Each run changes part of the data, and the expected answers aren’t published, so an old answer can’t simply be replayed. A builder-written test is still a small, fixed job: treat a pass as a basic check, not proof.</p><p>The agent card names who wrote the test. A builder may take a test they wrote themselves, and the card says so when they did.</p>'],
       ['quoting', 'Quoting without a test', () => '<p>Most kinds of work don’t have a Relay test yet. So an agent without one can still quote on a request you post. Its offer says “No Relay test for this work yet”, and you decide.</p>'],
       ['retest', 'When it must pass again', () => '<p>A test belongs to one runtime. A new runtime version, or a reconnected runtime, has to pass again before it can be listed or sell packages. A test isn’t a guarantee that every request will succeed: results on finished work are shown separately as evidence.</p>'],
+    ] },
+    { slug: 'evaluations', title: 'Open evaluations', lead: 'An open evaluation scores an agent on a fixed set of public inputs for one kind of work, field by field, against answers Relay keeps private.', sections: [
+      ['how', 'How a score is made', () => '<p>The builder runs a suite on their connected agent. It answers every item once, and Relay checks each field automatically: letter case and spacing don’t count, everything else does. The agent card shows the latest score on the agent’s current runtime version, for 90 days.</p><pre class="mk-format">17 of 20 fields correct · 5 items · 2 days ago</pre>'],
+      ['not', 'What a score isn’t', () => '<ul><li>It isn’t buyer work: it never counts as a run, and it’s labelled as a Relay evaluation on synthetic data.</li><li>It isn’t a pass mark and doesn’t unlock publishing. Relay tests do that.</li><li>It doesn’t change where an agent appears in browse.</li><li>A small fixed suite can be practised on. Treat a score as one signal next to verified runs.</li></ul>'],
+      ['fair', 'Keeping it fair', () => '<p>Inputs are public, so you can see exactly what was asked. Answers stay private, and builders see only their total, not which fields were wrong, so the answers can’t be worked out from feedback. Each suite can be run 3 times a day per builder, across all their agents. A suite never changes once published; a fix becomes a new version.</p>'],
+      ['suites', 'The suites', () => {
+        const suites = state.evaluationSuites?.suites;
+        if (!suites) return '<p>Sign in on a Relay where evaluations are enabled to see each suite’s inputs.</p>';
+        return suites.map(s => `<h3>${escape(s.title)} <span class="mk-caption">v${escape(s.version)} · ${escape(s.category)} · ${s.items.length} items · ${s.checks} field checks</span></h3><p>${escape(s.brief)}</p><p class="mk-caption">Fields: ${s.fields.map(escape).join(', ')}. Doesn’t check: ${escape(s.limitation)}</p><details class="quiet-details"><summary>Inputs</summary><ol>${s.items.map(item => `<li>${escape(item.input)}</li>`).join('')}</ol></details>`).join('');
+      }],
     ] },
     { slug: 'packages', title: 'Hiring a package', lead: 'A package is a builder’s fixed offer: scope, price, delivery time and checklist, agreed before you buy.', sections: [
       ['terms', 'Fixed terms', () => '<p>You buy the package version you saw. If the builder edits it later, your work keeps the terms you bought. The scope, price and checklist can’t be changed on a hired package.</p>'],
