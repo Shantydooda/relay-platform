@@ -22,6 +22,7 @@ Five branches are built and pushed but **not merged**. Each one is built on the 
 | `claude/fees` | Fees and payouts, option B, off by default (PR into `claude/processing-region`) |
 | `claude/relay-test-proposals` | Builder-proposed Relay tests, reviewed by Relay staff (PR into `claude/fees`) |
 | `claude/engagements` | Milestone plans (step 9), plus per-builder Relay test attempts and answer times (PR into `claude/relay-test-proposals`) |
+| `claude/relay-test-cases` | Relay tests with 1–5 cases, and four Relay-written B2B data tests (PR into `claude/ux-quick-fixes`) |
 | `claude/ux-quick-fixes` | UX review quick fixes: readable notification badge, drafts in Your work, buyer wording (PR into `claude/connection-reads`) |
 | `claude/connection-reads` | Agents read buyer systems outside the request's lock (PR into `claude/integrations`) |
 | `claude/integrations` | Settings → Integrations for every account, Hugging Face settings style (PR into `claude/refund-on-end`) |
@@ -98,7 +99,13 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
 - Retiring stops new runs; passes already earned stand until they expire (30 days at most). A run already started (it has an hour) can still finish.
 - Limits to know: only the `{{nonce}}` changes between runs, so an agent built around one test's template can pass it every time; treat builder-written tests as basic checks.
 - Staff are set locally with `RELAY_TEST_REVIEWER_USER_IDS` (comma-separated user IDs) and see "Review Relay tests" in the account menu. Local only, like the Relay tests themselves; hosted isn't wired.
-- Not built: tests with several cases, partial credit or structured (JSON) comparison; proposals by an organization rather than a person; notifications when a proposal is decided (the builder sees it on the page).
+- **Several cases, and Relay's own B2B data tests** (22 Nov, branch `claude/relay-test-cases`):
+  - A test now holds 1–5 cases under one set of instructions, each with its own input, answers and change request. The agent passes only if it gets every case right in both rounds, and each case gets its own `{{nonce}}` value per run. Every rule above applies per case, and cases can't repeat each other.
+  - Relay ships four tests of its own for the seed category, as data (`services/application/src/relay-test-seeds.json`), two cases each: company list deduplication (Data cleanup), job title seniority (Lead lists), country codes from country names (Data enrichment) and domains from URLs and emails (Web data extraction). Builders see them under "Relay's tests"; staff can read them but not retire them, since they change with a release. Their answers stay private like builders' tests, and the card doesn't say "written by a builder".
+  - Reference solvers in `relay-tests.test.cjs`, written from each brief alone, pass every seeded case, so a seed's answers can't silently disagree with its instructions.
+  - Runtimes get `cases` and `answer: "outputs"` for tests with several cases and reply with `{round, outputs}`; one-case tests keep `{round, output}`, and tests proposed before this still run as one case (`supplier-openapi.json`, `Supplier-API.md`).
+  - Limit to know: the seeded answers live in the repository, so anyone who can read the code can see them. The nonce stops replaying a stored answer, not building a solver for these exact tasks; treat a pass as a basic check, like builder tests.
+- Not built: partial credit or structured (JSON) comparison; proposals by an organization rather than a person; notifications when a proposal is decided (the builder sees it on the page).
 
 **9. Engagements and milestones.** ✅ First slice built 20 Nov (branch `claude/engagements`, `specs/Engagements-and-Milestones.md`).
 - Multi-step ERP work with staged payments. Needs fees (7) first.

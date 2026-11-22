@@ -9,16 +9,26 @@ const { PGlite } = require('@electric-sql/pglite');
 const { createSqliteRepository, createPostgresRepository } = require('../src/repository.cjs');
 const { createApplication } = require('../src/service.cjs');
 
+const CASE = {
+  input: 'acme incorporated\nnorthwind limited {{nonce}}\nBlue gmbh\n',
+  expected: 'Acme Inc\nNorthwind Ltd {{nonce}}\nBlue GmbH\n',
+  revision: 'Sort the vendors alphabetically.',
+  revisionExpected: 'Acme Inc\nBlue GmbH\nNorthwind Ltd {{nonce}}\n',
+};
 const PROPOSAL = {
   title: 'Vendor name standardisation',
   categoryId: 'master-data',
   brief: 'Return the vendor list with legal suffixes standardised (Inc, Ltd, GmbH) and one vendor per line, in the order given.',
   limitation: 'Checks suffix standardisation on a short synthetic list only. Not matching, enrichment or tax-ID checks.',
-  input: 'acme incorporated\nnorthwind limited {{nonce}}\nBlue gmbh\n',
-  expected: 'Acme Inc\nNorthwind Ltd {{nonce}}\nBlue GmbH\n',
-  revision: 'Sort the vendors alphabetically.',
-  revisionExpected: 'Acme Inc\nBlue GmbH\nNorthwind Ltd {{nonce}}\n',
   comparison: 'lines',
+  cases: [CASE],
+};
+// A second case for the same brief: its own input, answers and change request.
+const CASE_TWO = {
+  input: 'zenith limited\norbit incorporated {{nonce}}\n',
+  expected: 'Zenith Ltd\nOrbit Inc {{nonce}}\n',
+  revision: 'Put the vendors in reverse order.',
+  revisionExpected: 'Orbit Inc {{nonce}}\nZenith Ltd\n',
 };
 
 async function fixture(t, adapter = 'sqlite') {
@@ -39,16 +49,21 @@ async function fixture(t, adapter = 'sqlite') {
     const start = async rubric => { const a = await agent(); return app.startQualification(actor, agentId, { expectedVersion: a.version, capabilityId: a.capabilities[0].id, rubric }, randomUUID()); };
     return { agentId, principal, agent, start };
   }
-  const propose = (actor, extra = {}) => app.proposeRelayTest(actor, { ...PROPOSAL, ...extra }, randomUUID());
+  const propose = (actor, extra = {}, caseExtra = {}) => app.proposeRelayTest(actor, { ...PROPOSAL, cases: [{ ...CASE, ...caseExtra }], ...extra }, randomUUID());
   const review = async (actor, testId, decision, reason) => {
     const item = await repository.read(repo => repo.get('relay_test', testId));
     return app.reviewRelayTest(actor, testId, { expectedVersion: item.version, decision, reason }, randomUUID());
   };
   // A correct answer, built from the job alone the way a real runtime would.
-  const solve = job => job.round === 1
-    ? job.input.replace('acme incorporated', 'Acme Inc').replace('northwind limited', 'Northwind Ltd').replace('Blue gmbh', 'Blue GmbH')
-    : job.input.replace('acme incorporated', 'Acme Inc').replace('northwind limited', 'Northwind Ltd').replace('Blue gmbh', 'Blue GmbH').split('\n').filter(Boolean).sort().join('\n');
-  return { app, repository, author, other, staff, buyer, builder, propose, review, solve, advance: ms => time += ms };
+  const standardise = input => input.replace(/(\w+) incorporated/g, (_, n) => `${n[0].toUpperCase()}${n.slice(1)} Inc`).replace(/(\w+) limited/g, (_, n) => `${n[0].toUpperCase()}${n.slice(1)} Ltd`).replace('Blue gmbh', 'Blue GmbH');
+  const revise = (output, revision) => {
+    const lines = output.split('\n').filter(Boolean);
+    return (/reverse/.test(revision) ? lines.reverse() : lines.sort()).join('\n');
+  };
+  const solveCase = (item, round) => round === 1 ? standardise(item.input) : revise(standardise(item.input), item.revision);
+  const solve = job => solveCase(job.cases[0], job.round);
+  const solveAll = job => job.cases.map(item => solveCase(item, job.round));
+  return { app, repository, author, other, staff, buyer, builder, propose, review, solve, solveAll, advance: ms => time += ms };
 }
 
 for (const adapter of ['sqlite', 'postgres']) {
@@ -60,7 +75,7 @@ for (const adapter of ['sqlite', 'postgres']) {
 
     // Waiting for review: nobody can take it, and other builders don't see it.
     await assert.rejects(ben.start(rubric), { code: 'RUBRIC_UNAVAILABLE' });
-    assert.equal((await f.app.relayTests(f.other)).approved.length, 0);
+    assert.equal((await f.app.relayTests(f.other)).approved.filter(x => !x.builtIn).length, 0);
     assert.equal((await f.app.relayTests(f.author)).mine[0].status, 'in_review');
 
     // Only staff review; reviewers can't see the queue otherwise.
@@ -71,7 +86,7 @@ for (const adapter of ['sqlite', 'postgres']) {
     await f.review(f.staff, testId, 'approve', null);
 
     // Other builders see the approved test without its answers.
-    const listed = (await f.app.relayTests(f.other)).approved[0];
+    const listed = (await f.app.relayTests(f.other)).approved.find(x => x.id === testId);
     assert.equal(listed.rubric, rubric);
     assert.equal(listed.authorName, 'Ana Author');
     assert.ok(!('expected' in listed) && !('revisionExpected' in listed) && !('input' in listed));
@@ -84,7 +99,7 @@ for (const adapter of ['sqlite', 'postgres']) {
     assert.equal(job.brief, PROPOSAL.brief);
     assert.equal((await f.app.submitQualification(ben.principal, run.assessmentId, { round: 1, output: f.solve(job) + '  \r\n' }, randomUUID())).status, 'revision_pending', 'line comparison ignores trailing spaces and line endings');
     const second = (await f.app.qualificationJobs(ben.principal))[0];
-    assert.equal(second.revision, PROPOSAL.revision);
+    assert.equal(second.revision, CASE.revision);
     assert.equal((await f.app.submitQualification(ben.principal, run.assessmentId, { round: 2, output: f.solve(second) }, randomUUID())).status, 'passed');
     const cap = (await ben.agent()).capabilities[0];
     assert.equal(cap.qualification, 'qualified');
@@ -120,10 +135,10 @@ test('proposals are data with a nonce, a real change and an output that differs 
   const f = await fixture(t);
   await assert.rejects(f.propose(f.author), { code: 'BUILDER_REQUIRED' }, 'only builders propose tests');
   await f.builder(f.author);
-  await assert.rejects(f.propose(f.author, { input: 'acme\n' }), { code: 'NONCE_REQUIRED' });
-  await assert.rejects(f.propose(f.author, { expected: 'Acme Inc\n' }), { code: 'NONCE_REQUIRED' });
-  await assert.rejects(f.propose(f.author, { revisionExpected: PROPOSAL.expected + '\n\n' }), { code: 'INVALID_INPUT' }, 'the change has to change the output');
-  await assert.rejects(f.propose(f.author, { expected: PROPOSAL.input }), { code: 'INVALID_INPUT' }, 'echoing the input cannot pass');
+  await assert.rejects(f.propose(f.author, {}, { input: 'acme\n' }), { code: 'NONCE_REQUIRED' });
+  await assert.rejects(f.propose(f.author, {}, { expected: 'Acme Inc\n' }), { code: 'NONCE_REQUIRED' });
+  await assert.rejects(f.propose(f.author, {}, { revisionExpected: CASE.expected + '\n\n' }), { code: 'INVALID_INPUT' }, 'the change has to change the output');
+  await assert.rejects(f.propose(f.author, {}, { expected: CASE.input }), { code: 'INVALID_INPUT' }, 'echoing the input cannot pass');
   await assert.rejects(f.propose(f.author, { categoryId: 'other' }), { code: 'INVALID_INPUT' });
   await assert.rejects(f.propose(f.author, { comparison: 'regex' }), { code: 'INVALID_INPUT' });
   await assert.rejects(f.propose(f.author, { script: 'return true' }), { code: 'INVALID_FIELDS' }, 'no code');
@@ -199,16 +214,152 @@ test('a reviewer can’t approve a test they proposed for an organization', asyn
 test('inputs and answers are kept byte for byte, so exact tests and whitespace tests work', async t => {
   const f = await fixture(t);
   await f.builder(f.author);
-  const exact = { ...PROPOSAL, comparison: 'exact', input: '  acme {{nonce}}  \n', expected: 'Acme {{nonce}}\n', revisionExpected: 'ACME {{nonce}}\n' };
+  const exact = { ...PROPOSAL, comparison: 'exact', cases: [{ ...CASE, input: '  acme {{nonce}}  \n', expected: 'Acme {{nonce}}\n', revisionExpected: 'ACME {{nonce}}\n' }] };
   const { testId } = await f.propose(f.author, exact);
   await f.review(f.staff, testId, 'approve');
   const mine = (await f.app.relayTests(f.author)).mine[0];
-  assert.equal(mine.input, exact.input);
-  assert.equal(mine.expected, exact.expected);
+  assert.equal(mine.cases[0].input, exact.cases[0].input);
+  assert.equal(mine.cases[0].expected, exact.cases[0].expected);
   const ben = await f.builder(f.other);
   const run = await ben.start(`relay-test:${testId}`);
   const job = (await f.app.qualificationJobs(ben.principal))[0];
   assert.match(job.input, /^  acme [0-9a-f]{8}  \n$/);
   const nonce = job.input.trim().split(' ')[1];
   assert.equal((await f.app.submitQualification(ben.principal, run.assessmentId, { round: 1, output: `Acme ${nonce}\n` }, randomUUID())).status, 'revision_pending');
+});
+
+for (const adapter of ['sqlite', 'postgres']) {
+  test(`${adapter}: a test with several cases passes only when every case passes, with a nonce per case`, async t => {
+    const f = await fixture(t, adapter);
+    await f.builder(f.author);
+    const { testId } = await f.propose(f.author, { cases: [CASE, CASE_TWO] });
+    await f.review(f.staff, testId, 'approve');
+    assert.equal((await f.app.relayTests(f.other)).approved.find(x => x.id === testId).caseCount, 2);
+    const rubric = `relay-test:${testId}`;
+    const ben = await f.builder(f.other);
+
+    // Both cases right, both rounds: passed.
+    const run = await ben.start(rubric);
+    const job = (await f.app.qualificationJobs(ben.principal))[0];
+    assert.equal(job.answer, 'outputs');
+    assert.equal(job.cases.length, 2);
+    assert.ok(job.cases.every(item => !item.input.includes('{{nonce}}') && item.revision === null));
+    const nonces = job.cases.map(item => item.input.match(/[0-9a-f]{8}/)[0]);
+    assert.notEqual(nonces[0], nonces[1], 'each case gets its own nonce');
+    await assert.rejects(f.app.submitQualification(ben.principal, run.assessmentId, { round: 1, output: f.solve(job) }, randomUUID()), { code: 'INVALID_FIELDS' });
+    await assert.rejects(f.app.submitQualification(ben.principal, run.assessmentId, { round: 1, outputs: [f.solve(job)] }, randomUUID()), { code: 'INVALID_INPUT' }, 'every case needs an answer');
+    const first = await f.app.submitQualification(ben.principal, run.assessmentId, { round: 1, outputs: f.solveAll(job) }, randomUUID());
+    assert.equal(first.status, 'revision_pending');
+    assert.deepEqual(first.checks.map(c => c.name), ['Case 1: output matches the expected result', 'Case 2: output matches the expected result']);
+    const second = (await f.app.qualificationJobs(ben.principal))[0];
+    assert.deepEqual(second.cases.map(item => item.revision), [CASE.revision, CASE_TWO.revision], 'each case has its own change request');
+    assert.equal((await f.app.submitQualification(ben.principal, run.assessmentId, { round: 2, outputs: f.solveAll(second) }, randomUUID())).status, 'passed');
+    const evidence = (await ben.agent()).capabilities[0].assessment;
+    assert.equal(evidence.cases.length, 2);
+    assert.ok(evidence.submissions.every(s => !('outputs' in s) && !('sha256' in s)), 'answers to every case stay private');
+
+    // One case wrong fails the whole test.
+    const again = await ben.start(rubric);
+    const job2 = (await f.app.qualificationJobs(ben.principal))[0];
+    const answers = f.solveAll(job2);
+    answers[1] = answers[1].replace('Zenith Ltd', 'Zenith Limited');
+    const failed = await f.app.submitQualification(ben.principal, again.assessmentId, { round: 1, outputs: answers }, randomUUID());
+    assert.equal(failed.status, 'failed');
+    assert.deepEqual(failed.checks.map(c => c.passed), [true, false]);
+  });
+}
+
+test('cases are checked one by one: 1 to 5, each with its nonce and a real change, and no repeats', async t => {
+  const f = await fixture(t);
+  await f.builder(f.author);
+  await assert.rejects(f.propose(f.author, { cases: [] }), { code: 'INVALID_INPUT' });
+  await assert.rejects(f.propose(f.author, { cases: Array.from({ length: 6 }, (_, i) => ({ ...CASE, input: `${CASE.input}${i}` })) }), { code: 'INVALID_INPUT' });
+  await assert.rejects(f.propose(f.author, { cases: [CASE, { ...CASE_TWO, expected: 'Zenith Ltd\n' }] }), err => err.code === 'NONCE_REQUIRED' && /case 2/.test(err.message));
+  await assert.rejects(f.propose(f.author, { cases: [CASE, { ...CASE_TWO, revisionExpected: CASE_TWO.expected }] }), err => err.code === 'INVALID_INPUT' && /case 2/.test(err.message));
+  await assert.rejects(f.propose(f.author, { cases: [CASE, { ...CASE }] }), { code: 'INVALID_INPUT' }, 'a repeated case tests nothing new');
+  await assert.rejects(f.propose(f.author, { cases: [CASE, { ...CASE_TWO, script: 'x' }] }), { code: 'INVALID_FIELDS' }, 'still no code');
+  await assert.rejects(f.propose(f.author, { input: CASE.input }), { code: 'INVALID_FIELDS' }, 'answers live in cases');
+  const { testId } = await f.propose(f.author, { cases: [CASE, CASE_TWO] });
+  const mine = (await f.app.relayTests(f.author)).mine.find(x => x.id === testId);
+  assert.deepEqual(mine.cases, [CASE, CASE_TWO], 'the author sees every case and answer');
+});
+
+test('a test proposed before cases existed still runs as one case', async t => {
+  const f = await fixture(t);
+  const id = randomUUID();
+  await f.repository.transaction('legacy-test', repo => repo.save('relay_test', { id, ownerId: f.author.user.id, authorId: f.author.user.id, proposedBy: f.author.user.id, authorName: 'Ana Author', status: 'approved',
+    title: PROPOSAL.title, categoryId: PROPOSAL.categoryId, brief: PROPOSAL.brief, limitation: PROPOSAL.limitation, comparison: 'lines', ...CASE, createdAt: 1, approvedAt: 1, version: 2, history: [] }));
+  assert.equal((await f.app.relayTests(f.other)).approved.find(x => x.id === id).caseCount, 1);
+  const ben = await f.builder(f.other);
+  const run = await ben.start(`relay-test:${id}`);
+  const job = (await f.app.qualificationJobs(ben.principal))[0];
+  assert.equal(job.answer, 'output');
+  await f.app.submitQualification(ben.principal, run.assessmentId, { round: 1, output: f.solve(job) }, randomUUID());
+  assert.equal((await f.app.submitQualification(ben.principal, run.assessmentId, { round: 2, output: f.solve((await f.app.qualificationJobs(ben.principal))[0]) }, randomUUID())).status, 'passed');
+});
+
+// Reference solvers for Relay's own tests, written from each brief alone. If a
+// seed's expected answer disagrees with its brief, these fail.
+const SEED_SOLVERS = {
+  'Company list deduplication': (input, revision) => {
+    const key = name => name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().replace(/ (inc|llc|ltd|gmbh|corp)$/, '');
+    const seen = new Map();
+    for (const line of input.split('\n').filter(Boolean)) if (!seen.has(key(line))) seen.set(key(line), line);
+    const rows = [...seen.values()];
+    if (/alphabetically/.test(revision || '')) rows.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    if (/reverse/.test(revision || '')) rows.reverse();
+    return rows.join('\n') + '\n';
+  },
+  'Job title seniority': (input, revision) => {
+    const level = title => /^chief .* officer$|^c[efotmr]o$/i.test(title) ? 'C-level' : /vice president|\b[se]?vp\b/i.test(title) ? 'VP'
+      : /director|head of/i.test(title) ? 'Director' : /manager|\blead\b/i.test(title) ? 'Manager' : 'Individual contributor';
+    let rows = input.trim().split('\n').slice(1).map(line => { const [id, title] = line.split(','); return { id, title, seniority: level(title) }; });
+    if (/Director level and above/.test(revision || '')) rows = rows.filter(r => ['C-level', 'VP', 'Director'].includes(r.seniority));
+    if (/Drop the title/.test(revision || '')) return ['id,seniority', ...rows.map(r => `${r.id},${r.seniority}`)].join('\n') + '\n';
+    return ['id,title,seniority', ...rows.map(r => `${r.id},${r.title},${r.seniority}`)].join('\n') + '\n';
+  },
+  'Country codes from country names': (input, revision) => {
+    const codes = { 'united states': ['US', 'USA'], uk: ['GB', 'GBR'], deutschland: ['DE', 'DEU'], 'the netherlands': ['NL', 'NLD'], "côte d'ivoire": ['CI', 'CIV'],
+      japan: ['JP', 'JPN'], 'south korea': ['KR', 'KOR'], 'españa': ['ES', 'ESP'], 'u.a.e.': ['AE', 'ARE'], brasil: ['BR', 'BRA'] };
+    const three = /alpha-3/.test(revision || '');
+    const rows = input.trim().split('\n').slice(1).map(line => { const [id, country] = line.split(','); return { id, country, code: codes[country.toLowerCase()][three ? 1 : 0] }; });
+    if (/Sort the rows/.test(revision || '')) rows.sort((a, b) => a.code.localeCompare(b.code));
+    return [`id,country,${three ? 'iso3' : 'iso2'}`, ...rows.map(r => `${r.id},${r.country},${r.code}`)].join('\n') + '\n';
+  },
+  'Domains from URLs and emails': (input, revision) => {
+    const host = line => line.replace(/^mailto:/i, '').replace(/^.*@/, '').replace(/^https?:\/\//i, '').replace(/[:/?].*$/, '').toLowerCase().replace(/^www\./, '');
+    const registrable = name => name.split('.').slice(/\.co\.uk$/.test(name) ? -3 : -2).join('.');
+    let hosts = [...new Set(input.split('\n').filter(Boolean).map(host))];
+    if (/registrable/.test(revision || '')) hosts = [...new Set(hosts.map(registrable))];
+    if (/alphabetically/.test(revision || '')) hosts.sort();
+    return hosts.join('\n') + '\n';
+  },
+};
+
+test('Relay’s own B2B data tests are listed for everyone, can’t be reviewed, and qualify agents that solve every case', async t => {
+  const f = await fixture(t);
+  const listed = (await f.app.relayTests(f.other)).approved.filter(x => x.builtIn);
+  assert.deepEqual(listed.map(x => x.categoryId).sort(), ['data-cleanup', 'data-enrichment', 'lead-lists', 'web-extraction']);
+  assert.ok(listed.every(x => x.authorName === 'Relay' && x.caseCount === 2 && x.status === 'approved'));
+  assert.ok(!JSON.stringify(listed).includes('"expected"'), 'answers stay hidden for Relay’s tests too');
+  assert.equal((await f.app.relayTestQueue(f.staff)).waiting.length, 0, 'never in the review queue');
+  await assert.rejects(f.app.reviewRelayTest(f.staff, listed[0].id, { expectedVersion: 1, decision: 'retire', reason: 'Not something staff change here.' }, randomUUID()), { code: 'BUILT_IN' });
+
+  const categories = { 'data-cleanup': ['Data cleanup', 'Deduplicate company lists'], 'lead-lists': ['Leads', 'Build prospect lead lists'],
+    'data-enrichment': ['Data enrichment', 'Enrich and append firmographic data'], 'web-extraction': ['Web data', 'Scrape and extract web data'] };
+  for (const seed of listed) {
+    const ben = await f.builder(f.other, ...categories[seed.categoryId]);
+    assert.equal((await ben.agent()).capabilities[0].categoryId, seed.categoryId, `capability classified as ${seed.categoryId}`);
+    const run = await ben.start(seed.rubric);
+    const solver = SEED_SOLVERS[seed.title];
+    for (const round of [1, 2]) {
+      const job = (await f.app.qualificationJobs(ben.principal)).find(item => item.id === run.assessmentId);
+      const result = await f.app.submitQualification(ben.principal, run.assessmentId, { round, outputs: job.cases.map(item => solver(item.input, item.revision)) }, randomUUID());
+      assert.ok(result.checks.every(c => c.passed), `${seed.title}, round ${round}: ${JSON.stringify(result.checks)}`);
+    }
+    const cap = (await ben.agent()).capabilities[0];
+    assert.equal(cap.qualification, 'qualified');
+    assert.equal(cap.assessment.proposed, null, 'Relay wrote it, not a builder');
+    assert.equal(cap.assessment.private, true);
+  }
 });
