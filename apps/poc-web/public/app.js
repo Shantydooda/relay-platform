@@ -876,7 +876,8 @@ root.addEventListener('click',event=>{
     else if(action==='end-engagement'){
       const ended=await command(`/api/tasks/${state.detail.task.id}/engagement/end`,'POST',{expectedVersion:state.detail.task.version});
       state.confirmEndPlan=false;await refresh();render();
-      notice.textContent=ended.cancelled.length?`Plan ended. ${ended.cancelled.length} milestone${ended.cancelled.length===1?'':'s'} cancelled; nothing more is charged.`:'Plan ended.';
+      const refunded=(ended.refunds||[]).length?` The refund of ${ended.refunds.length===1?'its test payment':'their test payments'} has started.`:'';
+      notice.textContent=ended.cancelled.length?`Plan ended. ${ended.cancelled.length} milestone${ended.cancelled.length===1?'':'s'} cancelled; nothing more is charged.${refunded}`:'Plan ended.';
     }
     else if(action==='review-start'){state.reviewStart=true;state.scrollTarget='.start-review';render();}
     else if(action==='review-offer'||action==='close-review'){

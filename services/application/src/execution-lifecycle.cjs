@@ -7,7 +7,7 @@ const { fail, text, exactKeys } = require('../../../packages/contracts/src/input
 const { saveTask } = require('./supplier-feed.cjs');
 const { executionWindowMs } = require('./quote-limits.cjs');
 
-function createLifecycle({ repository, command, taskFor, expected, now, touch, event, localExecution, approvals }) {
+function createLifecycle({ repository, command, taskFor, expected, now, touch, event, localExecution, approvals, refunds = null }) {
   function checkCancel(task) {
     if (!task.assignment || !['queued', 'running', 'buyer_review'].includes(task.assignment.status)) fail(409, 'STATE_CONFLICT', 'Only pending execution or a delivery awaiting review can be cancelled.');
   }
@@ -28,7 +28,7 @@ function createLifecycle({ repository, command, taskFor, expected, now, touch, e
       if (action === 'cancel') checkCancel(task);
       else if (action === 'pause') pauseByBuyer(structuredClone(task), now(), actor.user.id);
       else if (action === 'resume') resumeByBuyer(structuredClone(task), now());
-      else if (action === 'end') require('./acceptance.cjs').checkEnd(task);
+      else if (action === 'end') { if (require('./acceptance.cjs').checkEnd(task, refunds) === 'refund') await refunds.authorize(repo, actor, task); }
       else await checkRetry(repo, actor, structuredClone(task));
     };
     return {

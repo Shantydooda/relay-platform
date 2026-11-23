@@ -292,6 +292,51 @@ function createPayments(context, provider) {
       return { url: task.settlement.url };
     });
   }
+  // Ending paid work refunds it (acceptance.cjs, engagements.cjs). Off unless the
+  // deployment sets refundOnEnd, and only where sandbox payments run at all.
+  // queue() runs inside the caller's transaction, so ending and requesting the
+  // refund commit together; settle() then asks the provider. If that call fails,
+  // the payment reconciler retries with the same operation id, never a new refund.
+  const refunds = {
+    enabled: enabled && context.refundOnEnd === true,
+    // Whether ending this task can move its money: null (nothing held), 'refund', or 'refuse'.
+    plan(task) {
+      const p = task.settlement;
+      // Switched off, ending keeps the rule it had before refunds were connected.
+      if (!refunds.enabled) return task.assignment?.mode === 'stripe-sandbox' || (p && p.status !== 'refunded') ? 'refuse' : null;
+      if (!p || TERMINAL.has(p.status)) return task.assignment?.mode === 'stripe-sandbox' && !p ? 'refuse' : null;
+      return p.status === 'funded' ? 'refund' : 'refuse';
+    },
+    // Why ending is refused, in the buyer's terms.
+    reason(task) {
+      const status = task.settlement?.status;
+      if (!refunds.enabled) return 'it has a held payment. Ending it needs a refund, and refunds aren’t connected to this step yet.';
+      if (['creating_checkout', 'awaiting_payment'].includes(status)) return 'its checkout is still open. Finish paying or let the checkout expire first.';
+      if (['creating_refund', 'refund_pending'].includes(status)) return 'a refund of its payment is already under way.';
+      if (status === 'refund_failed') return 'a refund of its payment needs review. Resolve it on the payment first.';
+      return 'its payment is still being settled. Try again once it is.';
+    },
+    // The same authority as the manual refund (workspace owner), and no refund while the payment is paused for review.
+    async authorize(repo, actor, task) {
+      const sync = await repo.get('payment-job', `task:${task.id}`);
+      if (sync?.status === 'review') fail(409, 'RECONCILIATION_REQUIRED', 'This payment is paused for review. Resolve it before ending the work.');
+      await ownerBuyer(repo, actor, task.id);
+    },
+    async queue(repo, task, actorId, time) {
+      const p = task.settlement;
+      // A new operation: its retry window starts now, not when the work was paid for.
+      p.status = 'creating_refund'; p.operationId = randomUUID(); p.createdAt = time; p.updatedAt = time;
+      event(task, actorId, 'sandbox.refund.requested', time);
+      await indexPayment(repo, task, time, true);
+    },
+    // After the transaction commits: try the provider once now.
+    async settle(ids) {
+      for (const id of ids) {
+        try { await reconcileRecord(id, repo => repo.get('task', id, true), 'system:refund-on-end'); } catch { /* the reconciler retries */ }
+      }
+    },
+  };
+  context.refunds = refunds;
   const jobs = createPaymentJobs({ repository, now, enabled, refreshOperator: refreshOperatorRecord,
     reconcileTask: id => reconcileRecord(id, repo => repo.get('task', id, true), 'system:payment-reconciliation', true) });
   return { paymentActions, ...jobs, paymentRecovery: recovery.paymentRecovery, retryPaymentRecovery: recovery.retryPaymentRecovery, paymentStatus: status, spendingHistory, onboardOperator: onboard, refreshOperator, sandboxPayment: begin,

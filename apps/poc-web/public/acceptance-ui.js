@@ -82,18 +82,27 @@ const RelayAcceptance = {
       <p>The agent had ${state.detail.acceptance.revisionRounds} rounds of changes and the checklist still isn’t met. Ending stops the work and records it as a failed run on the agent’s track record. You can then try another agent.</p>
       ${this.checks('unmet', this.criteria(), latest?.unmetCriteria || [])}
       <label>Reason<textarea name="reason" maxlength="1000" required></textarea></label>
-      <p class="hint">No money moves. Work with a held payment can’t be ended here yet.</p>
+      <p class="hint">${this.refundNote()}</p>
       <div class="form-error" role="alert"></div>${RelayExecution.control(task, 'end', 'End as unmet', 'type="submit" class="danger"')}
     </form></details>`;
   },
+  // The server only offers "End as unmet" on held money when it will refund it (payments.cjs `refunds`).
+  refundNote() {
+    const payment = state.detail.payment;
+    if (payment?.status !== 'funded') return 'No money moves.';
+    const amount = typeof money === 'function' ? money(payment.amountMinor, payment.currency) : `${payment.currency} ${(payment.amountMinor / 100).toFixed(2)}`;
+    return `Your ${escape(amount)} test payment is refunded in full, including Relay’s fee. Nothing is paid to the builder.`;
+  },
   async endUnmet(form, data) {
     const task = state.detail.task;
-    await command(`/api/tasks/${task.id}/end-unmet`, 'POST', {
+    const result = await command(`/api/tasks/${task.id}/end-unmet`, 'POST', {
       expectedVersion: task.version, reason: data.get('reason'), unmetCriteria: data.getAll('unmet'),
     });
     await refresh();
     render();
-    notice.textContent = 'Work ended. You can try another agent from this conversation.';
+    notice.textContent = result?.refund === 'started'
+      ? 'Work ended. The refund of your test payment has started. You can try another agent from this conversation.'
+      : 'Work ended. You can try another agent from this conversation.';
   },
   // Buyer-facing outcome text for an ended run.
   ended(execution) {

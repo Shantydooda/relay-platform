@@ -6,7 +6,7 @@ const { createSqliteRepository, createPostgresRepository } = require('../../src/
 const { createApplication } = require('../../src/service.cjs');
 // Provider double exists ONLY in isolated test databases. It cannot be selected
 // by the application launcher or an HTTP request.
-async function fixture(t, adapter='sqlite', sharedRepository = null, { feeSchedule = '', offer = {} } = {}) {
+async function fixture(t, adapter='sqlite', sharedRepository = null, { feeSchedule = '', offer = {}, refundOnEnd = false } = {}) {
   let repository = sharedRepository;
   if (!repository) {
     const db = adapter==='sqlite'?new DatabaseSync(':memory:'):await PGlite.create();
@@ -41,7 +41,7 @@ async function fixture(t, adapter='sqlite', sharedRepository = null, { feeSchedu
     provider.transfer = async op => { calls.push(['transfer', op.id]); return { transferId: `tr_${op.id}` }; };
     provider.payout = async op => { calls.push(['payout', op.id]); return { payoutId: `po_${op.id}`, status: 'pending' }; };
   }
-  const options={repository,localExecution:true,now:()=>time,paymentProvider:provider,feeSchedule};
+  const options={repository,localExecution:true,now:()=>time,paymentProvider:provider,feeSchedule,refundOnEnd};
   const app=createApplication(options);
   await app.onboardOperator(builder,{country:'US'},randomUUID());await app.refreshOperator(builder);
   const {taskId}=await app.createTask(buyer,{tenantId:buyer.memberships[0].id,title:'CSV cleanup',brief:'Clean source data'},randomUUID());

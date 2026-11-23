@@ -22,8 +22,9 @@ function taskOutcome(task) {
   const revisions = (task.submissions || []).filter(item => item.status === 'revision_requested').length;
   let outcome = null;
   let at = null;
-  // A refund overrides acceptance: the buyer did not keep the result.
-  if (task.settlement?.status === 'refunded') {
+  // A refund overrides acceptance: the buyer did not keep the result. A failed run
+  // stays a failure when its payment is returned: failures always count.
+  if (task.settlement?.status === 'refunded' && job.status !== 'failed') {
     outcome = 'refunded';
     at = task.settlement.updatedAt ?? job.endedAt ?? job.acceptedAt;
   } else if (job.status === 'accepted') {
