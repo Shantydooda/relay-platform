@@ -176,7 +176,9 @@ test('connection status says what is true right now, from the last check-in and 
   assert.deepEqual(at({ connected: true, connectedAt: now - 3 * 60000, expiresAt: now + 7 * 86400000 }), { tone: 'stale', label: 'Offline · last check-in 3 min ago' }, 'the server flag goes stale; the check-in time decides');
   assert.deepEqual(at({ connected: false, connectedAt: now - 60000, expiresAt: now - 1 }), { tone: 'off', label: 'Key expired · create a new one' });
   assert.equal(at({ connected: true, connectedAt: now - 5000, expiresAt: now + 20 * 3600000 }).label, 'Connected · checked in 5 s ago · key expires in 20 h');
-  const badge = b.connectionBadge({ runtime: { connected: true, connectedAt: now - 20000, expiresAt: now + 86400000 * 3 } });
+  // The badge reads the real clock, so its times are relative to now, not the fixed date above.
+  const real = Date.now();
+  const badge = b.connectionBadge({ runtime: { connected: true, connectedAt: real - 20000, expiresAt: real + 86400000 * 3 } });
   assert.match(badge, /class="mk-conn mk-conn-(live|stale)" data-conn-at="\d+" data-conn-exp="\d+" data-conn-on="1"/, 'the badge carries what the ticker needs to update it in place');
 });
 
