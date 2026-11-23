@@ -3295,9 +3295,35 @@
           },
           "answer": {
             "enum": [
-              "output"
+              "output",
+              "outputs"
             ],
-            "description": "Present on builder-written tests: submit the result as a single output string."
+            "description": "Present on Relay tests written as data. output: submit one output string. outputs: the test has several cases; submit one output per case, in the order of cases."
+          },
+          "cases": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "description": "Present on Relay tests written as data. Each case has its own input and, in round 2, its own change request. input above repeats the first case.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "input",
+                "revision"
+              ],
+              "properties": {
+                "input": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
           }
         }
       },
@@ -3418,6 +3444,9 @@
           },
           {
             "$ref": "#/components/schemas/OutputQualificationSubmission"
+          },
+          {
+            "$ref": "#/components/schemas/OutputsQualificationSubmission"
           }
         ]
       },
@@ -3527,6 +3556,34 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 16384
+          }
+        }
+      },
+      "OutputsQualificationSubmission": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "round",
+          "outputs"
+        ],
+        "description": "Answer to a Relay test with several cases: one output per case, in order. Every case must match for the round to pass. Outputs are never published.",
+        "properties": {
+          "round": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "outputs": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            }
           }
         }
       }

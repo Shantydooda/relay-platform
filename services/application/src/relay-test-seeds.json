@@ -1,0 +1,98 @@
+[
+  {
+    "id": "5eed0000-0000-4000-8000-000000000001",
+    "title": "Company list deduplication",
+    "categoryId": "data-cleanup",
+    "brief": "Each line is a company name. Remove duplicates: two lines are the same company if they match after ignoring letter case, punctuation, extra spaces and one trailing legal suffix (Inc, LLC, Ltd, GmbH, Corp). Keep the first spelling seen, exactly as written. Return one company per line, in the order first seen.",
+    "limitation": "Checks name-level duplicates on short synthetic lists: case, punctuation and common legal suffixes. Not fuzzy matching, typos, parent and subsidiary links, or matching by domain.",
+    "comparison": "lines",
+    "createdAt": 1795305600000,
+    "approvedAt": 1795305600000,
+    "cases": [
+      {
+        "input": "Acme Inc.\nNorthwind Traders {{nonce}}\nACME, inc\nBlue Harbor LLC\nnorthwind traders {{nonce}} ltd\nBlue Harbor\n",
+        "expected": "Acme Inc.\nNorthwind Traders {{nonce}}\nBlue Harbor LLC\n",
+        "revision": "Now sort the companies alphabetically, ignoring case.",
+        "revisionExpected": "Acme Inc.\nBlue Harbor LLC\nNorthwind Traders {{nonce}}\n"
+      },
+      {
+        "input": "Zenith Labs GmbH\nOrbit {{nonce}} Corp\nZenith Labs\nHarbor Point Ltd\norbit {{nonce}}\nHarbor Point, Ltd.\n",
+        "expected": "Zenith Labs GmbH\nOrbit {{nonce}} Corp\nHarbor Point Ltd\n",
+        "revision": "Now list them in reverse order, so the last one first seen comes first.",
+        "revisionExpected": "Harbor Point Ltd\nOrbit {{nonce}} Corp\nZenith Labs GmbH\n"
+      }
+    ]
+  },
+  {
+    "id": "5eed0000-0000-4000-8000-000000000002",
+    "title": "Job title seniority",
+    "categoryId": "lead-lists",
+    "brief": "The input is CSV with columns id,title. Add a column seniority with exactly one of: C-level, VP, Director, Manager, Individual contributor. C-level: a Chief … Officer title or CEO, CFO, CTO, COO, CMO, CRO. VP: Vice President, VP, SVP or EVP. Director: Director or Head of. Manager: Manager or Lead. Anything else: Individual contributor. Keep the rows in order and return CSV with the header id,title,seniority.",
+    "limitation": "Checks a fixed five-level mapping on clear-cut synthetic titles. Not ambiguous titles, titles in other languages, or whether a contact really makes buying decisions.",
+    "comparison": "lines",
+    "createdAt": 1795305600000,
+    "approvedAt": 1795305600000,
+    "cases": [
+      {
+        "input": "id,title\nc-{{nonce}}-1,Chief Revenue Officer\nc-{{nonce}}-2,SVP Sales\nc-{{nonce}}-3,Head of Data\nc-{{nonce}}-4,Account Executive\nc-{{nonce}}-5,Marketing Manager\n",
+        "expected": "id,title,seniority\nc-{{nonce}}-1,Chief Revenue Officer,C-level\nc-{{nonce}}-2,SVP Sales,VP\nc-{{nonce}}-3,Head of Data,Director\nc-{{nonce}}-4,Account Executive,Individual contributor\nc-{{nonce}}-5,Marketing Manager,Manager\n",
+        "revision": "Keep only rows at Director level and above (C-level, VP, Director).",
+        "revisionExpected": "id,title,seniority\nc-{{nonce}}-1,Chief Revenue Officer,C-level\nc-{{nonce}}-2,SVP Sales,VP\nc-{{nonce}}-3,Head of Data,Director\n"
+      },
+      {
+        "input": "id,title\np-{{nonce}}-1,Data Analyst\np-{{nonce}}-2,Director of Finance\np-{{nonce}}-3,CTO\np-{{nonce}}-4,Engineering Lead\np-{{nonce}}-5,Vice President Operations\n",
+        "expected": "id,title,seniority\np-{{nonce}}-1,Data Analyst,Individual contributor\np-{{nonce}}-2,Director of Finance,Director\np-{{nonce}}-3,CTO,C-level\np-{{nonce}}-4,Engineering Lead,Manager\np-{{nonce}}-5,Vice President Operations,VP\n",
+        "revision": "Drop the title column: return only id and seniority.",
+        "revisionExpected": "id,seniority\np-{{nonce}}-1,Individual contributor\np-{{nonce}}-2,Director\np-{{nonce}}-3,C-level\np-{{nonce}}-4,Manager\np-{{nonce}}-5,VP\n"
+      }
+    ]
+  },
+  {
+    "id": "5eed0000-0000-4000-8000-000000000003",
+    "title": "Country codes from country names",
+    "categoryId": "data-enrichment",
+    "brief": "The input is CSV with columns id,country, where the country is written in many ways (English, local names, abbreviations). Add a column iso2 with the country's ISO 3166-1 alpha-2 code in capitals. Keep the rows and the country text as given, and return CSV with the header id,country,iso2.",
+    "limitation": "Checks country-name variants mapped to ISO codes on ten synthetic rows. Not addresses, regions or cities, disputed or ambiguous names, or any other enrichment.",
+    "comparison": "lines",
+    "createdAt": 1795305600000,
+    "approvedAt": 1795305600000,
+    "cases": [
+      {
+        "input": "id,country\na-{{nonce}}-1,United States\na-{{nonce}}-2,UK\na-{{nonce}}-3,Deutschland\na-{{nonce}}-4,the netherlands\na-{{nonce}}-5,Côte d'Ivoire\n",
+        "expected": "id,country,iso2\na-{{nonce}}-1,United States,US\na-{{nonce}}-2,UK,GB\na-{{nonce}}-3,Deutschland,DE\na-{{nonce}}-4,the netherlands,NL\na-{{nonce}}-5,Côte d'Ivoire,CI\n",
+        "revision": "Use ISO 3166-1 alpha-3 codes instead, in a column named iso3.",
+        "revisionExpected": "id,country,iso3\na-{{nonce}}-1,United States,USA\na-{{nonce}}-2,UK,GBR\na-{{nonce}}-3,Deutschland,DEU\na-{{nonce}}-4,the netherlands,NLD\na-{{nonce}}-5,Côte d'Ivoire,CIV\n"
+      },
+      {
+        "input": "id,country\nb-{{nonce}}-1,Japan\nb-{{nonce}}-2,South Korea\nb-{{nonce}}-3,España\nb-{{nonce}}-4,U.A.E.\nb-{{nonce}}-5,Brasil\n",
+        "expected": "id,country,iso2\nb-{{nonce}}-1,Japan,JP\nb-{{nonce}}-2,South Korea,KR\nb-{{nonce}}-3,España,ES\nb-{{nonce}}-4,U.A.E.,AE\nb-{{nonce}}-5,Brasil,BR\n",
+        "revision": "Sort the rows by iso2, A to Z.",
+        "revisionExpected": "id,country,iso2\nb-{{nonce}}-4,U.A.E.,AE\nb-{{nonce}}-5,Brasil,BR\nb-{{nonce}}-3,España,ES\nb-{{nonce}}-1,Japan,JP\nb-{{nonce}}-2,South Korea,KR\n"
+      }
+    ]
+  },
+  {
+    "id": "5eed0000-0000-4000-8000-000000000004",
+    "title": "Domains from URLs and emails",
+    "categoryId": "web-extraction",
+    "brief": "Each line is a URL or an email address. Return the host name of each in lowercase: no protocol, no leading www., no port, path or query, and for an email or mailto: link only the part after @. Remove duplicate host names, keeping the first. One host name per line, in the order first seen.",
+    "limitation": "Checks host names taken from tidy synthetic URLs and emails. Not crawling, following links or redirects, or public-suffix edge cases beyond .co.uk.",
+    "comparison": "lines",
+    "createdAt": 1795305600000,
+    "approvedAt": 1795305600000,
+    "cases": [
+      {
+        "input": "https://www.Acme-{{nonce}}.com/about\nsales@acme-{{nonce}}.com\nhttp://blog.northwind.io:8080/post?id=3\nmailto:Info@Blue-Harbor.co.uk\nwww.zenith.dev\n",
+        "expected": "acme-{{nonce}}.com\nblog.northwind.io\nblue-harbor.co.uk\nzenith.dev\n",
+        "revision": "Return only the registrable domain: drop subdomains such as blog., but keep two-part endings like .co.uk whole.",
+        "revisionExpected": "acme-{{nonce}}.com\nnorthwind.io\nblue-harbor.co.uk\nzenith.dev\n"
+      },
+      {
+        "input": "https://shop.orbit-{{nonce}}.net/cart\nteam@orbit-{{nonce}}.net\nHTTPS://Kite.AI\nops@mail.kite.ai\nhttps://www.orbit-{{nonce}}.net\n",
+        "expected": "shop.orbit-{{nonce}}.net\norbit-{{nonce}}.net\nkite.ai\nmail.kite.ai\n",
+        "revision": "Sort the host names alphabetically.",
+        "revisionExpected": "kite.ai\nmail.kite.ai\norbit-{{nonce}}.net\nshop.orbit-{{nonce}}.net\n"
+      }
+    ]
+  }
+]

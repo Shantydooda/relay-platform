@@ -25,10 +25,12 @@ function evidence(test, now = Date.now()) {
   const displayedStatus = pending(test) && test.deadlineAt <= now ? 'expired' : status;
   const base = { id, capabilityId, rubric, status: displayedStatus, deadlineAt: test.deadlineAt, createdAt, completedAt, expiresAt, runtimeName, runtimeVersion, input, submissions };
   if (test.relayTest) {
-    // A builder-written test: submitted outputs stay private, or they'd hand later takers the answer.
-    const { title, limitation, revision, authorName } = test.relayTest;
+    // A Relay test written as data: submitted outputs stay private, or they'd hand later takers the answer.
+    // Relay's own seeded tests are kept private the same way, but no builder wrote them.
+    const { title, limitation, revision, authorName, builtIn } = test.relayTest;
     // No hash either: with the run's input public, a hash would let anyone check guesses offline.
-    return { ...base, submissions: submissions.map(({ output, sha256, ...rest }) => rest), title, limitation, revision, proposed: { authorName } };
+    return { ...base, submissions: submissions.map(({ output, outputs, sha256, ...rest }) => rest), title, limitation, revision, private: true,
+      cases: (test.cases || [{ input, revision }]).map(item => ({ input: item.input, revision: item.revision })), proposed: builtIn ? null : { authorName } };
   }
   return { ...base, title: rubric === linkAssessment.rubric ? linkAssessment.title : 'CSV normalization', limitation: rubric === linkAssessment.rubric ? linkAssessment.limitation : LIMIT };
 }
@@ -89,7 +91,7 @@ function createQualification(context) {
       const agent = await credentials.runtimeAgent(repo, principal, 'execution:write');
       const test = (agent.assessments || []).find(item => item.id === id);
       if (!test) fail(404, 'NOT_FOUND', 'Assessment not found.');
-      if (test.relayTest) relayTests.validateSubmission(body);
+      if (test.relayTest) relayTests.validateSubmission(test, body);
       else if (test.rubric === linkAssessment.rubric) linkAssessment.validate(body);
       else {
         exactKeys(body, ['round', 'csv', 'report']);
@@ -108,7 +110,7 @@ function createQualification(context) {
       ];
       const passed = checks.every(check => check.passed);
       test.submissions.push(test.relayTest
-        ? { round: body.round, output: body.output, sha256: hash(body.output), checks, passed, createdAt: now() }
+        ? { round: body.round, ...relayTests.submission(test, body, hash), checks, passed, createdAt: now() }
         : { round: body.round, ...(test.rubric === linkAssessment.rubric ? { links: body.links } : { csv: exactCsv }), report: body.report, sha256: hash(test.rubric === linkAssessment.rubric ? JSON.stringify(body.links) : exactCsv), checks, passed, createdAt: now() });
       test.status = !passed ? 'failed' : body.round === 1 ? 'revision_pending' : 'passed';
       if (test.status !== 'revision_pending') { test.completedAt = now(); delete test.expected; }

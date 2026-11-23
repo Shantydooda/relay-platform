@@ -694,6 +694,12 @@ html[data-appearance] body.market-open #app .mk-agent-title a.mk-handle-builder:
 .mk-test-card .mk-thread-body { gap: 8px; }
 .mk-test-card textarea { width: 100%; }
 .mk-test-card pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* One case of a proposed Relay test: case 1 open, cases 2–5 folded. */
+.mk-form .mk-test-case { display: grid; gap: 8px; margin: 4px 0; padding: 12px 14px; border: 1px solid var(--mk-border); border-radius: 8px; min-width: 0; }
+.mk-form .mk-test-case legend { padding: 0 6px; font-weight: 600; }
+.mk-form details.mk-test-case:not([open]) { padding-block: 8px; }
+.mk-form details.mk-test-case summary { cursor: pointer; font-weight: 600; }
+.mk-form .mk-test-case textarea, .mk-form .mk-test-case input { width: 100%; }
 
 /* Milestone plans (engagements-ui.js) */
 .milestone-fields { margin: 12px 0; }
