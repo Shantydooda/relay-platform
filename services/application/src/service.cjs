@@ -50,7 +50,7 @@ function taskView(task, now) {
   const status = task.engagement ? 'engagement' : task.recurringScheduleId ? 'scheduled' : task.assignment?.status || (offer && offer.expiresAt > now ? 'selected' : task.status);
   const { id, tenantId, title, brief, version, scopeVersion, createdAt, updatedAt, input } = task;
   const approvalStatus = require('./approvals.cjs').approvalView(task, now)?.status || null;
-  return { id, tenantId, projectId: task.projectId || null, categoryId: task.categoryId || null, title, brief, version, scopeVersion, createdAt, updatedAt, status,
+  return { id, tenantId, projectId: task.projectId || null, categoryId: task.categoryId || null, requiredRegion: task.requiredRegion || null, regionChoice: task.regionChoice || null, title, brief, version, scopeVersion, createdAt, updatedAt, status,
     // Phase, whose move it is, why, and how a finished run ended. See packages/domain/src/work-state.cjs.
     work: workState(task, now, { approvalStatus, retryAvailable: retryAvailable(task) }),
     waitingForPermission: waitingForPermission(task.assignment),
@@ -179,8 +179,10 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const agentFor = async (repo, actor, id) => owner(actor, await repo.get('agent', id, true));
 
   async function createTask(actor, body, key) {
-    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion', 'projectId', 'categoryId']);
+    exactKeys(body, ['tenantId', 'title', 'brief', 'preferredAgentId', 'preferenceMode', 'discoverySource', 'repeatFromTaskId', 'retryFromTaskId', 'expectedSourceVersion', 'projectId', 'categoryId', 'processingRegion']);
     if (body.categoryId !== undefined && !require('../../../packages/domain/src/categories.cjs').taskById(body.categoryId)) fail(400, 'INVALID_INPUT', 'Choose a category from the list.');
+    // Where the buyer wants agents to process this request's data. Their company's rule, if any, wins.
+    const regionChoice = body.processingRegion === undefined ? null : require('./processing-region.cjs').regionInput(body.processingRegion, 'Data processed in');
     membership(actor, body.tenantId, true);
     const repeating = body.repeatFromTaskId !== undefined;
     const retrying = body.retryFromTaskId !== undefined;
@@ -234,7 +236,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         const preferred = await repo.get('agent', text(body.preferredAgentId, 'Preferred agent', 36, 36), true);
         const available = requestableAgent(preferred, actor, time);
         if (!available) fail(404, 'NOT_FOUND', 'That agent is not available for direct requests.');
-        require('./processing-region.cjs').assertAllowed(await context.org.requiredRegion(repo, body.tenantId), preferred);
+        require('./processing-region.cjs').assertAllowed(require('./processing-region.cjs').requirement(await context.org.requiredRegion(repo, body.tenantId), regionChoice), preferred);
         acquisition = require('./acquisition.cjs').acquisition(body.discoverySource ?? 'unspecified', preferred, body.preferenceMode, time);
         if (body.preferenceMode === 'agent') preferredAgentId = preferred.id;
         else preferredOperatorId = preferred.ownerId;
@@ -244,6 +246,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       const task = newTask({ id, actor, tenantId: body.tenantId, title, brief, time, preferredAgentId, preferredOperatorId, acquisition, repeatHireOf, retryOf });
       if (body.projectId !== undefined) task.projectId = (await context.projects.checkFiling(repo, actor, body.tenantId, body.projectId)).id;
       if (body.categoryId !== undefined) task.categoryId = body.categoryId;
+      if (regionChoice) task.regionChoice = regionChoice;
       event(task, actor.user.id, 'task.created', time);
       await saveTask(repo, task);
       return { taskId: id, version: 1 };
@@ -292,7 +295,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     }, `workspace-create:${body.tenantId}`);
   }
   async function mutateTask(actor, id, action, body, key) {
-    exactKeys(body, ['scope', 'edit'].includes(action) ? ['expectedVersion', 'title', 'brief'] : action === 'messages' ? ['expectedVersion', 'body'] : ['expectedVersion']);
+    exactKeys(body, ['scope', 'edit'].includes(action) ? ['expectedVersion', 'title', 'brief'] : action === 'messages' ? ['expectedVersion', 'body'] : action === 'post' ? ['expectedVersion', 'processingRegion'] : ['expectedVersion']);
+    const regionChoice = action === 'post' && body.processingRegion !== undefined ? require('./processing-region.cjs').regionInput(body.processingRegion, 'Data processed in') : undefined;
     return command(actor.user.id, key, [action, id, body], repo => taskFor(repo, actor, id, true), async repo => {
       const task = await taskFor(repo, actor, id, true);
       expected(task, body.expectedVersion);
@@ -333,8 +337,10 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         if (action === 'cancel') task.selectedOfferId = null;
         if (action === 'post') {
           // Builders see the requirement on the request; the live rule is checked again at every step.
-          task.requiredRegion = await context.org.requiredRegion(repo, task.tenantId);
-          if (task.preferredAgentId) require('./processing-region.cjs').assertAllowed(task.requiredRegion, await repo.get('agent', task.preferredAgentId));
+          if (regionChoice !== undefined) task.regionChoice = regionChoice;
+          const requirement = await context.org.requirementFor(repo, task);
+          task.requiredRegion = requirement?.region || null;
+          if (task.preferredAgentId) require('./processing-region.cjs').assertAllowed(requirement, await repo.get('agent', task.preferredAgentId));
         }
         type = action === 'post' ? 'task.posted' : 'task.cancelled';
       } else fail(404, 'NOT_FOUND', 'Action not found.');
@@ -444,7 +450,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       assertUnfunded(task);
       if (task.preferredAgentId && task.preferredAgentId !== body.agentId) fail(409, 'SCHEDULE_AGENT', 'This recurring run is reserved for its chosen agent.');
       if (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) fail(404, 'NOT_FOUND', 'This direct request is reserved for another builder.');
-      require('./processing-region.cjs').assertAllowed(await context.org.requiredRegion(repo, task.tenantId), agent, 'builder');
+      require('./processing-region.cjs').assertAllowed(await context.org.requirementFor(repo, task), agent, 'builder');
       if (excludedFrom(task, body.agentId)) fail(409, 'AGENT_EXCLUDED', 'The buyer asked for a different agent after this agent’s run failed.');
       if (task.assignment) fail(409, 'TASK_ASSIGNED', 'This task is already assigned.');
       assertNotPackage(task);
@@ -486,7 +492,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (!offer) notFound();
       if (offer.scopeVersion !== task.scopeVersion) fail(409, 'VERSION_CONFLICT', 'Request a quote for the current scope.');
       if (offer.expiresAt <= now()) fail(409, 'OFFER_EXPIRED', 'This offer expired.');
-      const requiredRegion = await context.org.requiredRegion(repo, task.tenantId);
+      const requiredRegion = await context.org.requirementFor(repo, task);
       if (requiredRegion) require('./processing-region.cjs').assertAllowed(requiredRegion, offer.agentId ? await repo.get('agent', offer.agentId) : null);
       // Choosing a plan accepts it: each milestone becomes its own task, started one at a time.
       const milestoneIds = offer.milestones ? await engagements.acceptPlan(repo, actor, task, offer) : null;
@@ -654,13 +660,15 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       listing: (actor, id) => repository.read(async repo => {
         if (!actor?.user?.id || actor.recoveryRequired) fail(403, 'FORBIDDEN', 'An active account is required.');
         const agent = await repo.get('agent', id);
-        if (!agent || (listingState(agent) !== 'published' && agent.ownerId !== actor.user.id)) notFound();
+        // A member who can build as the owning organization manages its agents from Build.
+        const manageAs = agent && agent.ownerId !== actor.user.id ? await context.org.manageableAs(repo, actor, agent.ownerId) : null;
+        if (!agent || (listingState(agent) !== 'published' && agent.ownerId !== actor.user.id && !manageAs)) notFound();
         const examples = (await repo.portfolioRecords('agentId', id)).filter(item => item.status === 'published').map(portfolio.publicExample);
         const saved = await require('./saved-agents.cjs').savedAgents(repo, actor.user.id);
         const time = now();
         const history = await require('./fair-exposure.cjs').operatorHistory(repo, agent.ownerId);
         const owner = agent.ownerId === actor.user.id;
-        return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: owner,
+        return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: owner, manageAs,
           // The owner edits packages on their own agent page, so they also get drafts and the version to edit against.
           ...(owner ? { ownerPackages: (agent.packages || []).map(packageView), agentVersion: agent.version } : {}),
           trackRecord: require('./agent-card.cjs').agentEvidence(history, agent, time), market: await marketBrowse.row(repo, actor, agent), regionRules: await context.org.regionRules(repo, actor) };

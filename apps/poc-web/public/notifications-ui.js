@@ -65,9 +65,11 @@ const RelayNotifications = {
       state.addingAgent = false;
       state.reviewOffer = null;
       if (item.side === 'builder') {
-        // Match alerts open the request on Opportunities; other builder updates open Projects.
-        state.builderTab = item.destination === 'opportunity' ? 'opportunities' : 'work';
-        if (item.destination === 'opportunity' && typeof history === 'object') history.pushState(null, '', '/build/opportunities');
+        // Match alerts open the request on Opportunities; Relay test decisions open Relay tests;
+        // other builder updates open Projects.
+        const page = { opportunity: 'opportunities', 'relay-test': 'tests' }[item.destination];
+        state.builderTab = page || 'work';
+        if (page && typeof history === 'object') history.pushState(null, '', `/build/${page}`);
         await refresh(null);
         location.hash = '';
       } else if (item.destination === 'business') {

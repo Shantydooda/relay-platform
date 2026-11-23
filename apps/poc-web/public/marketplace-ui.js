@@ -531,7 +531,7 @@ const RelayMarketplace = {
     const counts = { packages: (agent.ownerPreview ? agent.ownerPackages || [] : m.packages).length, versions: agent.trackRecord?.versions?.length || 0 };
     const chips = [`${this.dot(m.category || '')}${escape(m.category || 'Uncategorised')}`, ...m.waysToBuy.map(way => ({ commission: 'Commission', use: 'Use it', hire: 'Hire it' }[way])),
       ...m.worksWith.map(name => `Works with ${escape(name)}`), ...(m.hostedOnRelay ? ['Hosted on Relay'] : []), ...(m.processingRegion ? [`Data processed in ${this.REGIONS[m.processingRegion]}`] : []), ...(m.version ? [escape(this.version(m.version))] : [])];
-    const body = tab === 'settings' && agent.ownerPreview ? this.ownerTab(agent)
+    const body = tab === 'settings' && (agent.ownerPreview || agent.manageAs) ? this.ownerTab(agent)
       : tab === 'evidence' ? this.evidenceTab(agent, m)
       : tab === 'packages' ? this.packagesTab(agent, m)
       : tab === 'versions' ? `<section class="mk-section"><h2>Results by version</h2>${m.version ? `<p>Current version <code>${escape(this.version(m.version))}</code>${m.versionSince ? `, reported ${escape(this.ago(m.versionSince))}` : ''}.</p>` : ''}${this.versionsTable(agent.trackRecord)}</section>`
@@ -539,7 +539,7 @@ const RelayMarketplace = {
       : this.cardTab(agent, m);
     const builderAgents = (state.market?.agents || []).filter(item => (item.builderId || item.builder) === (m.builderId || m.builder)).length;
     const profile = `/builders/${escape(this.slug(m.builder))}`;
-    const tabs = agent.ownerPreview ? [...this.AGENT_TABS, ['settings', 'Settings']] : this.AGENT_TABS;
+    const tabs = agent.ownerPreview || agent.manageAs ? [...this.AGENT_TABS, ['settings', 'Settings']] : this.AGENT_TABS;
     const blocked = m.own || agent.ownerPreview || agent.availability !== 'available';
     return `<article class="mk-agent">
       <header class="mk-agent-head">${back}
@@ -562,15 +562,21 @@ const RelayMarketplace = {
 
   // Owner-only: where to change each part of this agent. The forms live in
   // Build, at their own addresses, so they exist once.
+  // The owner's links into Build. A member of the owning organization gets the same
+  // links; following one switches Build to building as that organization first.
   ownerTab(agent) {
-    const link = (tab, label, note) => `<tr><th scope="row">${label}</th><td class="mk-empty-note">${note}</td><td><a class="mk-next" href="/build/agents/${escape(agent.id)}/${tab}" data-route>Open →</a></td></tr>`;
-    return `<section class="mk-section"><h2>Settings</h2><p class="mk-caption">Only you see this tab. Changes are made in Build.</p><div class="mk-table-wrap"><table class="mk-table"><tbody>
+    const org = !agent.ownerPreview && agent.manageAs;
+    const href = tab => `/build/agents/${escape(agent.id)}/${tab}`;
+    const open = tab => org ? `<button type="button" class="mk-link-button mk-next" data-action="manage-agent-as" data-org="${escape(org.id)}" data-href="${href(tab)}">Open →</button>` : `<a class="mk-next" href="${href(tab)}" data-route>Open →</a>`;
+    const link = (tab, label, note) => `<tr><th scope="row">${label}</th><td class="mk-empty-note">${note}</td><td>${open(tab)}</td></tr>`;
+    const caption = org ? `You see this tab because you can build as ${escape(org.name)}, which owns this agent. Opening a page switches Build to building as ${escape(org.name)}, and changes are recorded in its audit log.` : 'Only you see this tab. Changes are made in Build.';
+    return `<section class="mk-section"><h2>Settings</h2><p class="mk-caption">${caption}</p><div class="mk-table-wrap"><table class="mk-table"><tbody>
       ${link('profile', 'Profile and capabilities', 'Name, description and what it can do. This is what buyers read on the card.')}
       ${link('connection', 'Connection and keys', 'Where it runs, its connection key and the last check-in.')}
       ${link('tests', 'Relay tests', 'Passing one lets you publish it and sell packages.')}
       ${link('offers', 'Listing and automatic offers', 'Publish or pause it, and which requests it offers on by itself.')}
       ${link('results', 'Results', 'Where its buyers came from and how its offers did.')}
-      <tr><th scope="row">Packages</th><td class="mk-empty-note">Fixed-price offers buyers can buy straight away.</td><td><button type="button" class="mk-link-button" data-action="market-agent-tab" data-tab="packages">Packages tab</button></td></tr>
+      ${org ? '' : '<tr><th scope="row">Packages</th><td class="mk-empty-note">Fixed-price offers buyers can buy straight away.</td><td><button type="button" class="mk-link-button" data-action="market-agent-tab" data-tab="packages">Packages tab</button></td></tr>'}
     </tbody></table></div></section>`;
   },
 
@@ -586,6 +592,7 @@ const RelayMarketplace = {
         ${this.postTargetField()}
         ${typeof RelayIntake === 'object' ? RelayIntake.postFields() : ''}
         ${(state.taxonomy || []).length ? `<label for="post-category">Category <span class="mk-optional">optional</span></label><select id="post-category" name="categoryId"><option value="">Choose the closest fit</option>${state.taxonomy.map(f => `<optgroup label="${escape(f.label)}">${f.tasks.map(t => `<option value="${escape(t.id)}" ${draft.categoryId === t.id ? 'selected' : ''}>${escape(t.label)}</option>`).join('')}</optgroup>`).join('')}</select><p class="mk-caption">Helps builders who work in this category find your request.</p>` : ''}
+        ${this.postRegionField(draft)}
         <label for="post-title">Title</label><input id="post-title" name="title" maxlength="120" required value="${escape(draft.title || '')}" placeholder="e.g. Clean and deduplicate our contact export">
         <label for="post-brief">What do you need done?</label><textarea id="post-brief" name="brief" rows="7" maxlength="10000" required placeholder="The outcome, the inputs you'll provide, the format you want back and any deadline.">${escape(draft.brief ?? state.prompt ?? '')}</textarea>
         <label for="post-criteria">Acceptance checklist <span class="mk-optional">optional</span></label><textarea id="post-criteria" name="criteria" rows="4" placeholder="One per line, up to 12. e.g. Every duplicate row is removed">${escape(draft.criteria || '')}</textarea>
@@ -594,6 +601,14 @@ const RelayMarketplace = {
         ${state.postFile ? `<p class="mk-caption">Attached: <strong>${escape(state.postFile.name)}</strong>. Choose another file to replace it.</p>` : '<p class="mk-caption">Agents that work on files, like CSV cleanup agents, quote only when the file is attached.</p>'}
         <div class="mk-form-actions"><button class="mk-primary" type="submit" ${state.postingRequest ? 'disabled' : ''}>${state.postingRequest ? 'Posting…' : 'Post request'}</button><a href="/" data-route>Cancel</a></div>
       </form></section>`;
+  },
+  // Where agents may process this request's data (processing-region.cjs). A company's
+  // rule always wins, so the field says so for requests filed in that company.
+  postRegionField(draft) {
+    const rules = this.regionRules();
+    const option = (value, label) => `<option value="${value}" ${(draft.regionChoice || '') === value ? 'selected' : ''}>${label}</option>`;
+    return `<label for="post-region">Data processed in <span class="mk-optional">optional</span></label><select id="post-region" name="processingRegion">${option('', 'Any region')}${Object.entries(this.REGIONS).map(([id, label]) => option(id, `The ${label} only`)).join('')}</select>
+      <p class="mk-caption">Only agents whose builders declare this region can quote, be chosen or start. Builders declare it; Relay doesn’t verify it.${rules.length ? ` ${escape(rules.map(r => `Requests filed in ${r.name} always need the ${this.REGIONS[r.region]}, whatever you choose here`).join('. '))}.` : ''}</p>`;
   },
   // Organizations and projects you can file a request into (docs/specs/Enterprise-and-Projects.md).
   postTargetValue() {
@@ -621,7 +636,8 @@ const RelayMarketplace = {
     const erp = data.get('kind') === 'erp' && typeof RelayIntake === 'object';
     const intake = erp ? RelayIntake.intakeFromForm(data, state.account) : null;
     const categoryId = String(data.get('categoryId') || '') || null;
-    state.postDraft = { title, brief, criteria: criteria.join('\n'), intake, categoryId };
+    const regionChoice = String(data.get('processingRegion') || '') || null;
+    state.postDraft = { title, brief, criteria: criteria.join('\n'), intake, categoryId, regionChoice };
     if (criteria.length > 12) { notice.textContent = 'Use at most 12 checklist items.'; return; }
     // Read the file before re-rendering: the file field doesn't survive a render.
     const file = form.elements.input?.files?.[0];
@@ -638,6 +654,7 @@ const RelayMarketplace = {
           tenantId: targetTenant || state.tenantId || state.account.memberships[0].id, title, brief,
           ...(targetProject ? { projectId: targetProject } : {}),
           ...(categoryId ? { categoryId } : {}),
+          ...(regionChoice ? { processingRegion: regionChoice } : {}),
           ...(state.retryFrom && !preferred ? { retryFromTaskId: state.retryFrom.taskId, expectedSourceVersion: state.retryFrom.expectedSourceVersion } : {}),
           ...(preferred?.repeatFromTaskId ? { repeatFromTaskId: preferred.repeatFromTaskId, expectedSourceVersion: preferred.expectedSourceVersion } : {}),
           ...(preferred && !preferred.repeatFromTaskId ? { preferredAgentId: preferred.id, preferenceMode: preferred.preferenceMode || 'agent', discoverySource: preferred.discoverySource || 'storefront' } : {}),
@@ -666,7 +683,7 @@ const RelayMarketplace = {
         await command(`/api/tasks/${taskId}/intake`, 'POST', { expectedVersion: detail.task.version, intake });
         detail = await api('/api/tasks/' + taskId);
       }
-      if (detail.task.status === 'draft' && (!detail.intake || detail.intake.readiness.complete)) await command(`/api/tasks/${taskId}/post`, 'POST', { expectedVersion: detail.task.version });
+      if (detail.task.status === 'draft' && (!detail.intake || detail.intake.readiness.complete)) await command(`/api/tasks/${taskId}/post`, 'POST', { expectedVersion: detail.task.version, processingRegion: regionChoice });
       state.postDraft = null; state.postTaskId = null; state.postFile = null; state.postTarget = null; state.preferredAgent = null; state.retryFrom = null; state.prompt = '';
       state.postKind = null;
       notice.textContent = intake ? 'Request saved. Add the files below; offers open once the intake is complete.' : 'Request posted. Offers appear here as agents quote.';
@@ -760,7 +777,7 @@ const RelayMarketplace = {
     if (target.account?.user.workspace !== 'buyer' || t?.status !== 'draft' || d.intake) return false;
     if (t.orchestrationPlan || t.orchestrationStep || t.recurringScheduleId || t.scheduleId || (t.workPlan && t.workPlan.cadence !== 'once')) return false;
     target.postTaskId = t.id;
-    target.postDraft = { title: t.title, brief: t.brief, criteria: (t.acceptanceCriteria || []).map(c => c.text).join('\n') };
+    target.postDraft = { title: t.title, brief: t.brief, criteria: (t.acceptanceCriteria || []).map(c => c.text).join('\n'), regionChoice: t.regionChoice || null };
     target.buyerTab = 'request'; target.detail = null;
     return true;
   },

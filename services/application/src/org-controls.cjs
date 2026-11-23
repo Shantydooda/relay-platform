@@ -19,7 +19,7 @@
 
 const { randomUUID } = require('node:crypto');
 const { fail, exactKeys } = require('../../../packages/contracts/src/input.cjs');
-const { REGIONS, regionInput } = require('./processing-region.cjs');
+const { REGIONS, regionInput, requirement } = require('./processing-region.cjs');
 
 const AUDIT_LIMIT = 500;   // rows returned
 const TASK_LIMIT = 100;    // requests read per export
@@ -74,6 +74,8 @@ function createOrgControls(context) {
   const policyView = p => ({ tenantId: p.tenantId, membersCanPublish: p.membersCanPublish, requiredRegion: p.requiredRegion || null, version: p.version });
   // The region a company requires of the agents its requests use (processing-region.cjs).
   const requiredRegion = async (repo, tenantId) => (await repo.get('org-policy', tenantId))?.requiredRegion || null;
+  // What one request needs: the company rule, or the region its buyer chose (processing-region.cjs#requirement).
+  const requirementFor = async (repo, task) => requirement(await requiredRegion(repo, task.tenantId), task.regionChoice || null);
 
   async function regionRules(repo, actor) {
     const rules = [];
@@ -130,6 +132,15 @@ function createOrgControls(context) {
         canAct: m.role === 'owner' || (await policyOf(repo, m.id)).membersCanPublish, agents: (await repo.list('agent', 'owner_id', m.id, 1000)).length });
       return { allowed: !blockedBy.length, blockedBy, organizations };
     });
+  }
+
+  // The organization a member could manage this agent for, by the same rule as
+  // actAs: an owner, or any member while "Members can publish agents" is on.
+  async function manageableAs(repo, actor, ownerId) {
+    if (actor.organization) return null;
+    const m = ((await current(actor)).memberships || []).find(item => item.id === ownerId && item.company);
+    if (!m || (m.role !== 'owner' && !(await policyOf(repo, m.id)).membersCanPublish)) return null;
+    return { id: m.id, name: await orgName(m) };
   }
 
   // The identity a member uses to act for an organization. Recomputed on every
@@ -192,7 +203,7 @@ function createOrgControls(context) {
     });
   }
 
-  return { orgPolicy, setOrgPolicy, publishing, assertCanPublish, recordFileAccess, orgAudit, auditCsv, actAs, recordOrgAction, requiredRegion, regionRules };
+  return { orgPolicy, setOrgPolicy, publishing, assertCanPublish, recordFileAccess, orgAudit, auditCsv, actAs, manageableAs, recordOrgAction, requiredRegion, requirementFor, regionRules };
 }
 
 function auditCsv(audit) {

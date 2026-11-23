@@ -854,6 +854,11 @@ root.addEventListener('click',event=>{
       state.setupAgentId=null;state.addingAgent=false;state.builderTab='dashboard';state.agents=[];
       if(typeof RelayMarketplace==='object')await RelayMarketplace.go('/build');else{await refresh();render();}
     }
+    else if(action==='manage-agent-as'){
+      // From an organization's agent page: build as that organization, then open the agent's page in Build.
+      state.actingAs=button.dataset.org;storeActing(state.actingAs);state.agents=[];
+      await RelayMarketplace.go(button.dataset.href);
+    }
     else if(action==='agent-tab'){state.setupAgentId=button.dataset.id;state.agentTab=button.dataset.tab;render();root.querySelector('#workspace-main')?.focus({preventScroll:true});}
     else if(action==='open-agent'||action==='agent-step'){state.setupAgentId=button.dataset.id;const a=state.agents.find(a=>a.id===state.setupAgentId);state.setupStage=action==='agent-step'?Number(button.dataset.step):(a.setupStage||2);if(typeof RelayBuild==='object')state.agentTab=action==='agent-step'?RelayBuild.STEP_TAB[state.setupStage]:RelayBuild.defaultTab(a);location.hash=`agent=${a.id}&step=${state.setupStage}`;if(action==='open-agent')await refresh(null);render();}
     else if(action==='add-capability'){document.querySelector('#capability-rows').insertAdjacentHTML('beforeend',capabilityRow());captureAgentDraft(document.getElementById('agent'));}

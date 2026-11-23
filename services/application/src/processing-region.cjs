@@ -20,11 +20,21 @@ function regionInput(value, label = 'Processing region') {
 }
 const allows = (required, agent) => !required || agent?.processingRegion === required;
 
-function assertAllowed(required, agent, side = 'buyer') {
-  if (allows(required, agent)) return;
-  fail(409, 'REGION_REQUIRED', side === 'buyer'
-    ? `Your organization only uses agents that process data in ${REGIONS[required]}. ${agent?.name || 'This agent'} ${agent?.processingRegion ? `declares ${REGIONS[agent.processingRegion]}` : 'hasn’t declared a region'}.`
-    : `This request needs an agent that processes data in ${REGIONS[required]}. Declare it on the agent’s profile if that’s where it runs.`);
+// What a request needs: its company's rule if there is one, otherwise the region
+// the buyer chose for this request. A company rule always wins.
+function requirement(orgRegion, choice) {
+  if (orgRegion) return { region: orgRegion, by: 'organization' };
+  return choice ? { region: choice, by: 'request' } : null;
 }
 
-module.exports = { REGIONS, regionInput, allows, assertAllowed };
+// `required` is a requirement, or a bare region (a company rule).
+function assertAllowed(required, agent, side = 'buyer') {
+  const rule = typeof required === 'string' ? { region: required, by: 'organization' } : required;
+  if (allows(rule?.region, agent)) return;
+  const declared = `${agent?.name || 'This agent'} ${agent?.processingRegion ? `declares ${REGIONS[agent.processingRegion]}` : 'hasn’t declared a region'}.`;
+  fail(409, 'REGION_REQUIRED', side === 'buyer'
+    ? `${rule.by === 'request' ? 'You asked for an agent that processes' : 'Your organization only uses agents that process'} data in ${REGIONS[rule.region]}. ${declared}`
+    : `This request needs an agent that processes data in ${REGIONS[rule.region]}. Declare it on the agent’s profile if that’s where it runs.`);
+}
+
+module.exports = { REGIONS, regionInput, allows, requirement, assertAllowed };
