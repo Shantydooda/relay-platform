@@ -101,7 +101,7 @@ test('Build is for builders: an account with no agent is sent to start one, with
 
 test('a set-up agent opens on its overview; a draft opens on its next setup step', () => {
   const passed = [{ id: 'c1', task: 'Clean CSV', qualification: 'qualified' }];
-  const live = agent({ capabilities: passed, listingStatus: 'published', runtime: { connected: true, connectedAt: Date.now() - 120000 }, rules: { automaticRequested: true, automaticEnabled: true, automaticScope: 'limited', automaticLimitMinor: 50000, minimumPayout: 100, currency: 'USD' } });
+  const live = agent({ capabilities: passed, listingStatus: 'published', runtime: { connected: true, connectedAt: Date.now() - 100000 }, rules: { automaticRequested: true, automaticEnabled: true, automaticScope: 'limited', automaticLimitMinor: 50000, minimumPayout: 100, currency: 'USD' } });
   const b = build({ agents: [live], account: { user: { name: 'Builder', workspace: 'builder' } } });
   assert.equal(b.defaultTab(live), 'overview');
   assert.equal(b.defaultTab(agent()), 'connection', 'a described draft goes straight to connecting');
@@ -109,7 +109,7 @@ test('a set-up agent opens on its overview; a draft opens on its next setup step
   const html = b.manage(live, { tests: () => 'TESTS' });
   assert.match(html, /aria-current="page">Overview</);
   assert.match(html, /Ready for work/);
-  assert.match(html, /last check-in 2 min ago/);
+  assert.match(html, /Connected · checked in 2 min ago/);
   assert.match(html, /Small requests only: up to USD 500, never ERP data/);
   assert.doesNotMatch(html, /TESTS/);
   assert.match(build({ agents: [agent()] }).manage(agent(), { connection: () => 'CONNECT' }), /CONNECT/);
@@ -165,4 +165,45 @@ test('a member can build as an organization: its name is the handle, and the swi
   assert.equal(build({ account: { user: { workspace: 'buyer' } }, publishing, ownAgentCount: 0 }).isBuilder(), true);
   assert.equal(build({ account: { user: { workspace: 'buyer' } }, publishing: { organizations: [] }, ownAgentCount: 0 }).isBuilder(), false);
   assert.doesNotMatch(build({ account, agents: [agent()] }).shell('dashboard', 'Dashboard', '', '', ''), /Building as/, 'no switcher without an organization');
+});
+
+test('connection status says what is true right now, from the last check-in and the key', () => {
+  const b = build(), now = Date.parse('2026-11-20T12:00:00Z');
+  const at = (runtime) => ({ ...b.connection({ runtime }, now) });
+  assert.deepEqual(at({ connected: false, connectedAt: null, expiresAt: null }), { tone: 'off', label: 'Not connected' });
+  assert.deepEqual(at({ connected: false, connectedAt: null, expiresAt: now + 7 * 86400000 }), { tone: 'wait', label: 'Key ready · waiting for the first check-in' });
+  assert.deepEqual(at({ connected: true, connectedAt: now - 20000, expiresAt: now + 7 * 86400000 }), { tone: 'live', label: 'Connected · checked in 20 s ago' });
+  assert.deepEqual(at({ connected: true, connectedAt: now - 3 * 60000, expiresAt: now + 7 * 86400000 }), { tone: 'stale', label: 'Offline · last check-in 3 min ago' }, 'the server flag goes stale; the check-in time decides');
+  assert.deepEqual(at({ connected: false, connectedAt: now - 60000, expiresAt: now - 1 }), { tone: 'off', label: 'Key expired · create a new one' });
+  assert.equal(at({ connected: true, connectedAt: now - 5000, expiresAt: now + 20 * 3600000 }).label, 'Connected · checked in 5 s ago · key expires in 20 h');
+  const badge = b.connectionBadge({ runtime: { connected: true, connectedAt: now - 20000, expiresAt: now + 86400000 * 3 } });
+  assert.match(badge, /class="mk-conn mk-conn-(live|stale)" data-conn-at="\d+" data-conn-exp="\d+" data-conn-on="1"/, 'the badge carries what the ticker needs to update it in place');
+});
+
+test('Settings lists every agent’s connection key, payouts and notifications; Earnings explains getting paid plainly', () => {
+  const now = Date.now();
+  const agents = [agent({ runtime: { connected: true, connectedAt: now - 10000, expiresAt: now + 10 * 86400000, transport: 'supplier-api' } }), agent({ id: 'a2', name: 'Draft One' })];
+  const b = build({ account: { user: { name: 'Test Builder', workspace: 'builder' } }, agents });
+  const html = b.settings();
+  assert.match(html, /Connection keys/);
+  assert.match(html, /test-builder\/csv-cleaner[\s\S]*Connected · checked in 10 s ago[\s\S]*Your own runtime \(API\)[\s\S]*in 10 days/);
+  assert.match(html, /test-builder\/draft-one[\s\S]*Not connected[\s\S]*No key/);
+  assert.match(html, /data-action="agent-tab" data-id="a2" data-tab="connection">Connect</);
+  assert.match(html, /<h2>Payouts/);
+  assert.match(html, /<h2>Notifications/);
+  assert.match(html, /bell/);
+  const earnings = b.earnings();
+  assert.match(earnings, /Paid to you/);
+  assert.doesNotMatch(earnings, /settlement/, 'no payments jargon');
+});
+
+test('connection badges age in place: a live agent turns offline without a re-render', () => {
+  const b = build(), now = Date.now();
+  const node = { dataset: { connAt: String(now - 30000), connExp: String(now + 7 * 86400000), connOn: '1' }, textContent: '', className: '' };
+  b.tickConnections([node], now);
+  assert.equal(node.textContent, 'Connected · checked in 30 s ago');
+  assert.equal(node.className, 'mk-conn mk-conn-live');
+  b.tickConnections([node], now + 5 * 60000);
+  assert.equal(node.textContent, 'Offline · last check-in 6 min ago');
+  assert.equal(node.className, 'mk-conn mk-conn-stale');
 });
