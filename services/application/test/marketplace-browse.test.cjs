@@ -78,3 +78,16 @@ test('price sort puts the cheapest package first and quoted-only agents last', (
     { builder: 'c', name: 'cheap', fromPrice: { amountMinor: 1000, currency: 'USD' }, evidence: { runs: 0 } }];
   assert.deepEqual(sortRows(rows, 'price').map(item => item.name), ['cheap', 'dear', 'quoted']);
 });
+
+test('each row names its builder by an opaque, stable id, so two builders with one name stay apart', () => {
+  const mine = row([]);
+  const twin = browseRow({ agent: { ...agent, id: 'a2', ownerId: 'someone-else' }, listing: listing(), history: [], now: NOW, connectors: [], actor: { user: { id: 'buyer' } } });
+  assert.equal(mine.builder, twin.builder, 'same display name');
+  assert.match(mine.builderId, /^[0-9a-f]{16}$/);
+  assert.notEqual(mine.builderId, twin.builderId);
+  assert.equal(row([]).builderId, mine.builderId, 'stable');
+  assert.ok(!JSON.stringify(mine).includes('"op"'), 'the account id is never shown');
+  assert.equal(mine.builderKind, 'person');
+  const org = browseRow({ agent: { ...agent, operatorKind: 'organization' }, listing: listing(), history: [], now: NOW, connectors: [], actor: { user: { id: 'buyer' } } });
+  assert.equal(org.builderKind, 'organization');
+});

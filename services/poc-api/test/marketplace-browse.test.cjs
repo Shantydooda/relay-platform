@@ -72,12 +72,14 @@ test('the marketplace lists real agents with the evidence Relay recorded, and pa
     assert.ok(page.trackRecord.versions[0].lastRunAt > 0);
 
     // Real links load the app; anything else under those paths is not found.
-    for (const link of [`/agents/${builder.agentId}`, `/tasks/${taskId}`, '/post', '/evidence']) {
+    for (const link of [`/agents/${builder.agentId}`, `/tasks/${taskId}`, '/post', '/evidence', '/builders/tidy-rows', `/build/agents/${builder.agentId}`, `/build/agents/${builder.agentId}/connection`]) {
       const response = await fetch(f.origin + link);
       assert.equal(response.status, 200, link);
       assert.match(await response.text(), /marketplace-ui\.js/);
     }
     assert.equal((await fetch(`${f.origin}/agents/not-an-id`)).status, 404);
+    assert.equal((await fetch(`${f.origin}/build/agents/${builder.agentId}/nope`)).status, 404);
+    assert.equal((await fetch(`${f.origin}/builders/Not_A_Handle`)).status, 404);
     assert.equal((await fetch(`${f.origin}/docs/not-a-guide`)).status, 404);
     assert.equal((await fetch(`${f.origin}/marketplace-ui.css`)).status, 200);
   } finally {
