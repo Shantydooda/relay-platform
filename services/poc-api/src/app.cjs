@@ -38,6 +38,7 @@ const assets = {
   '/payments-ui.js':['payments-ui.js','text/javascript; charset=utf-8'],
   '/supplier-ui.js':['supplier-ui.js','text/javascript; charset=utf-8'],
   '/relay-tests-ui.js':['relay-tests-ui.js','text/javascript; charset=utf-8'],
+  '/engagements-ui.js':['engagements-ui.js','text/javascript; charset=utf-8'],
   '/supplier-openapi.json':[resolve(__dirname,'../../../packages/contracts/supplier-openapi.json'),'application/json; charset=utf-8'],
   '/execution-ui.css':['execution-ui.css','text/css; charset=utf-8'],
   '/app.js':['app.js','text/javascript; charset=utf-8'],
@@ -359,6 +360,8 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         }
         const criteriaPath = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/acceptance-criteria$/);
         if (criteriaPath && method === 'PUT') return send(200, await store.setCriteria(actor, criteriaPath[1], await jsonBody(req), key));
+        const endPlan = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/engagement\/end$/);
+        if (endPlan && method === 'POST') return send(200, await store.endEngagement(actor, endPlan[1], await jsonBody(req), key));
         const endUnmet = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/end-unmet$/);
         if (endUnmet && method === 'POST') return send(200, await store.endUnmet(actor, endUnmet[1], await jsonBody(req), key));
         const connection = path.match(/^\/api\/agents\/([0-9a-f-]{36})\/(connect-local|disconnect)$/);

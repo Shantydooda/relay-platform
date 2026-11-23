@@ -53,6 +53,8 @@ Before live money, get legal and Stripe review of how long funds may be held and
 
 **Open:** connect the exit to refunds before live money, and decide the review window before turning auto-accept on.
 
+**Milestones (built 20 Nov 2026, local):** a failed milestone follows today's per-task rules (refund before payout; "end as unmet" after two rounds). Earlier accepted milestones are never reopened. Ending a plan cancels only unstarted milestones. The guarantee choice above still decides what Relay owes on top.
+
 ## 3. Seed category: decided
 
 **B2B data & research**, with sales & marketing as the adjacent expansion (founder, 16 Nov 2026). Evidence and product changes: `docs/Seed-Category.md`.

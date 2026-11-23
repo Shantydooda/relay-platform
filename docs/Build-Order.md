@@ -21,6 +21,7 @@ Five branches are built and pushed but **not merged**. Each one is built on the 
 | `claude/processing-region` | Processing region: declare, filter, require (PR #16) |
 | `claude/fees` | Fees and payouts, option B, off by default (PR into `claude/processing-region`) |
 | `claude/relay-test-proposals` | Builder-proposed Relay tests, reviewed by Relay staff (PR into `claude/fees`) |
+| `claude/engagements` | Milestone plans (step 9), plus per-builder Relay test attempts and answer times (PR into `claude/relay-test-proposals`) |
 
 The pilot still runs `1ad3d8b`. Nothing above is deployed.
 
@@ -86,16 +87,24 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
   - answers are seen only by the author and staff; submitted outputs and their hashes never appear in public evidence (the run's input is public, so a hash could be checked offline);
   - the person behind an organization's proposal can't review it either; reviewers show as "Relay staff";
   - the expected output can't be the input unchanged, and the change request must change the answer;
-  - a pass only counts for the test's category; 3 attempts per agent per test per day;
+  - a pass only counts for the test's category; 3 attempts per builder per test per day, across all their agents;
+  - evidence says how long the agent took to answer each round (a runtime is usually much faster than a person; a signal, not proof);
   - a reviewer can't approve their own test.
 - **The author may take their own test, and the agent card says so** ("written by this agent's own builder"). Exam bodies usually bar writers from their own exam; here that would leave a builder in an untested category with no way to list, so it's disclosed instead and staff review with it in mind. Revisit if it's abused.
 - Retiring stops new runs; passes already earned stand until they expire (30 days at most). A run already started (it has an hour) can still finish.
-- Limits to know: only the `{{nonce}}` changes between runs, so an agent built around one test's template can pass it every time; treat builder-written tests as basic checks. The 3-attempt limit is per agent, not per builder.
+- Limits to know: only the `{{nonce}}` changes between runs, so an agent built around one test's template can pass it every time; treat builder-written tests as basic checks.
 - Staff are set locally with `RELAY_TEST_REVIEWER_USER_IDS` (comma-separated user IDs) and see "Review Relay tests" in the account menu. Local only, like the Relay tests themselves; hosted isn't wired.
 - Not built: tests with several cases, partial credit or structured (JSON) comparison; proposals by an organization rather than a person; notifications when a proposal is decided (the builder sees it on the page).
 
-**9. Engagements and milestones** (`specs/Engagements-and-Milestones.md`).
+**9. Engagements and milestones.** ✅ First slice built 20 Nov (branch `claude/engagements`, `specs/Engagements-and-Milestones.md`).
 - Multi-step ERP work with staged payments. Needs fees (7) first.
+- **Builders offer in milestones.** On any open request, a builder can split their offer into 2–6 milestones, each with a name, a checklist, a price and a delivery time (Build → Opportunities). The offer's price and time are the totals. Like Upwork and Fiverr, the seller proposes the stages and the buyer accepts or chooses another offer. Plans are written by the builder in Relay; the Supplier API refuses them (`MILESTONES_UNSUPPORTED`), so automatic bids stay single-price.
+- **Accepting the plan.** Choosing a plan offer turns the request into a plan and each milestone into its own task, reserved for that agent with its terms already chosen (`services/application/src/engagements.cjs`). From there a milestone is ordinary work: company approval, budget caps, processing region, funding, start checks, delivery, free fixes until its checklist is met, change requests and acceptance all run unchanged, and the outcome ledger counts each milestone as one run of the agent.
+- **One at a time.** A milestone can be paid for or started only after the one before is accepted (`MILESTONE_ORDER`); money is never held for work that can't start. The plan itself can never be paid for or started as a whole (`ENGAGEMENT_PARENT`). Accepted terms are frozen: the plan can't be re-chosen, edited or changed by a change request, and a milestone's scope is fixed until it starts. Once it starts, change requests work as for any task and reprice that milestone on its own. A milestone's agreed terms don't expire while the plan is open.
+- **Ending the plan** cancels the milestones not started; accepted milestones stand, and one in progress finishes or ends on its own page. It's refused while an unstarted milestone holds a payment (refund it first).
+- **Fees:** each milestone carries its slice of the tiered fee on the whole amount (fee of the first k milestones minus the first k−1), so a plan costs exactly what one offer of the same total would, and every milestone reconciles (price = builder's price + fee). Tested on SQLite and Postgres with the sandbox payments double.
+- **What buyers see:** the plan inside the offer (each milestone's all-in price and checklist), a plan page with each milestone's status and what's accepted so far, a "Milestone 2 of 3" page per milestone, and the plan listed once in Your work with its current milestone.
+- Not yet: Relay proposing the milestones (needs the hosted assistant decision); adding or repricing a milestone after acceptance (today: a change request inside a running milestone); subcontractors under a lead builder; milestones running in parallel; retiring `orchestration.cjs` plans into this model; auto-release on buyer silence (still off everywhere); hosted wiring and real money (need founder approval and the independent review).
 
 **10. Enterprise step 4, when a real enterprise asks:** SSO and SCIM, private agents, connector credential approval, invoice billing. Enforced 2FA and joining by email domain come with SSO.
 

@@ -10,6 +10,7 @@ function taskWaitingForPermission(task) {
 // serves older servers and the plan and recurring-review cases it doesn't cover.
 const reviewingSchedule = (task) => task.status === 'selected' && task.workPlan && task.workPlan.cadence !== 'once';
 const taskLabel = (task) =>
+  task.engagement && typeof RelayEngagements === 'object' ? RelayEngagements.label(task) :
   task.orchestrationPlan ? (task.orchestrationPlan.status === 'accepted' ? 'Completed plan' : 'Plan in progress') :
   typeof RelayWorkState === 'object' && RelayWorkState.known(task) && !reviewingSchedule(task)
     ? RelayWorkState.label(task)

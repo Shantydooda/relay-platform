@@ -134,6 +134,7 @@ function createPayments(context, provider) {
       await taskFor(repo, actor, id, true);
       if (!task.companyApprovalRequired && !actor.memberships.find(m => m.id === task.tenantId)?.company) await ownerBuyer(repo, actor, id);
       assertUnfunded(task);
+      await require('./engagements.cjs').assertTurn(repo, task);
       if (task.assignment || task.status !== 'posted') fail(409, 'FUNDING_UNAVAILABLE', 'Select an offer before funding.');
       const offer = task.offers.find(o => o.id === task.selectedOfferId);
       if (!offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now()) fail(409, 'OFFER_UNAVAILABLE', 'Select a current offer.');
