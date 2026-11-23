@@ -25,6 +25,7 @@ Five branches are built and pushed but **not merged**. Each one is built on the 
 | `claude/small-gaps` | A region per request, Settings tab for organization members, notifications on Relay test decisions (PR into `claude/eval-suites`) |
 | `claude/eval-suites` | Open evaluation suites for company research and lead lists, shown on agent pages (PR into `claude/relay-test-cases`) |
 | `claude/relay-test-cases` | Relay tests with 1–5 cases, and four Relay-written B2B data tests (PR into `claude/ux-quick-fixes`) |
+| `claude/relay-connector` | Relay Connector: ERP data through a connector inside the buyer's network (PR into `claude/ux-quick-fixes`) |
 | `claude/ux-quick-fixes` | UX review quick fixes: readable notification badge, drafts in Your work, buyer wording (PR into `claude/connection-reads`) |
 | `claude/connection-reads` | Agents read buyer systems outside the request's lock (PR into `claude/integrations`) |
 | `claude/integrations` | Settings → Integrations for every account, Hugging Face settings style (PR into `claude/refund-on-end`) |
@@ -139,6 +140,7 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
   - Buyer wording: "execution" and "supplier" are gone from the offer, start and run screens ("Recommended agent", "Stop the work", "Why it fits").
   - Already fixed by the redesign: the needs-you count includes offers waiting for a choice, the shimmer is gone, the chat composer no longer exists.
 - ✅ **Reads outside the lock** (21 Nov, branch `claude/connection-reads`): a slow buyer system no longer holds the request while it answers; access that ends mid-read returns nothing.
+- ✅ **Relay Connector** (23 Nov, branch `claude/relay-connector`; founder chose "bring your own connector" for ERP). Buyers set up NetSuite, SAP S/4HANA, Dynamics 365 or any ERP's exports under Settings → Integrations without giving Relay a login: Relay issues a one-time connector key, the buyer runs the connector (`packages/relay-connector`, Node or Docker) next to their CSV exports, and it answers only granted reads, outbound only, with its own local log. Agents ask for and read ERP data exactly as for other connections. Not yet: direct ERP API adapters behind it, formats other than CSV, a published package, hosted wiring, and the independent security review before real data. Spec: `specs/Buyer-Connections.md` → "Relay Connector".
 - The pilot acceptance work in `Status.md`: independent supplier, Stripe test payout, Google Drive and Attio, hosted release rehearsal. Much of it needs the founder or a provider, not code.
 
 ## Not planned

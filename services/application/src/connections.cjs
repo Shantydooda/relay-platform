@@ -26,6 +26,7 @@
 const { randomUUID, createHash } = require('node:crypto');
 const { fail, text, exactKeys } = require('../../../packages/contracts/src/input.cjs');
 const { pauseForPermission, resumeAfterPermission } = require('./permission-wait.cjs');
+const { createConnectorBridge } = require('./relay-connector.cjs');
 
 const MAX_DAYS = 30;
 const MAX_OBJECTS = 10;
@@ -48,6 +49,7 @@ const PLANNED = Object.freeze([
 function createConnections(context) {
   const { repository, command, now, resolveActor, taskFor, expected, event, connectionVault, connectionProviders = [] } = context;
   const providers = new Map(connectionProviders.map(p => [p.kind, p]));
+  const bridge = createConnectorBridge(context);
 
   function enabled() {
     if (!connectionVault) fail(503, 'CONNECTIONS_UNAVAILABLE', 'Connections aren’t set up on this server.');
@@ -75,7 +77,8 @@ function createConnections(context) {
   }
   function connectionView(c) {
     const { id, tenantId, provider: kind, environment, label, account, objects, status, version, createdAt, verifiedAt } = c;
-    return { id, tenantId, provider: kind, providerLabel: providers.get(kind)?.label || kind, environment, label, account, objects: [...objects], status, version, createdAt, verifiedAt };
+    return { id, tenantId, provider: kind, providerLabel: providers.get(kind)?.label || kind, environment, label, account, objects: [...objects], status, version, createdAt, verifiedAt,
+      ...(c.mode === 'connector' ? { mode: 'connector', connector: bridge.view(c) } : {}) };
   }
   function objectsInput(value, allowed) {
     if (!Array.isArray(value) || !value.length || value.length > MAX_OBJECTS || new Set(value).size !== value.length || value.some(o => !allowed.includes(o)))
@@ -90,7 +93,7 @@ function createConnections(context) {
   function connectionCatalog() {
     return [
       ...[...providers.values()].map(p => ({ kind: p.kind, label: p.label, available: true, environments: [...p.environments], objects: [...p.objects],
-        objectParams: Object.fromEntries(Object.entries(p.objectParams || {}).map(([k, v]) => [k, [...v]])), help: p.help || null,
+        objectParams: Object.fromEntries(Object.entries(p.objectParams || {}).map(([k, v]) => [k, [...v]])), help: p.help || null, ...(p.connector ? { connector: true } : {}),
         credentialFields: p.credentialFields.map(({ name, label, secret }) => ({ name, label, secret: !!secret })) })),
       ...PLANNED.filter(p => !providers.has(p.kind)).map(p => ({ ...p, available: false })),
     ];
@@ -113,6 +116,7 @@ function createConnections(context) {
     const p = provider(body.provider);
     if (!p.environments.includes(body.environment)) fail(400, 'INVALID_INPUT', 'Choose sandbox or production.');
     const label = text(body.label, 'Name', 2, 80);
+    if (p.connector) return connectThroughConnector(actor, body, key, p, label);
     if (!body.credentials || typeof body.credentials !== 'object' || Array.isArray(body.credentials)) fail(400, 'INVALID_INPUT', 'Enter the connection details.');
     const fields = p.credentialFields.map(f => f.name);
     exactKeys(body.credentials, fields);
@@ -135,6 +139,29 @@ function createConnections(context) {
     }, `connections:${body.tenantId}`);
   }
 
+  // The buyer's connector keeps the ERP login inside their network, so there
+  // is nothing to verify or seal here: Relay issues a connector key, shown once
+  // and stored as a hash. The connection serves nothing until the connector
+  // checks in and says which objects it serves.
+  async function connectThroughConnector(actor, body, key, p, label) {
+    if (body.credentials !== undefined && (typeof body.credentials !== 'object' || body.credentials === null || Object.keys(body.credentials).length))
+      fail(400, 'INVALID_INPUT', 'The Relay Connector keeps your login inside your network. Don’t enter it here.');
+    const id = randomUUID(), issued = bridge.issueKey(id);
+    const result = await command(actor.user.id, key, ['connect', { ...body, credentials: {} }], () => manager(actor, body.tenantId), async repo => {
+      if ((await repo.list('connection', 'tenant_id', body.tenantId, 101)).filter(c => c.status === 'active').length >= 100)
+        fail(409, 'CONNECTION_LIMIT', 'A workspace can connect up to 100 systems.');
+      const time = now();
+      await repo.save('connection', { id, tenantId: body.tenantId, ownerId: actor.user.id, provider: p.kind, environment: body.environment, label, account: '',
+        objects: [], mode: 'connector', secret: null, connectorKeyHash: issued.hash, connectorSeenAt: null, connectorVersion: null,
+        status: 'active', accessEpoch: 1, version: 1, createdAt: time, verifiedAt: null });
+      await repo.save('connection-audit', { id: randomUUID(), tenantId: body.tenantId, ownerId: actor.user.id, connectionId: id, action: 'connected', createdAt: time });
+      return { connectionId: id, version: 1 };
+    }, `connections:${body.tenantId}`);
+    // A replayed request returns the first connection without its key: the key
+    // is shown once, to the request that created it.
+    return result.connectionId === id ? { ...result, connectorKey: issued.key } : result;
+  }
+
   async function disconnect(actor, id, body, key) {
     enabled();
     exactKeys(body, ['expectedVersion']);
@@ -148,6 +175,7 @@ function createConnections(context) {
       const c = await access(repo); expected(c, body.expectedVersion);
       // Deleting the sealed credential and bumping the epoch voids every grant on it.
       c.status = 'disconnected'; c.secret = null; c.accessEpoch++; c.version++; c.updatedAt = now();
+      if (c.mode === 'connector') await bridge.voidConnection(repo, c);
       await repo.save('connection', c);
       for (const g of await repo.list('access-grant', 'tenant_id', c.tenantId, 500))
         if (g.connectionId === c.id && g.status === 'active') { g.status = 'revoked'; g.revokedReason = 'disconnected'; g.version++; await repo.save('access-grant', g); }
@@ -282,7 +310,7 @@ function createConnections(context) {
     if (!g || g.status !== 'active' || g.expiresAt <= now() || g.taskId !== task.id || g.assignmentId !== task.assignment.id || g.agentId !== task.assignment.agentId)
       fail(403, 'GRANT_REQUIRED', 'Access is missing, revoked or expired. Ask the buyer again.');
     const c = await repo.get('connection', g.connectionId);
-    if (!c || c.status !== 'active' || c.accessEpoch !== g.connectionEpoch || !c.secret)
+    if (!c || c.status !== 'active' || c.accessEpoch !== g.connectionEpoch || (!c.secret && c.mode !== 'connector'))
       fail(403, 'GRANT_REQUIRED', 'The buyer disconnected this system.');
     const granter = resolveActor ? await resolveActor(g.ownerId) : null;
     const m = granter?.memberships?.find(item => item.id === g.tenantId);
@@ -314,10 +342,14 @@ function createConnections(context) {
     };
     const before = await repository.read(async repo => {
       const { task, g, c } = await check(repo);
-      return { assignmentId: task.assignment.id, connectionId: c.id, epoch: c.accessEpoch, kind: c.provider,
-        credentials: connectionVault.open(c.secret, `connection:${c.id}`) };
+      return { assignmentId: task.assignment.id, connectionId: c.id, epoch: c.accessEpoch, kind: c.provider, grantId: g.id,
+        agent: c.mode === 'connector' ? (await repo.get('agent', task.assignment.agentId))?.name || 'Agent' : null, request: task.title,
+        credentials: c.mode === 'connector' ? null : connectionVault.open(c.secret, `connection:${c.id}`) };
     });
-    const result = await provider(before.kind).read(before.credentials, { object: body.object, cursor: body.cursor ?? 0, limit: READ_LIMIT, params });
+    const ask = { object: body.object, cursor: body.cursor ?? 0, limit: READ_LIMIT, params };
+    const result = before.credentials === null
+      ? await bridge.read(before.connectionId, { ...ask, grantId: before.grantId, agent: before.agent, request: before.request })
+      : await provider(before.kind).read(before.credentials, ask);
     return repository.transaction(`task:${taskId}`, async repo => {
       const { task, g, c } = await check(repo);
       if (task.assignment.id !== before.assignmentId || c.id !== before.connectionId || c.accessEpoch !== before.epoch)
@@ -379,7 +411,10 @@ function createConnections(context) {
       .map(g => ({ id: g.id, provider: g.provider, environment: g.environment, objects: [...g.objects], expiresAt: g.expiresAt }));
   }
 
-  return { connectionCatalog, connections, connect, disconnect, requestAccess, approveAccess, declineAccess, revokeAccess, readAccess, endBlocked, forTask, grantsForAgent };
+  return { connectionCatalog, connections, connect, disconnect, requestAccess, approveAccess, declineAccess, revokeAccess, readAccess, endBlocked, forTask, grantsForAgent,
+    connectorHello: (key, body) => { enabled(); return bridge.hello(key, body); },
+    connectorNextRead: (key, options) => { enabled(); return bridge.nextRead(key, options); },
+    connectorAnswer: (key, readId, body) => { enabled(); return bridge.answer(key, readId, body); } };
 }
 
 module.exports = { createConnections, ACCESS_WAIT_LIMIT_MS, MAX_DAYS };
