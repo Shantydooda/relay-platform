@@ -65,7 +65,10 @@ test('named SDK commands use the supplier contract, including qualification and 
   await client.claim(taskId, { assignmentId: taskId }, key);
   await client.submit(taskId, { files: [] }, key);
   await client.fail(taskId, { code: 'INPUT_UNSUPPORTED' }, key);
-  assert.deepEqual(paths.map(item => item[0].split('/').at(-1)), ['heartbeat', 'qualifications', taskId, 'claim', 'submit', 'fail']);
+  await client.evaluations();
+  await client.submitEvaluation(taskId, { answers: [] }, key);
+  assert.deepEqual(paths.map(item => item[0].split('/').at(-1)), ['heartbeat', 'qualifications', taskId, 'claim', 'submit', 'fail', 'evaluations', taskId]);
+  assert.deepEqual(paths.at(-1), [`/v1/supplier/evaluations/${taskId}`, 'POST']);
 });
 
 test('permission requests and scoped tool reads use authenticated task endpoints', async () => {

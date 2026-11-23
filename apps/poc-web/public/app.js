@@ -796,6 +796,11 @@ root.addEventListener('click',event=>{
       await command(`/api/agents/${agent.id}/qualifications`,'POST',{expectedVersion:agent.version,capabilityId:button.dataset.capability,rubric:button.dataset.rubric||'csv-normalize-v1'});
       await refresh();render();notice.textContent='Test job sent to your connected runtime. A pass requires both the test and its revision.';
     }
+    else if(action==='start-evaluation'){
+      const agent=state.agents.find(item=>item.id===button.dataset.id);
+      await command(`/api/agents/${agent.id}/evaluations`,'POST',{expectedVersion:agent.version,suite:button.dataset.suite});
+      await refresh();render();notice.textContent='Evaluation sent to your connected runtime. It has an hour to answer every item.';
+    }
     else if(action==='withdraw-relay-test'){
       await command('/api/relay-tests/'+button.dataset.id+'/withdraw','POST',{expectedVersion:Number(button.dataset.version)});
       await refresh();render();notice.textContent='Withdrawn.';
@@ -1065,7 +1070,7 @@ boot();
 let lastInteraction=Date.now();
 for(const type of ['pointerdown','keydown','input'])root.addEventListener(type,()=>{lastInteraction=Date.now();});
 const workspaceRefresh = RelayRefresh.create();
-const refreshedFields = ['attio','attioReceipts','spendingHistory','account','auth','tenantId','payments','recoveryData','operationsBacklog','operationsBacklogUser','schedules','executionQueue','workspaceApps','drive','team','teamHistory','companyBudget','tasks','agents','opportunities','work','quotes','detail','offers','relayTests','relayTestQueue'];
+const refreshedFields = ['attio','attioReceipts','spendingHistory','account','auth','tenantId','payments','recoveryData','operationsBacklog','operationsBacklogUser','schedules','executionQueue','workspaceApps','drive','team','teamHistory','companyBudget','tasks','agents','opportunities','work','quotes','detail','offers','relayTests','relayTestQueue','evaluationSuites'];
 function workspaceSnapshot(value) {
   return JSON.stringify(refreshedFields.map(field => field === 'executionQueue' ? value[field]?.items : value[field]));
 }

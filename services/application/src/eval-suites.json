@@ -1,0 +1,76 @@
+[
+  {
+    "id": "company-research-fields",
+    "version": 1,
+    "title": "Company research fields",
+    "categoryId": "market-research",
+    "brief": "Each item is a short, made-up company page. For each item, return the company's name as written, its headquarters country as an ISO 3166-1 alpha-2 code, the year it was founded, its headcount band (one of 1-10, 11-50, 51-200, 201-1000, 1000+) and its website domain without www. Use only what the page says.",
+    "limitation": "Five short synthetic pages with the facts stated in the text. Not web research, conflicting sources, private companies with no page, or judging whether a company is a good prospect.",
+    "fields": ["company", "country", "founded", "headcount", "domain"],
+    "createdAt": 1795305600000,
+    "items": [
+      {
+        "id": "c1",
+        "input": "Halcyon Freight moves temperature-sensitive cargo across the Nordics. Started in a Gothenburg garage in 2014, the company is still headquartered in Sweden and now employs 140 people across four depots. Learn more at https://www.halcyonfreight.example.",
+        "expected": { "company": "Halcyon Freight", "country": "SE", "founded": "2014", "headcount": "51-200", "domain": "halcyonfreight.example" }
+      },
+      {
+        "id": "c2",
+        "input": "About Brightwell Analytics GmbH: founded 2019 in Munich, Germany. Our team of 32 data engineers builds pricing models for retailers. Contact: hello@brightwell-analytics.example",
+        "expected": { "company": "Brightwell Analytics GmbH", "country": "DE", "founded": "2019", "headcount": "11-50", "domain": "brightwell-analytics.example" }
+      },
+      {
+        "id": "c3",
+        "input": "Orchard & Pine is a two-person design studio in Portland, Oregon (USA). We opened our doors in 2021. Portfolio: orchardandpine.example/work",
+        "expected": { "company": "Orchard & Pine", "country": "US", "founded": "2021", "headcount": "1-10", "domain": "orchardandpine.example" }
+      },
+      {
+        "id": "c4",
+        "input": "Since 1998, Meridian Ledger Ltd has provided outsourced bookkeeping from its head office in Leeds, United Kingdom. More than 2,400 staff serve clients in 12 countries. www.meridianledger.example",
+        "expected": { "company": "Meridian Ledger Ltd", "country": "GB", "founded": "1998", "headcount": "1000+", "domain": "meridianledger.example" }
+      },
+      {
+        "id": "c5",
+        "input": "Tidewater Robotics (est. 2008) designs autonomous inspection drones for offshore wind farms. Head office: Esbjerg, Denmark. Headcount: 610. Visit https://tidewater-robotics.example/about",
+        "expected": { "company": "Tidewater Robotics", "country": "DK", "founded": "2008", "headcount": "201-1000", "domain": "tidewater-robotics.example" }
+      }
+    ]
+  },
+  {
+    "id": "lead-list-fields",
+    "version": 1,
+    "title": "Lead list fields",
+    "categoryId": "lead-lists",
+    "brief": "Each item is a short, made-up team page. For each item, find the most senior person responsible for sales or revenue and return their full name, their title as written, their seniority (one of C-level, VP, Director, Manager, Individual contributor) and their work email, built from the email pattern the page gives.",
+    "limitation": "Five short synthetic team pages where the email pattern is stated. Not finding or verifying real contacts, checking that an address delivers, or judging buying intent.",
+    "fields": ["name", "title", "seniority", "email"],
+    "createdAt": 1795305600000,
+    "items": [
+      {
+        "id": "l1",
+        "input": "Halcyon Freight leadership: Erik Lund, CEO. Priya Natarajan, Chief Revenue Officer. Tom Berg, Sales Manager. Emails follow first.last@halcyonfreight.example.",
+        "expected": { "name": "Priya Natarajan", "title": "Chief Revenue Officer", "seniority": "C-level", "email": "priya.natarajan@halcyonfreight.example" }
+      },
+      {
+        "id": "l2",
+        "input": "Brightwell Analytics team: Jonas Weber (CTO), Lea Hoffmann (VP Sales), Max Braun (Account Executive). Reach anyone at firstinitiallastname@brightwell-analytics.example, for example jweber@.",
+        "expected": { "name": "Lea Hoffmann", "title": "VP Sales", "seniority": "VP", "email": "lhoffmann@brightwell-analytics.example" }
+      },
+      {
+        "id": "l3",
+        "input": "Meet Meridian Ledger's commercial team: Aisha Khan, Head of Sales; Ben Ortiz, Sales Development Representative; Clara Moss, Marketing Coordinator. Addresses use first@meridianledger.example.",
+        "expected": { "name": "Aisha Khan", "title": "Head of Sales", "seniority": "Director", "email": "aisha@meridianledger.example" }
+      },
+      {
+        "id": "l4",
+        "input": "Orchard & Pine is two people: Sam Rivera, founder and designer, and Jo Chen, who handles new business as Sales Lead. Write to first.last@orchardandpine.example.",
+        "expected": { "name": "Jo Chen", "title": "Sales Lead", "seniority": "Manager", "email": "jo.chen@orchardandpine.example" }
+      },
+      {
+        "id": "l5",
+        "input": "Tidewater Robotics sales: Lars Dahl, Account Executive; Nina Holm, Senior Account Executive. Our founders handle engineering, not sales. Emails are first.last@tidewater-robotics.example.",
+        "expected": { "name": "Nina Holm", "title": "Senior Account Executive", "seniority": "Individual contributor", "email": "nina.holm@tidewater-robotics.example" }
+      }
+    ]
+  }
+]

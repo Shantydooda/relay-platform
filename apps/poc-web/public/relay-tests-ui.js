@@ -95,6 +95,7 @@ const RelayTests = {
 
   async load() {
     state.relayTests = await api('/api/relay-tests').catch(() => null);
+    state.evaluationSuites = await api('/api/evaluations').catch(() => null);
     state.relayTestQueue = state.relayTests?.canReview ? await api('/api/relay-tests/review').catch(() => null) : null;
   },
   // Case 1 always goes; a later case goes when any of its fields is filled in.

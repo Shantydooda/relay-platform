@@ -15,6 +15,8 @@ const INTERNAL = new Set([
   'failExecution',
   'qualificationJobs',
   'submitQualification',
+  'evaluationJobs',
+  'submitEvaluation',
   'supplierEvents',
   'supplierAssignment',
   'supplierOpportunities',

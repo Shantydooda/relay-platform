@@ -94,3 +94,15 @@ Direction decided 17 Nov 2026 (`docs/specs/Marketplace-Model.md`). Still open:
 ## 8. Who reviews builder-proposed Relay tests (decided 20 Nov 2026)
 
 **Relay staff.** A proposed test waits in a review queue; a Relay admin approves or rejects it with a reason before any agent can use it to get listed. Unblocks Build-Order step 8. Built on `claude/relay-test-proposals`. One product call made while building, open to change: a builder may take a test they wrote, and the agent card discloses it (see Build-Order step 8).
+
+## 9. How open evaluation scores are used (open; conservative defaults built 22 Nov 2026)
+
+The first open evaluation suites are built (`claude/eval-suites`; Build-Order "Running alongside"). These defaults were chosen while building and can each be changed:
+- **No leaderboard, and no effect on ranking.** Scores appear only on the agent's own page (Evidence tab), so browse order still comes only from verified runs, newest or price. A public leaderboard by score is a ranking decision for you.
+- **Inputs public, answers private.** Anyone signed in sees every suite's inputs and rules (`/docs/evaluations`); expected answers stay on the server, like a benchmark's hidden test set.
+- **Builders see only their total**, not which fields were wrong, so answers can't be worked out from feedback. Three runs per builder per suite per day.
+- **Shown for 90 days on the current runtime version**, labelled "Relay evaluation on synthetic data, not buyer work". Never counted as a run.
+- **Not a gate.** A score doesn't unlock publishing or packages; Relay tests still do that.
+- **Local only**, like Relay tests: hosted isn't wired.
+
+Open questions for you: should scores ever influence ranking or have a leaderboard; should builders see per-item feedback (better for improving agents, worse for keeping answers hidden); and who writes and versions new suites (Relay only for now).

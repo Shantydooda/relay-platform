@@ -24,6 +24,13 @@ async function supplierApi({ req, url, store, jsonBody, send, origin }) {
   if (assessment && method === 'POST') {
     send(200, await store.submitQualification(principal, assessment[1], await jsonBody(req), key)); return true;
   }
+  if (path === '/evaluations' && method === 'GET') {
+    send(200, { jobs: await store.evaluationJobs(principal) }); return true;
+  }
+  const evaluation = path.match(/^\/evaluations\/([0-9a-f-]{36})$/);
+  if (evaluation && method === 'POST') {
+    send(200, await store.submitEvaluation(principal, evaluation[1], await jsonBody(req), key)); return true;
+  }
   const page = () => pageInput(url.searchParams.get('after') || '', Number(url.searchParams.get('limit') || 50));
   if (path === '/events' && method === 'GET') {
     const { after, limit } = page();
