@@ -1,0 +1,10 @@
+{
+  "name": "@relay/connector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runs inside a buyer's network and answers Relay agents' granted reads from local ERP exports.",
+  "main": "src/index.cjs",
+  "bin": { "relay-connector": "bin/relay-connector.cjs" },
+  "engines": { "node": ">=22" },
+  "files": ["src", "bin", "README.md", "Dockerfile"]
+}

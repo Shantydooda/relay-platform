@@ -35,6 +35,10 @@ const INTERNAL = new Set([
   'requestAccess',
   'readAccess',
   'endBlocked',
+  // The buyer's Relay Connector authenticates with its own key.
+  'connectorHello',
+  'connectorNextRead',
+  'connectorAnswer',
 ]);
 const SUPPLIER_COMMANDS = new Set([
   'marketplace.quote',
@@ -52,7 +56,9 @@ function composeManagedAccess(identity, application, refreshActor, boundary) {
           runtimePrincipals.add(principal);
           return principal;
         });
-    if (['waitForScoping', 'reconcileFileScans'].includes(name)) return fn;
+    // These wait on someone else (a model job, a buyer's system or Relay Connector);
+    // their own reads and transactions take the boundary per step.
+    if (['waitForScoping', 'reconcileFileScans', 'readAccess', 'connectorNextRead'].includes(name)) return fn;
     if (INTERNAL.has(name)) return (...args) => guarded(() => fn(...args));
     return (actor, ...args) =>
       guarded(async () => {

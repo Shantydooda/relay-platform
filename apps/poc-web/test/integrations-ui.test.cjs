@@ -24,7 +24,7 @@ function ui(extra = {}) {
     buyerTab: 'integrations', ...extra,
   };
   const calls = [];
-  const context = vm.createContext({ state, calls, Date, escape: value => String(value ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`),
+  const context = vm.createContext({ state, calls, Date, location: { origin: 'http://127.0.0.1:4180' }, escape: value => String(value ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`),
     api: async (path, options) => { calls.push([path, options]); return path.startsWith('/api/connections') ? { canManage: true, catalog, connections: [github] } : { configured: true, connected: false, version: 1 }; } });
   vm.runInContext(fs.readFileSync(require.resolve('../public/integrations-ui.js'), 'utf8'), context);
   return { state, calls, run: code => vm.runInContext(code, context) };
@@ -124,4 +124,35 @@ test('with connections switched off on the server, the page says so instead of f
   f.state.integrations = { tenantId: PERSONAL, connections: null, drive: null, attio: null };
   const html = f.run('RelayIntegrations.page()');
   assert.match(html, /No integrations are available on this server yet/);
+});
+
+test('ERP systems connect through the Relay Connector: no login asked, a one-time key and setup steps, live status', async () => {
+  const f = ui();
+  const connectorCatalog = [...catalog, { kind: 'netsuite', label: 'Oracle NetSuite', available: true, connector: true, environments: ['sandbox', 'production'], objects: ['vendor', 'customer'], credentialFields: [] }];
+  f.run(`RelayIntegrations.apply({ page: 'integrations', id: null }, state)`);
+  await f.run('RelayIntegrations.load(state)');
+  f.state.integrations.connections = { canManage: true, catalog: connectorCatalog.filter(p => !(p.kind === 'netsuite' && !p.connector)), connections: [github] };
+  let html = f.run('RelayIntegrations.page()');
+  assert.match(html, /ERP systems, through the Relay Connector[\s\S]*data-integration="netsuite"[\s\S]*Not connected[\s\S]*>Set up</);
+  f.state.integrationOpen = 'netsuite';
+  html = f.run('RelayIntegrations.page()');
+  assert.match(html, /Create connector key/);
+  assert.doesNotMatch(html.slice(html.indexOf('data-integration="netsuite"')), /name="cred-/, 'the connector keeps the ERP login; Relay never asks for it');
+
+  f.state.connectorSetup = { kind: 'netsuite', label: 'NetSuite <sandbox>', key: 'rcn_k' };
+  f.state.integrations.connections.connections.push({ id: 'n1', provider: 'netsuite', environment: 'sandbox', label: 'NetSuite <sandbox>', objects: [], activeGrants: 0, version: 1, mode: 'connector', connector: { online: false, lastSeenAt: null, version: null } });
+  html = f.run('RelayIntegrations.page()');
+  assert.match(html, /Set up “NetSuite &#60;sandbox&#62;”/);
+  assert.match(html, /id="connector-key" readonly value="rcn_k"/);
+  assert.match(html, /relay-connector --config relay-connector.json --check/);
+  assert.match(html, /Waiting for the connector to check in/);
+  assert.match(html, /data-integration="netsuite"[\s\S]*Waiting for connector/);
+  assert.doesNotMatch(html, /Create connector key/, 'the key is dealt with before another is made');
+
+  f.state.connectorSetup = null;
+  f.state.integrations.connections.connections[1] = { ...f.state.integrations.connections.connections[1], objects: ['vendor'], connector: { online: true, lastSeenAt: Date.now() - 20000, version: '0.1.0' } };
+  html = f.run('RelayIntegrations.page()');
+  assert.match(html, /Connector online · 1/);
+  assert.match(html, /Online · checked in 20 s ago · serves vendor · v0.1.0/);
+  assert.match(html, /<details class="mk-integration-more"><summary>Set up another Oracle NetSuite connector/);
 });

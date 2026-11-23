@@ -486,8 +486,11 @@ root.addEventListener('submit',event=>{
       notice.textContent='File added to the request.';await refresh(state.detail.task.id);render();
     }else if(form.id==='connection-create'){
       const credentials={};for(const [name,value] of data.entries())if(name.startsWith('cred-'))credentials[name.slice(5)]=String(value);
-      await command('/api/connections','POST',{tenantId:(state.buyerTab==='integrations'&&state.integrations?.tenantId)||state.orgId,provider:data.get('provider'),environment:data.get('environment'),label:String(data.get('label')||'').trim(),credentials});
-      notice.textContent='System connected. Its credentials are stored encrypted and won’t be shown again.';await refresh(null);render();
+      const created=await command('/api/connections','POST',{tenantId:(state.buyerTab==='integrations'&&state.integrations?.tenantId)||state.orgId,provider:data.get('provider'),environment:data.get('environment'),label:String(data.get('label')||'').trim(),...(form.querySelector('[name^="cred-"]')?{credentials}:{})});
+      // A Relay Connector key is shown once, on the page, until the buyer says it's saved.
+      if(created?.connectorKey){state.connectorSetup={kind:data.get('provider'),label:String(data.get('label')||'').trim(),key:created.connectorKey};state.integrationOpen=data.get('provider');notice.textContent='Connector key created. Copy it now: it won’t be shown again.';}
+      else notice.textContent='System connected. Its credentials are stored encrypted and won’t be shown again.';
+      await refresh(null);render();
     }else if(form.dataset.accessApprove){
       await command('/api/tasks/'+state.detail.task.id+'/access/approve','POST',{expectedVersion:state.detail.task.version,requestId:form.dataset.accessApprove,connectionId:data.get('connectionId'),days:Number(data.get('days'))});
       notice.textContent='Read access granted. The agent can continue.';await refresh(state.detail.task.id);render();
@@ -716,7 +719,7 @@ root.addEventListener('click',event=>{
     }
     else if(action.startsWith('notification-')){await RelayNotifications.click(button);}
     else if(action.startsWith('app-')){await RelayApps.click(button);}
-    else if(action.startsWith('integration-')&&typeof RelayIntegrations==='object'){await RelayIntegrations.click(button);}
+    else if((action.startsWith('integration-')||action.startsWith('connector-'))&&typeof RelayIntegrations==='object'){await RelayIntegrations.click(button);}
     else if(action==='project-create-toggle'){state.projectCreateOpen=!state.projectCreateOpen;render();root.querySelector('#project-name')?.focus();}
     else if(action==='connection-disconnect'){if(state.disconnecting!==button.dataset.id){state.disconnecting=button.dataset.id;render();}else{await command('/api/connections/'+button.dataset.id+'/disconnect','POST',{expectedVersion:Number(button.dataset.version)});state.disconnecting=null;notice.textContent='Disconnected. Every grant on it has stopped.';await refresh(null);render();}}
     else if(action==='connection-disconnect-cancel'){state.disconnecting=null;render();}

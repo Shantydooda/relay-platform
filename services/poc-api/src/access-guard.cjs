@@ -30,7 +30,10 @@ function guardLocalAccess({ identity, application, repository, resolveOperator, 
   const guardedApplication = {};
   for (const [name, value] of Object.entries(application)) {
     // Waiting for an already-started model job must not block access revocation.
-    if (['waitForScoping', 'reconcileFileScans'].includes(name)) guardedApplication[name] = value;
+    // Reads of buyer systems and the Relay Connector's long-poll wait on someone
+    // else too; they take the guard per step (their reads and transactions go
+    // through the boundary's repository), never for the whole wait.
+    if (['waitForScoping', 'reconcileFileScans', 'readAccess', 'connectorNextRead'].includes(name)) guardedApplication[name] = value;
     else if (typeof value === 'function') guardedApplication[name] = wrap(value, name);
     else if (name === 'marketplace') guardedApplication[name] = Object.fromEntries(Object.entries(value).map(([key, fn]) => [key, typeof fn === 'function' ? wrap(fn, key) : fn]));
     else guardedApplication[name] = value;
