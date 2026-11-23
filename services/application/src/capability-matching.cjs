@@ -61,4 +61,23 @@ function matchCapability(brief, capability, details = {}) {
   const detailMatches = [...features(detailText).tokens].filter(word => request.tokens.has(word));
   return { matches, detailMatches, score: Math.min(1, (words.length + concepts.length) / Math.max(1, request.tokens.size + request.concepts.size)) };
 }
-module.exports = { metadata, matchCapability, FIELDS };
+// Whether an agent fits a posted request. Used by match alerts and by "Fits …"
+// on Opportunities, so the two always agree.
+// - Category: the buyer's chosen category decides. A request without one is
+//   classified with the same taxonomy as the agent's capabilities.
+// - Words: the request shares enough of a capability's wording (the threshold
+//   agent search uses), e.g. "dedupe vendors" for "Deduplicate vendor masters".
+function requestCategory(task) {
+  if (task.categoryId) return task.categoryId;
+  return require('../../../packages/domain/src/categories.cjs').classify(`${task.title || ''} ${task.brief || ''}`) || null;
+}
+// Older capabilities saved before categories existed are classified the way new
+// ones are when they're added.
+function capabilityCategory(cap) {
+  return cap.categoryId || require('../../../packages/domain/src/categories.cjs').classify(`${cap.category || ''} ${cap.task || ''}`) || null;
+}
+function agentFits(agent, task, category = requestCategory(task)) {
+  const text = `${task.title || ''} ${task.brief || ''}`;
+  return (agent.capabilities || []).some(cap => (category && category !== 'other' && capabilityCategory(cap) === category) || matchCapability(text, cap.task).score >= 0.25);
+}
+module.exports = { metadata, matchCapability, agentFits, requestCategory, FIELDS };

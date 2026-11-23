@@ -147,13 +147,13 @@ const RelayBuild = {
   // Requests this builder's agents can quote on, with what the buyer attached.
   opportunity(task, quoteForm) {
     const intake = task.intake;
-    const fits = (state.agents || []).filter(a => task.categoryId && (a.capabilities || []).some(c => c.categoryId === task.categoryId || c.category === task.categoryLabel)).map(a => this.slug(a.name));
+    const fits = Array.isArray(task.fits) ? task.fits.map(name => this.slug(name)) : (state.agents || []).filter(a => task.categoryId && (a.capabilities || []).some(c => c.categoryId === task.categoryId || c.category === task.categoryLabel)).map(a => this.slug(a.name));
     const facts = [task.direct ? 'Sent to you directly' : '', task.postedAt ? `Posted ${this.ago(task.postedAt)}` : '', task.categoryLabel, intake && [intake.targetLabel, intake.objectLabel, intake.recordCount ? `${Number(intake.recordCount).toLocaleString('en-US')} records` : ''].filter(Boolean).join(' · '),
       (task.acceptanceCriteria || []).length ? this.plural(task.acceptanceCriteria.length, 'checklist item') : '', (task.checks || []).length ? this.plural(task.checks.length, 'automatic check') : '', fits.length ? `Fits ${fits.join(', ')}` : ''].filter(Boolean);
     const quoted = (task.myOffers || []).length || (state.quotes || []).some(q => q.taskId === task.id && q.status === 'pending');
     const form = String(quoteForm(task) || '').replace(/<summary>[^<]*<\/summary>/, '<summary>Make an offer by hand</summary>');
     const checklist = typeof RelayAcceptance === 'object' && (task.acceptanceCriteria || []).length ? RelayAcceptance.summary(task.acceptanceCriteria, [], 'Buyer’s checklist') : '';
-    return `<li class="mk-build-opportunity"><div class="mk-thread mk-thread-none"><span class="mk-thread-icon">${this.icon('request')}</span><span class="mk-thread-body"><span class="mk-row-title"><span class="mk-work-title">${escape(task.title)}</span>${intake ? '<span class="mk-tag">ERP data</span>' : ''}${quoted ? '<span class="mk-tag mk-tag-good">You offered</span>' : ''}</span>${facts.length ? `<span class="mk-meta">${facts.map(escape).join(' · ')}</span>` : ''}<span class="mk-desc">${escape(task.brief)}</span>${checklist ? `<span class="mk-build-checklist">${checklist}</span>` : ''}${form ? `<span class="mk-build-offer-form">${form}</span>` : ''}</span></div></li>`;
+    return `<li class="mk-build-opportunity" data-notification-task="${escape(task.id)}"><div class="mk-thread mk-thread-none"><span class="mk-thread-icon">${this.icon('request')}</span><span class="mk-thread-body"><span class="mk-row-title"><span class="mk-work-title">${escape(task.title)}</span>${intake ? '<span class="mk-tag">ERP data</span>' : ''}${quoted ? '<span class="mk-tag mk-tag-good">You offered</span>' : ''}</span>${facts.length ? `<span class="mk-meta">${facts.map(escape).join(' · ')}</span>` : ''}<span class="mk-desc">${escape(task.brief)}</span>${checklist ? `<span class="mk-build-checklist">${checklist}</span>` : ''}${form ? `<span class="mk-build-offer-form">${form}</span>` : ''}</span></div></li>`;
   },
   // A request moves from "New for you" to "Your offers" once every agent that
   // could offer on it has; chosen offers live under Projects.
@@ -220,7 +220,7 @@ const RelayBuild = {
     }).join('')}</tbody></table></div>` : '<p class="mk-empty-note">No agents yet.</p>');
     const payouts = typeof RelayPayments === 'object' && state.payments?.configured ? this.section('Payouts', null, '', RelayPayments.settings()) : this.section('Payouts', null, '', `<div class="mk-table-wrap"><table class="mk-table"><tbody>
       <tr><th scope="row">Payout account</th><td><span class="mk-status">Not set up</span></td><td class="mk-empty-note">${org ? `One account for ${escape(org.name)}, set up by an owner. ` : ''}Payout setup isn’t available yet. Relay never asks for bank details or wallet keys here.</td></tr></tbody></table></div>`);
-    const notifications = this.section('Notifications', null, '', `<p class="mk-caption">Relay tells you in the app, under the bell at the top, about work a buyer chose you for: when it starts, messages, revision requests and acceptance.${org ? ` While you build as ${escape(org.name)}, the bell shows ${escape(org.name)}’s updates, shared with its other members.` : ''} Alerts for new matching requests and email come later.</p>`);
+    const notifications = this.section('Notifications', null, '', `<p class="mk-caption">Relay tells you in the app, under the bell at the top, about new requests that fit one of your agents or were sent to you directly (for a week, or until you offer), and about work a buyer chose you for: when it starts, messages, revision requests and acceptance. A paused agent isn’t alerted.${org ? ` While you build as ${escape(org.name)}, the bell shows ${escape(org.name)}’s updates, shared with its other members.` : ''} Email comes with hosted email.</p>`);
     return back + account + keys + payouts + notifications;
   },
 
