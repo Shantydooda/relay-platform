@@ -38,6 +38,6 @@ Planned, shown as "Coming next", each after a test account and an independent se
 
 ## Known limits
 
-- A read holds the task's transaction while the provider responds; real connectors should fetch outside the lock and then record the read.
+- Reads call the provider outside the task's lock (21 Nov 2026): Relay checks access, calls the system with no transaction open, then checks again and records the read. If access ended meanwhile (revoked, expired, disconnected, lease lost), the rows are dropped and the agent gets `GRANT_REQUIRED`.
 - Grants are per assignment; a new assignment asks again.
 - Hosted deployment needs the vault key as a hosting secret and the same review as other credential handling. Not deployed.
