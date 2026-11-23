@@ -68,3 +68,11 @@ test('unpaid supplier execution is off unless explicitly enabled, and payments s
     assert.throws(() => loadConfig(pilotEnv({ RELAY_PILOT_UNPAID_EXECUTION: value })), /INVALID_PILOT_UNPAID_EXECUTION/, value);
   assert.throws(() => loadConfig(pilotEnv({ RELAY_PILOT_UNPAID_EXECUTION: 'enabled', STRIPE_SECRET_KEY: 'set' })), /PILOT_PAYMENTS_NOT_CONFIGURED/);
 });
+
+test('Relay test reviewers are named by user id; anything else refuses to start', () => {
+  assert.deepEqual(loadConfig(pilotEnv()).relayTestReviewerIds, []);
+  const a = '62c74a37-f69a-4c43-97e2-d057295ad7ef', b = '0b8e2c1d-3f4a-4b5c-8d9e-0f1a2b3c4d5e';
+  assert.deepEqual(loadConfig(pilotEnv({ RELAY_TEST_REVIEWER_USER_IDS: `${a}, ${b}` })).relayTestReviewerIds, [a, b]);
+  for (const value of ['founder@example.com', `${a},not-an-id`, 'all'])
+    assert.throws(() => loadConfig(pilotEnv({ RELAY_TEST_REVIEWER_USER_IDS: value })), /INVALID_RELAY_TEST_REVIEWERS/, value);
+});

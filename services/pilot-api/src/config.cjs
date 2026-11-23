@@ -29,8 +29,12 @@ function loadConfig(env = process.env) {
   if (env.RELAY_PILOT_UNPAID_EXECUTION && !['enabled', 'disabled'].includes(env.RELAY_PILOT_UNPAID_EXECUTION))
     throw new Error('INVALID_PILOT_UNPAID_EXECUTION');
   const unpaidExecution = env.RELAY_PILOT_UNPAID_EXECUTION === 'enabled';
+  // Relay staff who review builder-proposed Relay tests: Supabase user ids, comma-separated.
+  const relayTestReviewerIds = (env.RELAY_TEST_REVIEWER_USER_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
+  if (relayTestReviewerIds.some(id => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)))
+    throw new Error('INVALID_RELAY_TEST_REVIEWERS');
   const port = Number(env.PORT || 10000);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('INVALID_PORT');
-  return { ...managed, database, port, storageEnabled, unpaidExecution, membershipKey: Buffer.from(env.RELAY_MEMBERSHIP_KEY, 'hex') };
+  return { ...managed, database, port, storageEnabled, unpaidExecution, relayTestReviewerIds, membershipKey: Buffer.from(env.RELAY_MEMBERSHIP_KEY, 'hex') };
 }
 module.exports = { loadConfig };
