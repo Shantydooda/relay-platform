@@ -717,3 +717,36 @@ html[data-appearance] body.market-open #app .mk-agent-title a.mk-handle-builder:
 .milestone-body small { color: var(--mk-muted); overflow-wrap: anywhere; }
 .milestone-banner { color: var(--mk-muted); margin: 0 0 8px; }
 @media (max-width: 600px) { .milestone-item .mk-next { display: none; } }
+
+/* Settings → Integrations: a plain list like Hugging Face's settings pages.
+   One row per integration; its setup opens underneath the row. */
+.mk-settings .mk-build-nav .mk-menu-label { display: block; margin: 4px 10px 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--mk-muted); }
+.mk-integrations { list-style: none; margin: 12px 0 0; padding: 0; border: 1px solid var(--mk-row-border); border-radius: 12px; overflow: hidden; }
+.mk-integration + .mk-integration { border-top: 1px solid var(--mk-row-border); }
+.mk-integration-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 14px 16px; }
+.mk-integration-logo { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--mk-row-border); background: var(--mk-rail); font-family: var(--mk-mono); font-weight: 700; font-size: 15px; color: var(--mk-text); }
+.mk-integration-name { display: grid; gap: 2px; min-width: 0; }
+.mk-integration-name strong { font-size: 15px; }
+.mk-integration-name .mk-caption { margin: 0; font-size: 13px; }
+.mk-integration-planned .mk-integration-row { opacity: 0.6; }
+.mk-integration-panel { padding: 4px 16px 18px 66px; background: var(--mk-rail); border-top: 1px solid var(--mk-row-border); }
+.mk-integration-panel .mk-form { margin-top: 12px; max-width: 520px; }
+.mk-integration-panel .mk-form h3 { margin: 4px 0 0; font-size: 15px; }
+.mk-integration-panel .mk-form select { box-sizing: border-box; width: 100%; font: inherit; font-size: 15px; color: var(--mk-text); background: var(--mk-bg); border: 1px solid var(--mk-border); border-radius: 10px; padding: 10px 12px; }
+.mk-integration-panel .mk-member-list li { flex-wrap: wrap; }
+.mk-integrations-foot { margin-top: 24px; }
+@media (max-width: 760px) {
+  .mk-integration-row { grid-template-columns: 36px minmax(0, 1fr); row-gap: 8px; }
+  .mk-integration-row .mk-status { grid-column: 2; justify-self: start; }
+  .mk-integration-row .mk-chip { grid-column: 2; justify-self: start; }
+  .mk-integration-panel { padding: 4px 16px 16px; }
+  .mk-settings .mk-build-nav .mk-menu-label { display: none; }
+}
+/* Account menu: links read like its buttons, and on phones the panel stays on screen. */
+html[data-appearance] body.market-open #app .mk-menu-panel > a { font-size: 14px; padding: 8px; border-radius: 8px; }
+html[data-appearance] body.market-open #app .mk-menu-panel > a:hover { background: var(--mk-rail); }
+@media (max-width: 760px) {
+  .mk-menu-panel { position: fixed; top: 64px; right: 16px; left: auto; max-width: calc(100vw - 32px); max-height: calc(100dvh - 80px); overflow-y: auto; z-index: 50; }
+}
+.mk-integration-more { margin-top: 14px; }
+.mk-integration-more > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--mk-accent); }

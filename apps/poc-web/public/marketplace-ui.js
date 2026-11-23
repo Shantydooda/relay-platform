@@ -33,6 +33,8 @@ const RelayMarketplace = {
     if (pathname === '/evidence') return { page: 'docs', id: 'evidence' };
     const doc = /^\/docs\/([a-z-]+)$/.exec(pathname)?.[1];
     if (doc && this.DOCS.some(item => item.slug === doc)) return { page: 'docs', id: doc };
+    const integrations = typeof RelayIntegrations === 'object' ? RelayIntegrations.parse(pathname) : null;
+    if (integrations) return integrations;
     const org = typeof RelayOrg === 'object' ? RelayOrg.parse(pathname) : null;
     if (org) return org;
     const build = typeof RelayBuild === 'object' ? RelayBuild.parse(pathname) : null;
@@ -43,6 +45,7 @@ const RelayMarketplace = {
   apply(route, target = state) {
     target.agentPageId = null;
     if (typeof RelayBuild === 'object' && RelayBuild.apply(route, target)) return null;
+    if (typeof RelayIntegrations === 'object' && RelayIntegrations.apply(route, target)) return null;
     if (typeof RelayOrg === 'object' && RelayOrg.apply(route, target)) return null;
     if (route.page === 'task' && target.detail?.task.id !== route.id) target.requestTab = 'request';
     if (target.buyerTab === 'org' || target.buyerTab === 'enterprise') target.projectId = null;
@@ -62,6 +65,8 @@ const RelayMarketplace = {
     if (current.buyerTab === 'requests') return '/requests';
     if (current.buyerTab === 'builders') return current.builderHandle ? `/builders/${current.builderHandle}` : '/builders';
     if (current.buyerTab === 'evidence') return `/docs/${current.docPage || 'evidence'}`;
+    const integrations = typeof RelayIntegrations === 'object' ? RelayIntegrations.path(current) : null;
+    if (integrations) return integrations;
     const org = typeof RelayOrg === 'object' ? RelayOrg.path(current) : null;
     if (org) return org;
     return '/';
@@ -112,6 +117,7 @@ const RelayMarketplace = {
       target.market = await api('/api/marketplace?sort=' + encodeURIComponent(target.marketSort || 'runs'));
     }
     if (buyer && typeof RelayOrg === 'object') await RelayOrg.load(target);
+    if (buyer && typeof RelayIntegrations === 'object') await RelayIntegrations.load(target);
     target.agentPage = null;
     if (target.agentPageId && (!buyer || target.buyerTab === 'market')) {
       try { target.agentPage = (await api('/api/agent-market/' + target.agentPageId)).agent; }
@@ -185,7 +191,7 @@ const RelayMarketplace = {
     const more = [
       ...(state.features?.recurring ? [['scheduled', 'Scheduled work']] : []),
       ...(state.features?.workspaceApps ? [['apps', 'Apps']] : []),
-      ['business', companies.length ? 'Create or join an organization' : 'Business workspace'], ['billing', 'History & spend'], ['tools', 'Connected tools'],
+      ['business', companies.length ? 'Create or join an organization' : 'Business workspace'], ['billing', 'History & spend'],
     ];
     return `<a class="skip-workspace" href="#workspace-main">Skip to content</a><header class="mk-topbar">
       <a class="mk-brand" href="/" data-route aria-label="Relay home">relay</a>
@@ -197,6 +203,7 @@ const RelayMarketplace = {
           <div class="mk-menu-panel"><strong>${escape(user.name)}</strong><small>${escape(user.email)}</small>
             ${companies.length ? `<span class="mk-menu-label">Organizations</span>${companies.map(m => `<a href="/org/${escape(m.id)}" data-route>${escape(m.name)}</a>`).join('')}<a href="/enterprise" data-route>Relay for organizations</a>` : ''}
             ${more.map(([id, label]) => `<button data-action="buyer-nav" data-tab="${id}">${label}</button>`).join('')}
+            <a href="/settings/integrations" data-route>Integrations</a>
             ${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}${state.relayTestReviewer?.[state.account?.user?.id] ? '<a href="/build/tests" data-route>Review Relay tests</a>' : ''}
             <button data-action="toggle-appearance" aria-pressed="${globalThis.document?.documentElement?.dataset.appearance !== 'light'}">Dark mode</button>
             <button data-action="logout">Sign out</button></div></details>
