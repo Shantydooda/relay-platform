@@ -22,6 +22,8 @@ Five branches are built and pushed but **not merged**. Each one is built on the 
 | `claude/fees` | Fees and payouts, option B, off by default (PR into `claude/processing-region`) |
 | `claude/relay-test-proposals` | Builder-proposed Relay tests, reviewed by Relay staff (PR into `claude/fees`) |
 | `claude/engagements` | Milestone plans (step 9), plus per-builder Relay test attempts and answer times (PR into `claude/relay-test-proposals`) |
+| `claude/ux-quick-fixes` | UX review quick fixes: readable notification badge, drafts in Your work, buyer wording (PR into `claude/connection-reads`) |
+| `claude/connection-reads` | Agents read buyer systems outside the request's lock (PR into `claude/integrations`) |
 | `claude/integrations` | Settings → Integrations for every account, Hugging Face settings style (PR into `claude/refund-on-end`) |
 | `claude/refund-on-end` | Ending paid work refunds it: "End as unmet" and ending a plan, sandbox only, off by default (PR into `claude/engagements`) |
 
@@ -114,7 +116,12 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
 
 - ✅ **Integrations for every account** (21 Nov, branch `claude/integrations`). Connecting systems used to be an organization tab, so ordinary accounts couldn't reach it, and the request page's "Connect one" link dead-ended for them; the server already allowed personal owners. Now one Settings → Integrations page serves personal and organization workspaces, and replaces both the organization tab and the old Tools page (Drive, Attio, a tool library of mostly unbuilt tools). Also fixed: the account menu ran off the left edge on phones. Still needed to make integrations really work: trying GitHub, HubSpot and Attio against real accounts (tested only against simulated responses); Google and Attio developer apps for Drive and Attio delivery (founder, credentials); the ERP connectors (NetSuite, SAP, Dynamics: a test account and independent security review each); reading outside the task's lock; and, for the pilot, the vault key as a hosting secret.
 - ✅ **Refunds on ending paid work** (21 Nov, branch `claude/refund-on-end`). "End as unmet" on funded work now refunds the buyer's full test payment, fee included, in the same step; the builder is never paid for it. Ending a plan does the same for a milestone that's paid for but not started. As with the manual refund, only the workspace owner can end paid work. Payment that's still being set up, being refunded or paused for review still blocks ending, with a plain reason, and the page hides the button rather than failing on submit. The run stays a failure on the agent's record after the refund: a returned payment no longer relabels a failed run as "refunded". The refund is recorded with the end, then asked of the provider; if that call fails, the payment reconciler retries the same refund, never a second one. Sandbox only, and off unless a deployment sets `refundOnEnd` (local: `RELAY_REFUND_ON_END=1`). Not checked in the browser: local Relay has no Stripe test key, so no payment can be funded there; the page wording is covered by tests. Still needs the independent review before real money, and the guarantee decision may add a rerun on top.
-- The UX review's quick fixes (`UX-Review-2026-11-17.md`).
+- ✅ **The UX review's quick fixes** (21 Nov, branch `claude/ux-quick-fixes`; `UX-Review-2026-11-17.md` findings 3, 4, 9):
+  - The notification count is a readable badge in both themes; it was a white blob.
+  - "All" in Your work now includes unposted drafts, so an ERP request waiting for its files can't vanish. A plain draft reopens in "Post a request", filled in, and posting reuses it.
+  - Buyer wording: "execution" and "supplier" are gone from the offer, start and run screens ("Recommended agent", "Stop the work", "Why it fits").
+  - Already fixed by the redesign: the needs-you count includes offers waiting for a choice, the shimmer is gone, the chat composer no longer exists.
+- ✅ **Reads outside the lock** (21 Nov, branch `claude/connection-reads`): a slow buyer system no longer holds the request while it answers; access that ends mid-read returns nothing.
 - The pilot acceptance work in `Status.md`: independent supplier, Stripe test payout, Google Drive and Attio, hosted release rehearsal. Much of it needs the founder or a provider, not code.
 
 ## Not planned

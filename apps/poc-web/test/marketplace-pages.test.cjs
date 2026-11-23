@@ -31,7 +31,8 @@ test('Your work follows the community-list pattern: side actions, type tabs, com
   assert.match(html, /<aside class="mk-side"/);
   assert.match(html, /href="\/post" data-route/, 'Post a request is the primary side action');
   assert.match(html, /href="\/docs\/revisions" data-route/, 'resources link to the docs');
-  assert.match(html, /Your work <span class="mk-total">3<\/span>/, 'drafts and completed work are not listed by default');
+  assert.match(html, /Your work <span class="mk-total">4<\/span>/, '“All” includes unposted drafts; completed work is hidden by default');
+  assert.match(html, /Old draft<\/span><span class="mk-tag[^"]*">Draft<\/span>[\s\S]*?Not posted yet[\s\S]*?Continue brief/, 'a draft says it isn’t posted and how to finish it');
   assert.match(html, /data-action="page-set"[^>]*data-value="package"/);
   assert.match(html, /Show completed \(1\)/);
   assert.match(html, /test-builder\/csv-cleaner/, 'the agent handle as on the Agents page');
@@ -40,7 +41,7 @@ test('Your work follows the community-list pattern: side actions, type tabs, com
   assert.match(html, /Ready to start/, 'status words come from RelayWorkState');
   assert.match(html, /href="\/tasks\/a0000000-0000-4000-8000-000000000001" data-route/);
   assert.doesNotMatch(html, /My tasks|Start a conversation/);
-  assert.deepEqual(m.visibleWork().map(t => t.title), ['Clean one CSV export', 'Clean a customer CSV', 'Dedupe contacts'], 'needs you first, then most recent');
+  assert.deepEqual(m.visibleWork().map(t => t.title), ['Clean one CSV export', 'Old draft', 'Clean a customer CSV', 'Dedupe contacts'], 'needs you first, then most recent');
   const f = m.workFilters();
   f.type = 'package';
   assert.deepEqual(m.visibleWork().map(t => t.title), ['Clean one CSV export']);
@@ -112,4 +113,19 @@ test('on phones the browse rail folds behind a Filters button', () => {
   const extra = { market: { agents: [], sort: 'runs', windowDays: 90, connectors: [] } };
   assert.match(ui(extra).browse(), /data-action="page-rail-toggle"[^>]*aria-expanded="false"/);
   assert.match(ui({ ...extra, railOpen: true }).browse(), /class="mk-rail mk-rail-open"/);
+});
+
+test('a plain draft reopens in the Post a request form, filled in; an ERP draft keeps its request page', () => {
+  const m = ui({});
+  const target = { account: { user: { workspace: 'buyer' } }, buyerTab: 'tasks',
+    detail: { task: { id: 'd1', status: 'draft', title: 'Customer cleanup', brief: 'Clean the export.', acceptanceCriteria: [{ id: 'c1', text: 'No duplicates' }] } } };
+  assert.equal(m.resumeDraft(target), true);
+  assert.equal(target.buyerTab, 'request');
+  assert.equal(target.detail, null);
+  assert.equal(target.postTaskId, 'd1', 'posting reuses the same draft');
+  assert.deepEqual({ ...target.postDraft }, { title: 'Customer cleanup', brief: 'Clean the export.', criteria: 'No duplicates' });
+  const erp = { account: { user: { workspace: 'buyer' } }, detail: { task: { id: 'd2', status: 'draft', title: 'x', brief: 'y' }, intake: { readiness: { complete: false } } } };
+  assert.equal(m.resumeDraft(erp), false);
+  const posted = { account: { user: { workspace: 'buyer' } }, detail: { task: { id: 'd3', status: 'posted' } } };
+  assert.equal(m.resumeDraft(posted), false);
 });
