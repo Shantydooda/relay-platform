@@ -81,21 +81,21 @@ function recommendOffers(task, offers, now) {
   const preferences = discoveryPreferences(task);
   const candidates = offers.filter(offer => meetsSuccessRequirement(offer, preferences.requiredSuccessRate) && offer.exposure?.eligible &&
     offer.qualificationCurrent && offer.scopeVersion === task.scopeVersion &&
-    offer.expiresAt > now && (!preferences.budget || (offer.currency === preferences.budget.currency && offer.amountMinor <= preferences.budget.amountMinor)) && Number.isSafeInteger(offer.amountMinor) && offer.amountMinor > 0 &&
+    offer.expiresAt > now && (!preferences.budget || (offer.currency === preferences.budget.currency && require('./pricing.cjs').buyerTotal(offer) <= preferences.budget.amountMinor)) && Number.isSafeInteger(require('./pricing.cjs').buyerTotal(offer)) && require('./pricing.cjs').buyerTotal(offer) > 0 &&
     Number.isFinite(offer.deliveryMinutes) && offer.deliveryMinutes > 0)
     .map(offer => {
       const match = matchCapability(task.brief, offer.capability, offer.capabilityMetadata);
       return {offer, matched: match.matches, match};
     }).filter(candidate => candidate.matched.length > 0);
   const sameCurrency = new Set(candidates.map(({offer}) => offer.currency)).size === 1;
-  const minPrice = Math.min(...candidates.map(({offer}) => offer.amountMinor));
+  const minPrice = Math.min(...candidates.map(({offer}) => require('./pricing.cjs').buyerTotal(offer)));
   const minTime = Math.min(...candidates.map(({offer}) => offer.deliveryMinutes));
   const ranked = candidates.map(candidate => {
     const {offer, matched} = candidate;
     const history = Math.max(0, Number(offer.trackRecord?.capabilityAccepted) || 0);
     const fit = candidate.match.score;
     const score = 50 * fit + evidencePoints(offer) +
-      (sameCurrency ? (preferences.priority === 'price' ? 40 : 15) * minPrice / offer.amountMinor : 0) +
+      (sameCurrency ? (preferences.priority === 'price' ? 40 : 15) * minPrice / require('./pricing.cjs').buyerTotal(offer) : 0) +
       (preferences.priority === 'speed' ? 40 : 15) * minTime / offer.deliveryMinutes;
     return {...candidate, score, history};
   }).sort((a, b) => b.score - a.score || a.offer.id.localeCompare(b.offer.id));

@@ -145,7 +145,7 @@ test('buying a package creates fixed terms that start through the normal checks 
     assert.ok(detail.events.some(event => event.type === 'package.bought'));
     const listed = (await f.request(`/api/tasks?tenantId=${tenantId}`, f.buyer)).body.tasks.find(item => item.id === taskId);
     assert.deepEqual(listed.chosenOffer, { agentId: builder.agentId, agentName: 'QA CSV specialist', operatorName: 'QA recommendation-builder-0',
-      amountMinor: 2500, currency: 'USD', packageId }, 'Your work rows show who and how much');
+      amountMinor: 2500, feeMinor: 0, totalMinor: 2500, currency: 'USD', packageId }, 'Your work rows show who and how much');
     assert.equal(listed.offerCount, 1);
     assert.ok(Array.isArray(detail.messages) && !detail.messages.length, 'the package text is not shown as a message the buyer wrote');
 

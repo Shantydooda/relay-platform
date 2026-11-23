@@ -43,8 +43,8 @@ function summarizeSpending(tasks, history, taskView, now, currency = 'USD') {
                   entry.credit === 'provider_cash'
                 ? 'refund'
                 : entry.debit === 'buyer_funds' &&
-                    entry.credit === 'operator_balance'
-                  ? 'release'
+                    ['operator_balance', 'relay_fees'].includes(entry.credit)
+                  ? 'release' // Relay's fee leaves held funds with the builder's share.
                   : null;
           if (!kind) continue;
           if (
@@ -72,6 +72,7 @@ function summarizeSpending(tasks, history, taskView, now, currency = 'USD') {
             amountMinor: entry.amountMinor,
             currency: entry.currency,
             createdAt: entry.createdAt,
+            ...(entry.credit === 'relay_fees' ? { relayFee: true } : {}),
           });
         }
         if (
@@ -98,7 +99,7 @@ function summarizeSpending(tasks, history, taskView, now, currency = 'USD') {
         createdAt: task.createdAt,
         status: taskView(task, now).status,
         paymentStatus: task.settlement?.status || 'unfunded',
-        agreedMinor: offer && (offer.currency || 'USD') === currency ? offer.amountMinor : null,
+        agreedMinor: offer && (offer.currency || 'USD') === currency ? require('./pricing.cjs').buyerTotal(offer) : null,
         offerId: offer?.id || null,
         ...totals,
         transactions: transactions.sort((a, b) => b.createdAt - a.createdAt),

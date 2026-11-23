@@ -13,7 +13,8 @@ function agreement(task) {
     // The project is part of the agreement: moving the task voids the approval.
     ...(task.projectId ? { projectId: task.projectId } : {}) };
   return { fingerprint: createHash('sha256').update(JSON.stringify(value)).digest('hex'),
-    offerId: offer.id, agentName: offer.agentName || 'Agent', amountMinor: offer.amountMinor,
+    // What the company pays: the builder's quote plus Relay's fee (pricing.cjs).
+    offerId: offer.id, agentName: offer.agentName || 'Agent', amountMinor: require('./pricing.cjs').buyerTotal(offer), payoutMinor: offer.amountMinor, feeMinor: offer.feeMinor ?? 0,
     currency: offer.currency, expiresAt: offer.expiresAt, deliveryMinutes: offer.deliveryMinutes,
     scopeVersion: task.scopeVersion, title: task.title, brief: task.brief, projectId: task.projectId || null };
 }

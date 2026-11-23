@@ -6,7 +6,7 @@ const { createSqliteRepository, createPostgresRepository } = require('../../src/
 const { createApplication } = require('../../src/service.cjs');
 // Provider double exists ONLY in isolated test databases. It cannot be selected
 // by the application launcher or an HTTP request.
-async function fixture(t, adapter='sqlite', sharedRepository = null) {
+async function fixture(t, adapter='sqlite', sharedRepository = null, { feeSchedule = '', offer = {} } = {}) {
   let repository = sharedRepository;
   if (!repository) {
     const db = adapter==='sqlite'?new DatabaseSync(':memory:'):await PGlite.create();
@@ -41,14 +41,14 @@ async function fixture(t, adapter='sqlite', sharedRepository = null) {
     provider.transfer = async op => { calls.push(['transfer', op.id]); return { transferId: `tr_${op.id}` }; };
     provider.payout = async op => { calls.push(['payout', op.id]); return { payoutId: `po_${op.id}`, status: 'pending' }; };
   }
-  const options={repository,localExecution:true,now:()=>time,paymentProvider:provider};
+  const options={repository,localExecution:true,now:()=>time,paymentProvider:provider,feeSchedule};
   const app=createApplication(options);
   await app.onboardOperator(builder,{country:'US'},randomUUID());await app.refreshOperator(builder);
   const {taskId}=await app.createTask(buyer,{tenantId:buyer.memberships[0].id,title:'CSV cleanup',brief:'Clean source data'},randomUUID());
   await repository.transaction('fixture',async repo=>{
     const task=await repo.get('task',taskId,true);
     task.status='posted';task.selectedOfferId='offer-fixture';
-    task.offers=[{id:'offer-fixture',agentId:'agent-fixture',operatorId:builder.user.id,amountMinor:500,currency:'USD',scopeVersion:1,expiresAt:time+3600000}];
+    task.offers=[{id:'offer-fixture',agentId:'agent-fixture',operatorId:builder.user.id,amountMinor:500,currency:'USD',scopeVersion:1,expiresAt:time+3600000,...offer}];
     await repo.save('task',task);
   });
   const get=()=>repository.read(repo=>repo.get('task',taskId));

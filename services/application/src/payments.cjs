@@ -1,4 +1,5 @@
 'use strict';
+const { buyerTotal, settlementSplit } = require('./pricing.cjs');
 
 const { randomUUID } = require('node:crypto');
 const { fail, exactKeys } = require('../../../packages/contracts/src/input.cjs');
@@ -14,8 +15,9 @@ function assertUnfunded(task) {
 function paymentView(payment, job = null) {
   if (!payment) return null;
   const { id, status, amountMinor, currency, offerId, scopeVersion, operatorId, updatedAt, ledger } = payment;
-  return { id, status, amountMinor, currency, offerId, scopeVersion, operatorId, updatedAt,
-    sandbox: true, platformFeeMinor: 0, ledger: ledger || [],
+  const { payoutMinor, feeMinor } = settlementSplit(payment);
+  return { id, status, amountMinor, payoutMinor, feeMinor, currency, offerId, scopeVersion, operatorId, updatedAt,
+    sandbox: true, platformFeeMinor: feeMinor, ledger: ledger || [],
     reconciliation: job ? { status: job.status === 'review' ? 'needs_review' : job.failures ? 'retrying' : 'automatic', lastCheckedAt: job.lastCheckedAt || null, nextCheckAt: job.nextAt, errorCode: job.errorCode || null } : null };
 }
 
@@ -135,7 +137,8 @@ function createPayments(context, provider) {
       if (task.assignment || task.status !== 'posted') fail(409, 'FUNDING_UNAVAILABLE', 'Select an offer before funding.');
       const offer = task.offers.find(o => o.id === task.selectedOfferId);
       if (!offer || offer.scopeVersion !== task.scopeVersion || offer.expiresAt <= now()) fail(409, 'OFFER_UNAVAILABLE', 'Select a current offer.');
-      if (!Number.isSafeInteger(offer.amountMinor) || offer.amountMinor < 50 || offer.amountMinor > 100000) fail(409, 'SANDBOX_AMOUNT_LIMIT', 'Sandbox funding supports 0.50–1,000 in the agreed currency.');
+      const total = buyerTotal(offer);
+      if (!Number.isSafeInteger(total) || total < 50 || total > 100000) fail(409, 'SANDBOX_AMOUNT_LIMIT', 'Sandbox funding supports 0.50–1,000 in the agreed currency.');
       const op = await repo.get('sandbox-operator', offer.operatorId, true);
       if (!ready(op)) fail(409, 'OPERATOR_NOT_READY', 'The operator must refresh sandbox verification and payout readiness.');
       await context.approvals.requireApproval(repo, actor, task);
@@ -187,7 +190,8 @@ function createPayments(context, provider) {
         const op = await repo.get('sandbox-operator', offer.operatorId, true);
         if (p) await repo.save('sandbox-settlement-history', { ...p, ownerId: task.ownerId });
         p = { id: randomUUID(), ownerId: task.ownerId, taskId: id, operatorId: offer.operatorId,
-          accountId: op.accountId, amountMinor: offer.amountMinor, currency: offer.currency || 'USD', offerId: offer.id,
+          // The buyer is charged the all-in total; the builder is later transferred their quote and Relay keeps the fee (pricing.cjs).
+          accountId: op.accountId, amountMinor: buyerTotal(offer), payoutMinor: offer.amountMinor, feeMinor: offer.feeMinor ?? 0, currency: offer.currency || 'USD', offerId: offer.id,
           scopeVersion: task.scopeVersion, inputHash: task.input?.sha256 || null, ledger: [], status: 'creating_checkout' };
         task.settlement = p;
       } else if (action === 'refund') {
@@ -218,7 +222,9 @@ function createPayments(context, provider) {
     if (!snapshot) fail(404, 'NOT_FOUND', 'No sandbox funding exists for this task.');
     const p = snapshot;
     let result, next, entry;
-    const operation = { ...p, id: p.operationId };
+    const split = settlementSplit(p);
+    // Transfers and payouts move the builder's share; the charge and refunds move the buyer total.
+    const operation = { ...p, id: p.operationId, ...(['creating_transfer', 'creating_payout'].includes(p.status) ? { amountMinor: split.payoutMinor, chargeAmountMinor: split.chargeMinor } : {}) };
     if (p.status.startsWith('creating_')) retryWindow(p);
     switch (p.status) {
       case 'creating_checkout': result = await provider.checkout(operation); next = 'awaiting_payment'; break;
@@ -240,13 +246,13 @@ function createPayments(context, provider) {
         entry = ['buyer_funds', 'operator_balance', result.transferId]; break;
       case 'creating_payout': result = await provider.payout(operation); next = 'payout_pending'; break;
       case 'payout_pending':
-        result = await provider.payoutStatus(p);
+        result = await provider.payoutStatus({ ...p, amountMinor: split.payoutMinor });
         next = result.status === 'paid' ? 'paid' : ['failed', 'canceled'].includes(result.status) ? 'payout_failed' : 'payout_pending';
         if (next === 'paid') entry = ['operator_balance', 'sandbox_payout', p.payoutId];
         break;
       default:
         if (verifyTerminal && ['paid','payout_failed'].includes(p.status)) {
-          const check = await provider.payoutStatus(p);
+          const check = await provider.payoutStatus({ ...p, amountMinor: split.payoutMinor });
           if ((p.status === 'paid' && check.status !== 'paid') || (p.status === 'payout_failed' && !['failed','canceled'].includes(check.status))) fail(409, 'PAYMENT_STATE_REVIEW', 'A completed payout changed at the provider. Reconciliation review is required.');
         }
         return paymentView(p);
@@ -262,7 +268,10 @@ function createPayments(context, provider) {
       if (current.status === next && !entry) return paymentView(current);
       current.status = next; current.updatedAt = now();
       if (entry && !current.ledger.some(e => e.reference === entry[2])) {
-        current.ledger.push({ debit: entry[0], credit: entry[1], amountMinor: p.amountMinor, currency: p.currency || 'USD', reference: entry[2], createdAt: now() });
+        // Double entry, per account: the transfer splits buyer funds into the builder's balance and Relay's fee.
+        const amount = entry.includes('operator_balance') ? split.payoutMinor : split.chargeMinor;
+        current.ledger.push({ debit: entry[0], credit: entry[1], amountMinor: amount, currency: p.currency || 'USD', reference: entry[2], createdAt: now() });
+        if (entry[1] === 'operator_balance' && split.feeMinor) current.ledger.push({ debit: 'buyer_funds', credit: 'relay_fees', amountMinor: split.feeMinor, currency: p.currency || 'USD', reference: `${entry[2]}:fee`, createdAt: now() });
       }
       touch(task, now()); event(task, actorId, `sandbox.${next}`, now()); await saveTask(repo, task);
       await indexPayment(repo, task, now(), true);

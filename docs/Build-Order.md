@@ -18,7 +18,8 @@ Five branches are built and pushed but **not merged**. Each one is built on the 
 | `claude/builder-settings` | Builder slice 2: Settings page, live connection status, plainer Earnings (PR into `claude/builder-orgs`) |
 | `claude/match-alerts` | Match alerts for builders (PR #14) |
 | `claude/builder-profiles` | Builder profiles and owner tabs (PR #15) |
-| `claude/processing-region` | Processing region: declare, filter, require (PR into `claude/builder-profiles`) |
+| `claude/processing-region` | Processing region: declare, filter, require (PR #16) |
+| `claude/fees` | Fees and payouts, option B, off by default (PR into `claude/processing-region`) |
 
 The pilot still runs `1ad3d8b`. Nothing above is deployed.
 
@@ -65,12 +66,18 @@ The pilot still runs `1ad3d8b`. Nothing above is deployed.
 - Buyers filter on it, and an organization can require it.
 - Why: the first ERP buyers will ask where their data goes before posting real data.
 
-**7. Fees and payouts.** Blocked on founder decision 1, the fee model.
+**7. Fees and payouts.** ✅ Built 20 Nov, branch `claude/fees` (option B, decided 20 Nov).
+- A builder's quote or package price is what they receive. Relay's tiered fee is added on top and frozen on each offer when it's made (`feeMinor`, `totalMinor`), so a later rate change never reprices agreed work.
+- Buyers see, reserve, approve and are charged the all-in total, with the split shown ("$40.00 to the builder, $10.00 Relay fee"). Budgets, project caps, approvals, recurring limits, recommendations and package prices all use it.
+- The builder is transferred and paid out exactly their quote; the ledger records Relay's share as its own entry (`buyer_funds → relay_fees`), and the buyer's spending report counts it as released, so nothing stays "held". Tested on SQLite and Postgres, plus the Stripe sandbox adapter.
+- Builders are told where they set prices: "buyers see this plus Relay's fee". Only shown once fees are on.
+- Off by default everywhere. Locally: `RELAY_FEE_SCHEDULE=100000:2000,1000000:1200,*:800 npm run start:local`. Hosted isn't wired: switching fees on for the pilot needs the founder's approval and the independent review in CLAUDE.md §2 before real money.
+- Not yet: "verified builder before payouts" beyond today's sandbox payout readiness (needs Stripe identity checks); fee bands use the same numbers in EUR; a package bought just as the rate changes is priced at the rate when bought.
 - Wire the fee schedule into offers, charge, ledger and payout in one change, verified by the Postgres payment suites.
 - Verified builder before payouts ("paid seller" stage).
 - Why here: payments stay off until the pilot gates in `Status.md` pass, but this is the last product slice before the pilot's test payment.
 
-**8. Builder-proposed Relay tests.** Blocked on a founder decision: who reviews proposed tests.
+**8. Builder-proposed Relay tests.** Decided 20 Nov: Relay staff review each proposed test before it can be used.
 - Why: only two Relay tests exist, so publishing is narrow until builders can propose more.
 
 **9. Engagements and milestones** (`specs/Engagements-and-Milestones.md`).
