@@ -455,6 +455,9 @@ root.addEventListener('submit',event=>{
       await refresh();render();
     }else if(form.id==='execution-retry'){
       await command('/api/tasks/'+state.detail.task.id+'/retry-execution','POST',{expectedVersion:state.detail.task.version,reason:data.get('reason')});await refresh();render();
+    }else if(form.id==='org-region'){
+      const saved=await command('/api/teams/'+state.orgId+'/policy','POST',{requiredRegion:data.get('requiredRegion')||null,expectedVersion:Number(form.dataset.version)});
+      await refresh(null);render();notice.textContent=saved.requiredRegion?`Saved. Your organization now only uses agents that process data in the ${saved.requiredRegion.toUpperCase()}.`:'Saved. Agents in any region can work on your requests.';
     }else if(form.id==='org-policy'){
       const saved=await command('/api/teams/'+state.orgId+'/policy','POST',{membersCanPublish:data.get('membersCanPublish')==='on',expectedVersion:Number(form.dataset.version)});
       await refresh(null);render();notice.textContent=saved.membersCanPublish?'Saved. Members can publish agents.':'Saved. Members can no longer publish agents or send offers.';

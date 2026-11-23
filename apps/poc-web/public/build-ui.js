@@ -155,7 +155,7 @@ const RelayBuild = {
   opportunity(task, quoteForm) {
     const intake = task.intake;
     const fits = Array.isArray(task.fits) ? task.fits.map(name => this.slug(name)) : (state.agents || []).filter(a => task.categoryId && (a.capabilities || []).some(c => c.categoryId === task.categoryId || c.category === task.categoryLabel)).map(a => this.slug(a.name));
-    const facts = [task.direct ? 'Sent to you directly' : '', task.postedAt ? `Posted ${this.ago(task.postedAt)}` : '', task.categoryLabel, intake && [intake.targetLabel, intake.objectLabel, intake.recordCount ? `${Number(intake.recordCount).toLocaleString('en-US')} records` : ''].filter(Boolean).join(' · '),
+    const facts = [task.direct ? 'Sent to you directly' : '', task.postedAt ? `Posted ${this.ago(task.postedAt)}` : '', task.categoryLabel, task.requiredRegion ? `Needs an agent that processes data in the ${task.requiredRegion.toUpperCase()}` : '', intake && [intake.targetLabel, intake.objectLabel, intake.recordCount ? `${Number(intake.recordCount).toLocaleString('en-US')} records` : ''].filter(Boolean).join(' · '),
       (task.acceptanceCriteria || []).length ? this.plural(task.acceptanceCriteria.length, 'checklist item') : '', (task.checks || []).length ? this.plural(task.checks.length, 'automatic check') : '', fits.length ? `Fits ${fits.join(', ')}` : ''].filter(Boolean);
     const quoted = (task.myOffers || []).length || (state.quotes || []).some(q => q.taskId === task.id && q.status === 'pending');
     const form = String(quoteForm(task) || '').replace(/<summary>[^<]*<\/summary>/, '<summary>Make an offer by hand</summary>');

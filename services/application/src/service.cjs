@@ -107,7 +107,7 @@ function listingView(agent, time) {
 function agentView(agent, now) {
   const connected = !!agent.credentialHash && (!agent.credentialExpiresAt || agent.credentialExpiresAt > now) && agent.connectedAt > now - 120000;
   const { id, name, kind, purpose, domain, integration, capabilities, setupStage, createdAt, version } = agent;
-  return { id, name, kind, purpose, domain, integration, listingStatus: listingState(agent), capabilities: capabilities.map(item => capabilityView(agent, item, now)), setupStage, createdAt, version,
+  return { id, name, kind, purpose, domain, integration, processingRegion: agent.processingRegion || null, listingStatus: listingState(agent), capabilities: capabilities.map(item => capabilityView(agent, item, now)), setupStage, createdAt, version,
     connection: connected ? 'connected' : 'not_connected',
     rules: { ...agent.rules, version, automaticEnabled: connected && agent.rules.automaticRequested },
     readiness: { profile: !!purpose, connection: connected, capability: capabilities.some(item => capabilityView(agent, item, now).qualification === 'qualified'), operator: false, payout: false,
@@ -229,6 +229,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         const preferred = await repo.get('agent', text(body.preferredAgentId, 'Preferred agent', 36, 36), true);
         const available = requestableAgent(preferred, actor, time);
         if (!available) fail(404, 'NOT_FOUND', 'That agent is not available for direct requests.');
+        require('./processing-region.cjs').assertAllowed(await context.org.requiredRegion(repo, body.tenantId), preferred);
         acquisition = require('./acquisition.cjs').acquisition(body.discoverySource ?? 'unspecified', preferred, body.preferenceMode, time);
         if (body.preferenceMode === 'agent') preferredAgentId = preferred.id;
         else preferredOperatorId = preferred.ownerId;
@@ -263,11 +264,13 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (!requestableAgent(agent, actor, time)) notFound();
       const pkg = checkPurchasable(agent, packageId, (item, capability) => capabilityView(item, capability, time).qualification);
       if (pkg.version !== body.expectedPackageVersion) fail(409, 'PACKAGE_CHANGED', 'The builder updated this package. Review the new terms before buying.');
+      const requiredRegion = await context.org.requiredRegion(repo, body.tenantId);
+      require('./processing-region.cjs').assertAllowed(requiredRegion, agent);
       await limits.consumeConversation(repo, body.tenantId, time);
       const terms = packageTerms(pkg), capability = agent.capabilities.find(item => item.id === terms.capabilityId);
       const task = newTask({ id: randomUUID(), actor, tenantId: body.tenantId, title: terms.title, brief: terms.included, time,
         preferredAgentId: agent.id, acquisition: require('./acquisition.cjs').acquisition('package', agent, 'agent', time) });
-      task.status = 'posted';
+      task.status = 'posted'; task.requiredRegion = requiredRegion;
       // The buyer didn't write the package text, so it isn't shown as their message.
       task.messages = [];
       task.package = { ...terms, criteria: terms.criteria.map(item => ({ ...item })), inputs: [...terms.inputs] };
@@ -322,6 +325,11 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         if (action === 'post' && task.workPlan && task.workPlan.cadence !== 'once' && (task.workPlan.openQuestions?.length || !['daily', 'weekly', 'monthly'].includes(task.workPlan.cadence))) fail(409, 'RECURRING_NOT_ENABLED', 'Resolve the missing details and choose a supported calendar before requesting offers.');
         task.status = action === 'post' ? 'posted' : 'cancelled';
         if (action === 'cancel') task.selectedOfferId = null;
+        if (action === 'post') {
+          // Builders see the requirement on the request; the live rule is checked again at every step.
+          task.requiredRegion = await context.org.requiredRegion(repo, task.tenantId);
+          if (task.preferredAgentId) require('./processing-region.cjs').assertAllowed(task.requiredRegion, await repo.get('agent', task.preferredAgentId));
+        }
         type = action === 'post' ? 'task.posted' : 'task.cancelled';
       } else fail(404, 'NOT_FOUND', 'Action not found.');
       touch(task, time); event(task, actor.user.id, type, time); await saveTask(repo, task);
@@ -329,7 +337,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     });
   }
   async function addAgent(actor, body, key) {
-    exactKeys(body, ['name', 'kind', 'integration', 'capabilities', 'purpose', 'domain']);
+    exactKeys(body, ['name', 'kind', 'integration', 'capabilities', 'purpose', 'domain', 'processingRegion']);
+    const processingRegion = body.processingRegion === undefined ? null : require('./processing-region.cjs').regionInput(body.processingRegion);
     if (!['general', 'specialist'].includes(body.kind) || !['api', 'sdk', 'mcp'].includes(body.integration)) fail(400, 'INVALID_INPUT', 'Choose an agent type and connection method.');
     const name = text(body.name, 'Name', 1, 80), purpose = text(body.purpose, 'Purpose', 1, 1000);
     const domain = body.domain ? text(body.domain, 'Domain', 1, 150) : '';
@@ -356,7 +365,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if ((!actor.memberships.length && !actor.organization) || actor.recoveryRequired) notFound();
     }, async repo => {
       await context.org.assertCanPublish(repo, actor);
-      const agent = { id: randomUUID(), ownerId: actor.user.id, operatorName: actor.user.name, operatorKind: actor.organization ? 'organization' : 'person', name, purpose, domain, kind: body.kind,
+      const agent = { id: randomUUID(), ownerId: actor.user.id, operatorName: actor.user.name, operatorKind: actor.organization ? 'organization' : 'person', name, purpose, domain, processingRegion, kind: body.kind,
         integration: body.integration, capabilities, listingStatus: 'draft', status: 'listed', version: 1, setupStage: 2, createdAt: now(),
         rules: { automaticRequested: false, minimumPayout: 100, concurrency: 1 } };
       await repo.save('agent', agent);
@@ -377,7 +386,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     });
   }
   async function configure(actor, id, body, key) {
-    exactKeys(body, ['integration', 'automaticRequested', 'minimumPayout', 'concurrency', 'expectedVersion', 'setupStage', 'name', 'purpose', 'domain', 'kind', 'currency', 'automaticScope', 'automaticLimitMinor']);
+    exactKeys(body, ['integration', 'automaticRequested', 'minimumPayout', 'concurrency', 'expectedVersion', 'setupStage', 'name', 'purpose', 'domain', 'kind', 'currency', 'automaticScope', 'automaticLimitMinor', 'processingRegion']);
+    const processingRegion = body.processingRegion === undefined ? undefined : require('./processing-region.cjs').regionInput(body.processingRegion);
     const automatic = require('./auto-offers.cjs').automaticRules(body);
     if (!['api', 'sdk', 'mcp'].includes(body.integration) || typeof body.automaticRequested !== 'boolean') fail(400, 'INVALID_INPUT', 'Choose method and bidding preference.');
     positive(body.minimumPayout, 'Minimum payout', 10000000); positive(body.concurrency, 'Concurrency', 100); positive(body.setupStage, 'Stage', 3);
@@ -395,6 +405,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         agent.credentialExpiresAt = null;
       }
       agent.integration = body.integration; agent.setupStage = body.setupStage;
+      if (processingRegion !== undefined) agent.processingRegion = processingRegion;
       const currency = body.currency === undefined ? (agent.rules.currency || 'USD') : body.currency;
       if (!['USD', 'EUR'].includes(currency)) fail(400, 'CURRENCY_UNSUPPORTED', 'Choose USD or EUR.');
       agent.rules = { currency, automaticRequested: body.automaticRequested, minimumPayout: body.minimumPayout, concurrency: body.concurrency, ...automatic };
@@ -424,6 +435,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       assertUnfunded(task);
       if (task.preferredAgentId && task.preferredAgentId !== body.agentId) fail(409, 'SCHEDULE_AGENT', 'This recurring run is reserved for its chosen agent.');
       if (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) fail(404, 'NOT_FOUND', 'This direct request is reserved for another builder.');
+      require('./processing-region.cjs').assertAllowed(await context.org.requiredRegion(repo, task.tenantId), agent, 'builder');
       if (excludedFrom(task, body.agentId)) fail(409, 'AGENT_EXCLUDED', 'The buyer asked for a different agent after this agent’s run failed.');
       if (task.assignment) fail(409, 'TASK_ASSIGNED', 'This task is already assigned.');
       assertNotPackage(task);
@@ -459,6 +471,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       if (!offer) notFound();
       if (offer.scopeVersion !== task.scopeVersion) fail(409, 'VERSION_CONFLICT', 'Request a quote for the current scope.');
       if (offer.expiresAt <= now()) fail(409, 'OFFER_EXPIRED', 'This offer expired.');
+      const requiredRegion = await context.org.requiredRegion(repo, task.tenantId);
+      if (requiredRegion) require('./processing-region.cjs').assertAllowed(requiredRegion, offer.agentId ? await repo.get('agent', offer.agentId) : null);
       task.selectedOfferId = offer.id; touch(task, now()); event(task, actor.user.id, 'offer.selected', now(), offer.id); await saveTask(repo, task);
       return { taskId: id, offerId: offer.id, version: task.version, status: 'selected', executionAuthorized: false };
     });
@@ -503,7 +517,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
       task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) return null;
     return { id: task.id, title: task.title, brief: task.brief, version: task.version, scopeVersion: task.scopeVersion, acceptanceCriteria: task.acceptanceCriteria || [],
       input: task.input ? { filename: task.input.filename, size: task.input.size, sha256: task.input.sha256, notes: task.input.notes, operation: task.input.operation } : null,
-      categoryId: task.categoryId || null, categoryLabel: task.categoryId ? require('../../../packages/domain/src/categories.cjs').taskById(task.categoryId).label : null,
+      requiredRegion: task.requiredRegion || null, categoryId: task.categoryId || null, categoryLabel: task.categoryId ? require('../../../packages/domain/src/categories.cjs').taskById(task.categoryId).label : null,
       intake: context.intake.forBidders(task), checks: (task.checks || []).map(require('./checks.cjs').checkView),
       postedAt: [...task.events].reverse().find(item => item.type === 'task.posted')?.createdAt || task.createdAt, direct: !!(task.preferredAgentId || task.preferredOperatorId),
       context: [], myOffers: task.offers.filter(offer => offer.operatorId === actor.user.id).map(offer => ({ id: offer.id, agentId: offer.agentId, taskVersion: offer.taskVersion, scopeVersion: offer.scopeVersion, expiresAt: offer.expiresAt })) };
@@ -527,7 +541,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
           if (excluded?.ownerId === actor.user.id && (await repo.list('agent', 'owner_id', actor.user.id)).every(agent => agent.id === excluded.id)) continue;
         }
         const item = opportunityView(task, actor);
-        if (item) visible.push({ ...item, fits: (mine ||= await repo.list('agent', 'owner_id', actor.user.id)).filter(agent => agent.listingStatus !== 'paused' && require('./capability-matching.cjs').agentFits(agent, task)).map(agent => agent.name) });
+        if (item) visible.push({ ...item, fits: (mine ||= await repo.list('agent', 'owner_id', actor.user.id)).filter(agent => agent.listingStatus !== 'paused' && require('./processing-region.cjs').allows(task.requiredRegion, agent) && require('./capability-matching.cjs').agentFits(agent, task)).map(agent => agent.name) });
       }
       return visible;
     });
@@ -603,7 +617,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   const packages = createPackages({ ...context, qualificationOf: (agent, capability) => capabilityView(agent, capability, now()).qualification });
   const { refreshSourceWithin, ...driveConnections } = require('./drive-connections.cjs').createDriveConnections(context);
   context.refreshSourceWithin = refreshSourceWithin;
-  const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView,
+  const marketBrowse = require('./marketplace-browse.cjs').createBrowse({ repository, now, listingView, org: context.org,
     connectors: require('./marketplace-browse.cjs').workingConnectors({ capabilities, driveProvider, attioProvider, connectionProviders }) });
   return { activity, setCriteria: acceptance.setCriteria, endUnmet: acceptance.endUnmet, recoverOrchestration: require('./orchestration-recovery.cjs').createRecovery(context), createOrchestration: orchestration.create, approveHandover: orchestration.handover, completeOrchestration: orchestration.complete, ...require('./operations.cjs').createOperations(context), ...require('./notifications.cjs').createNotifications(context), features: { supplierConnections, pilotConnections, attioDelivery: capabilities.attioDelivery, notifications: capabilities.notifications, driveConnections: capabilities.driveConnections, unifiedBackend: true, localExecution, unpaidExecution: capabilities.unpaidExecution, changeProposals: capabilities.changeProposals, scoping: capabilities.scoping, recurring: capabilities.recurring, workspaceApps: capabilities.workspaceApps }, ...require('./file-scans.cjs').createFileScans(context), ...context.approvals, ...projectCommands, orgPolicy: context.org.orgPolicy, setOrgPolicy: context.org.setOrgPolicy, publishing: context.org.publishing, orgAudit: context.org.orgAudit, actAs: context.org.actAs, recordOrgAction: context.org.recordOrgAction, ...connectionCommands, ...intakeCommands, ...payments, ...qualification, ...scoping, createTask, mutateTask, detail, list, ...executionCommands, ...feed, ...lifecycle, ...recurring, ...require('./workspace-apps.cjs').createWorkspaceApps(context), ...driveConnections, ...require('./attio-delivery.cjs').createAttioDelivery(context), ...require('./task-changes.cjs').createTaskChanges(context),
     marketplace: {
@@ -630,7 +644,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
         return { ...listingView(agent, time), saved: saved.agentIds.includes(id), savedVersion: saved.version, portfolio: examples, ownerPreview: owner,
           // The owner edits packages on their own agent page, so they also get drafts and the version to edit against.
           ...(owner ? { ownerPackages: (agent.packages || []).map(packageView), agentVersion: agent.version } : {}),
-          trackRecord: require('./agent-card.cjs').agentEvidence(history, agent, time), market: await marketBrowse.row(repo, actor, agent) };
+          trackRecord: require('./agent-card.cjs').agentEvidence(history, agent, time), market: await marketBrowse.row(repo, actor, agent), regionRules: await context.org.regionRules(repo, actor) };
       }),
       acquisition: require('./acquisition.cjs').createAcquisition(context),
       recordExposure: require('./fair-exposure.cjs').createExposure(context).record,

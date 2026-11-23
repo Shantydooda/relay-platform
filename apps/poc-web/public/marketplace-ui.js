@@ -205,9 +205,20 @@ const RelayMarketplace = {
   },
 
   // ---- Browse ------------------------------------------------------------
+  // Where an agent processes data: the builder's declaration (processing-region.cjs).
+  REGIONS: { eu: 'EU', us: 'US' },
+  regionRules() { return state.agentPage?.regionRules || state.market?.regionRules || []; },
+  // Companies whose rule refuses this agent. The buyer may still use it from another workspace.
+  regionBlocks(m) { return this.regionRules().filter(rule => m.processingRegion !== rule.region); },
+  regionNote(m) {
+    const blocks = this.regionBlocks(m);
+    if (!blocks.length || m.own) return '';
+    return `<p class="mk-region-note" role="note">${escape(blocks.map(rule => rule.name).join(' and '))} only ${blocks.length > 1 ? 'use' : 'uses'} agents that process data in ${escape([...new Set(blocks.map(rule => `the ${this.REGIONS[rule.region]}`))].join(' or '))}. ${m.processingRegion ? `This agent declares ${escape(`the ${this.REGIONS[m.processingRegion]}`)}` : 'This agent hasn’t declared a region'}, so Relay won’t let ${blocks.length > 1 ? 'their' : 'its'} requests use it.</p>`;
+  },
   filters() {
     state.marketFilters ||= { q: '', categories: [], ways: [], works: [], evidence: [], railTab: 'main', allCategories: false, price: [0, this.PRICE_STOPS.length - 1] };
     state.marketFilters.price ||= [0, this.PRICE_STOPS.length - 1];
+    state.marketFilters.regions ||= [];
     return state.marketFilters;
   },
   matches(agent, f = this.filters()) {
@@ -221,6 +232,7 @@ const RelayMarketplace = {
     if (f.ways.length && !f.ways.some(way => agent.waysToBuy.includes(way))) return false;
     if (!this.priceMatches(agent, f)) return false;
     if (f.works.length && !f.works.every(name => agent.worksWith.includes(name))) return false;
+    if (f.regions.length && !f.regions.includes(agent.processingRegion)) return false;
     const evidence = { tested: agent.relayTest.passed, runs20: agent.evidence.runs >= this.MIN_RATE_SAMPLE, repeat: agent.buyers.repeat > 0, hosted: agent.hostedOnRelay };
     return f.evidence.every(key => evidence[key]);
   },
@@ -308,7 +320,8 @@ const RelayMarketplace = {
         ${this.chip('ways', 'hire', '<strong>Hire it</strong>&nbsp;· package', f.ways.includes('hire'), { count: count(a => a.waysToBuy.includes('hire')), disabled: !count(a => a.waysToBuy.includes('hire')), title: count(a => a.waysToBuy.includes('hire')) ? '' : 'No agent offers a package yet' })}
         ${this.chip('ways', 'commission', '<strong>Commission</strong>&nbsp;· custom', f.ways.includes('commission'), { count: count(a => a.waysToBuy.includes('commission')) })}
       </div><p class="mk-empty-note">Self-serve runs aren’t available yet. Packages have a fixed price and checklist; anything else is quoted per request.</p></section>
-      <section>${this.priceRange(all)}</section>` : ''}
+      <section>${this.priceRange(all)}</section>
+      <section><h2>Data processed in</h2><div class="mk-chips">${Object.entries(this.REGIONS).map(([id, label]) => this.chip('regions', id, escape(label), f.regions.includes(id), { count: count(a => a.processingRegion === id) })).join('')}</div><p class="mk-empty-note">Declared by builders, not verified by Relay.${this.regionRules().length ? ` ${escape(this.regionRules().map(r => `${r.name} requires ${this.REGIONS[r.region]}`).join('; '))}.` : ''}</p></section>` : ''}
       ${show('works') ? `<section><h2>Works with</h2>${connectors.length ? `<div class="mk-chips">${connectors.map(name => this.chip('works', name, escape(name), f.works.includes(name), { count: count(a => a.worksWith.includes(name)) })).join('')}</div><p class="mk-empty-note">Declared by builders. Access is only granted per task, with your approval.</p>` : '<p class="mk-empty-note">No connectors are set up in this environment yet.</p>'}</section>` : ''}
       ${show('evidence') ? `<section><h2>Evidence</h2><div class="mk-chips">${this.EVIDENCE_FILTERS.map(([id, label]) => this.chip('evidence', id, escape(label), f.evidence.includes(id), { count: evidenceCounts[id] })).join('')}</div></section>` : ''}
       <p class="mk-rail-note">Rankings can’t be bought. The order comes from the sort you choose and results Relay verified, including failures.</p>
@@ -317,7 +330,7 @@ const RelayMarketplace = {
   row(agent, describe) {
     const evidence = this.evidenceLine(agent);
     const meta = [escape(agent.categoryLabel || agent.category || 'Uncategorised'), escape(this.ways(agent)), escape(this.price(agent)),
-      `<span class="${evidence.strong ? 'mk-good' : ''}">${escape(evidence.text)}</span>`, escape(this.updated(agent))];
+      `<span class="${evidence.strong ? 'mk-good' : ''}">${escape(evidence.text)}</span>`, ...(agent.processingRegion ? [`Data in ${this.REGIONS[agent.processingRegion]}`] : []), escape(this.updated(agent))];
     return `<li class="mk-row"><a href="/agents/${escape(agent.id)}" data-route class="mk-row-link">
       <span class="mk-row-title">${this.avatar(agent)}<span class="mk-handle">${escape(this.handle(agent))}</span>${agent.isNew ? '<span class="mk-new">New</span>' : ''}${agent.own ? '<span class="mk-tag">Yours</span>' : ''}</span>
       <span class="mk-meta">${meta.join('<span class="mk-sep" aria-hidden="true">·</span>')}</span>
@@ -500,7 +513,7 @@ const RelayMarketplace = {
     const tab = state.agentTab || 'card';
     const counts = { packages: (agent.ownerPreview ? agent.ownerPackages || [] : m.packages).length, versions: agent.trackRecord?.versions?.length || 0 };
     const chips = [`${this.dot(m.category || '')}${escape(m.category || 'Uncategorised')}`, ...m.waysToBuy.map(way => ({ commission: 'Commission', use: 'Use it', hire: 'Hire it' }[way])),
-      ...m.worksWith.map(name => `Works with ${escape(name)}`), ...(m.hostedOnRelay ? ['Hosted on Relay'] : []), ...(m.version ? [escape(this.version(m.version))] : [])];
+      ...m.worksWith.map(name => `Works with ${escape(name)}`), ...(m.hostedOnRelay ? ['Hosted on Relay'] : []), ...(m.processingRegion ? [`Data processed in ${this.REGIONS[m.processingRegion]}`] : []), ...(m.version ? [escape(this.version(m.version))] : [])];
     const body = tab === 'settings' && agent.ownerPreview ? this.ownerTab(agent)
       : tab === 'evidence' ? this.evidenceTab(agent, m)
       : tab === 'packages' ? this.packagesTab(agent, m)
@@ -521,7 +534,7 @@ const RelayMarketplace = {
         <nav class="mk-tabs" aria-label="Agent sections">${tabs.map(([id, label]) => `<button type="button" data-action="market-agent-tab" data-tab="${id}" ${tab === id ? 'aria-current="page"' : ''}>${label}${counts[id] !== undefined ? ` <span class="mk-count">${counts[id]}</span>` : ''}</button>`).join('')}</nav>
       </header>
       <div class="mk-agent-layout"><div class="mk-agent-main">${body}</div>
-        <aside class="mk-buy" aria-label="Ways to buy">
+        <aside class="mk-buy" aria-label="Ways to buy">${this.regionNote(m)}
           <section class="mk-buy-box"><h2>Use it</h2><p>Self-serve runs aren’t available for this agent yet.</p><button type="button" disabled>Run this agent</button></section>
           ${this.hireBox(agent, m)}
           <section class="mk-buy-box mk-buy-custom"><h2>Need something custom?</h2><p>Describe the outcome and your checklist. ${escape(m.builder)} quotes, and you approve before work starts.</p>
