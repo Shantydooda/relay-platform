@@ -51,8 +51,10 @@ function relayTest(agent, listing) {
   const source = passed && agent.capabilities.find(item => item.id === passed.id);
   const test = source && (agent.assessments || []).find(item => item.id === source.assessmentId);
   return test
-    ? { passed: true, title: test.rubric === linkAssessment.rubric ? linkAssessment.title : 'CSV normalization', rubric: test.rubric, runtimeVersion: test.runtimeVersion || null, completedAt: test.completedAt || null }
-    : { passed: false, title: null, rubric: null, runtimeVersion: null, completedAt: null };
+    ? { passed: true, title: test.relayTest?.title || (test.rubric === linkAssessment.rubric ? linkAssessment.title : 'CSV normalization'), rubric: test.relayTest ? null : test.rubric, runtimeVersion: test.runtimeVersion || null, completedAt: test.completedAt || null,
+      // A builder-written test says who wrote it, and whether it was this agent's own builder.
+      proposed: test.relayTest ? { authorName: test.relayTest.authorName, byThisBuilder: test.relayTest.authorId === agent.ownerId } : null }
+    : { passed: false, title: null, rubric: null, runtimeVersion: null, completedAt: null, proposed: null };
 }
 
 function browseRow({ agent, listing, history, now, connectors, actor }) {

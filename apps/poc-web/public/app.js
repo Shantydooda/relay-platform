@@ -161,7 +161,7 @@ function header() {
     <div class="account-actions">
       <button class="appearance-switch" data-action="toggle-appearance" aria-label="Dark mode" title="Toggle light / dark appearance" aria-pressed="${globalThis.document?.documentElement?.dataset.appearance !== 'light'}"><svg class="appearance-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.1A8.5 8.5 0 0 1 10.9 3.5a8.5 8.5 0 1 0 9.6 9.6Z"/></svg><svg class="appearance-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button>
       <button class="workspace-switch" data-action="switch">Switch to ${builderSide ? 'buyer' : 'builder'} workspace</button>
-      <details class="account-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span>${escape(user.name)}</span></summary><div class="account-popover"><small>${escape(user.email)}</small><small>${state.authMode==='managed'?(state.features?.pilotConnections?'Private pilot account':'Private staging account'):'Local development · saved on this machine'}</small>${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}<button data-action="logout">Sign out</button></div></details>
+      <details class="account-menu"><summary><span class="account-avatar">${escape(user.name.slice(0, 1).toUpperCase())}</span><span>${escape(user.name)}</span></summary><div class="account-popover"><small>${escape(user.email)}</small><small>${state.authMode==='managed'?(state.features?.pilotConnections?'Private pilot account':'Private staging account'):'Local development · saved on this machine'}</small>${state.payments?.recoveryAccess ? '<button data-action="recovery-open">Payment recovery</button>' : ''}${state.relayTestReviewer?.[state.account?.user?.id] ? '<a href="/build/tests" data-route>Review Relay tests</a>' : ''}<button data-action="logout">Sign out</button></div></details>
     </div>
   </aside>`;
 }
@@ -259,6 +259,8 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
   state.filePreview=null;
   state.account=await api('/api/me');
   // The fixed category list, for the browse rail, the builder's picker and Post a request.
+  // Relay staff review proposed tests; the menu shows them the way in.
+  if(!state.account.recoveryRequired&&!(state.account.user.id in (state.relayTestReviewer||={})))state.relayTestReviewer[state.account.user.id]=!!(await api('/api/relay-tests').catch(()=>null))?.canReview;
   if(!state.taxonomy&&!state.account.recoveryRequired)try{state.taxonomy=(await api('/api/categories')).fields;}catch{state.taxonomy=[];}
   if(typeof RelayAgentMarket === 'object' && RelayAgentMarket.storefrontId() && state.account.user.workspace === 'buyer') state.buyerTab='market';
   if(state.account.recoveryRequired){state.auth='reset';state.tasks=[];state.detail=null;return;}
@@ -309,6 +311,7 @@ async function refresh(id=state.detail?.task.id, nextState=state, background=fal
     }
     const [a,o,w,q]=await Promise.all([api('/api/agents'),api('/api/opportunities'),api('/api/work'),api('/api/quotes')]);
     state.agents=a.agents;state.opportunities=o.tasks;state.work=w.tasks;state.quotes=q.offers;state.detail=null;state.offers=[];
+    if(typeof RelayTests==='object')await RelayTests.load();
     if(!state.actingAs){state.ownAgentCount=a.agents.length;state.ownAgentsUser=state.account.user.id;}
     if(typeof RelayBuild==='object')RelayBuild.gate(state);
   }else{
@@ -455,6 +458,13 @@ root.addEventListener('submit',event=>{
       await refresh();render();
     }else if(form.id==='execution-retry'){
       await command('/api/tasks/'+state.detail.task.id+'/retry-execution','POST',{expectedVersion:state.detail.task.version,reason:data.get('reason')});await refresh();render();
+    }else if(form.id==='relay-test-propose'){
+      await RelayTests.propose(data);state.relayTestDraft=null;form.reset();
+      await refresh();render();notice.textContent='Sent for review. Relay staff will approve it or tell you what to change.';
+    }else if(form.classList.contains('relay-test-review')){
+      const decision=event.submitter?.value;
+      await command('/api/relay-tests/'+form.dataset.id+'/review','POST',{expectedVersion:Number(form.dataset.version),decision,reason:String(data.get('reason')||'').trim()||null});
+      await refresh();render();notice.textContent={approve:'Approved. Agents in its category can take it now.',reject:'Rejected. The builder sees your reason.',retire:'Retired. No new runs.'}[decision];
     }else if(form.id==='org-region'){
       const saved=await command('/api/teams/'+state.orgId+'/policy','POST',{requiredRegion:data.get('requiredRegion')||null,expectedVersion:Number(form.dataset.version)});
       await refresh(null);render();notice.textContent=saved.requiredRegion?`Saved. Your organization now only uses agents that process data in the ${saved.requiredRegion.toUpperCase()}.`:'Saved. Agents in any region can work on your requests.';
@@ -779,6 +789,11 @@ root.addEventListener('click',event=>{
       await command(`/api/agents/${agent.id}/qualifications`,'POST',{expectedVersion:agent.version,capabilityId:button.dataset.capability,rubric:button.dataset.rubric||'csv-normalize-v1'});
       await refresh();render();notice.textContent='Test job sent to your connected runtime. A pass requires both the test and its revision.';
     }
+    else if(action==='withdraw-relay-test'){
+      await command('/api/relay-tests/'+button.dataset.id+'/withdraw','POST',{expectedVersion:Number(button.dataset.version)});
+      await refresh();render();notice.textContent='Withdrawn.';
+    }
+    else if(action==='copy-relay-test'){state.relayTestDraft=button.dataset.id||null;render();document.getElementById('rt-title')?.focus();}
     else if(action==='download-supplier-config'){RelaySupplier.download(button.dataset.id);}
     else if(action==='hide-supplier-key'){RelaySupplier.clear();render();}
     else if(action==='home'||action==='new'){state.buyerTab=state.account&&typeof RelayMarketplace==='object'?'market':'request';state.agentPageId=null;state.setupAgentId=null;state.addingAgent=false;state.auth=state.account?.recoveryRequired?'reset':null;state.intent=null;state.detail=null;state.editing=false;location.hash='';render();}
@@ -1035,7 +1050,7 @@ boot();
 let lastInteraction=Date.now();
 for(const type of ['pointerdown','keydown','input'])root.addEventListener(type,()=>{lastInteraction=Date.now();});
 const workspaceRefresh = RelayRefresh.create();
-const refreshedFields = ['attio','attioReceipts','spendingHistory','account','auth','tenantId','payments','recoveryData','operationsBacklog','operationsBacklogUser','schedules','executionQueue','workspaceApps','drive','team','teamHistory','companyBudget','tasks','agents','opportunities','work','quotes','detail','offers'];
+const refreshedFields = ['attio','attioReceipts','spendingHistory','account','auth','tenantId','payments','recoveryData','operationsBacklog','operationsBacklogUser','schedules','executionQueue','workspaceApps','drive','team','teamHistory','companyBudget','tasks','agents','opportunities','work','quotes','detail','offers','relayTests','relayTestQueue'];
 function workspaceSnapshot(value) {
   return JSON.stringify(refreshedFields.map(field => field === 'executionQueue' ? value[field]?.items : value[field]));
 }
