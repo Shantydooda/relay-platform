@@ -4,7 +4,7 @@ const { createMembershipProducer } = require('../../staging-api/src/membership-p
 const { createMembershipProviderStream, postgresProviderReader } = require('../../staging-api/src/membership-provider-stream.cjs');
 const { startWorker, workerHealth } = require('../../operations/src/worker.cjs');
 
-function composePilot({ provider, repository, pool, sessionKey, membershipKey, objectStore, unpaidExecution = false, logger = console, now = Date.now }) {
+function composePilot({ provider, repository, pool, sessionKey, membershipKey, objectStore, unpaidExecution = false, relayTestReviewerIds = [], logger = console, now = Date.now }) {
   const issuer = 'relay-pilot', keyId = 'pilot-v1';
   let producer, pendingSync;
   const sync = () => {
@@ -19,7 +19,7 @@ function composePilot({ provider, repository, pool, sessionKey, membershipKey, o
   } };
   const managed = createUnifiedManagedStore({ provider: synchronizedProvider, repository, sessionKey, now,
     membershipFeed: { issuer, keys: { [keyId]: membershipKey } },
-    applicationOptions: { localExecution: false, pilotConnections: true, pilotUnpaidExecution: unpaidExecution, objectStore },
+    applicationOptions: { localExecution: false, pilotConnections: true, pilotUnpaidExecution: unpaidExecution, relayTestReviewerIds, objectStore },
   });
   let stream;
   producer = createMembershipProducer({ repository, issuer, keyId, key: membershipKey, now,

@@ -7,9 +7,9 @@
 // run, may sandbox money move. Each question is named here so an environment
 // can open one capability without silently opening the others.
 //
-// The private pilot opens one capability beyond quoting: unpaid execution by
-// supplier-hosted runtimes, and only when its operator turns it on. No money
-// moves and no local process runs on the pilot.
+// The private pilot opens in-app notifications, and one capability beyond
+// quoting: unpaid execution by supplier-hosted runtimes, only when its operator
+// turns it on. No money moves and no local process runs on the pilot.
 
 function environmentCapabilities({ localExecution = false, pilotConnections = false, pilotUnpaidExecution = false,
   paymentProvider, scopingProvider, resolveActor } = {}) {
@@ -30,7 +30,8 @@ function environmentCapabilities({ localExecution = false, pilotConnections = fa
     orchestration: localExecution,
     sandboxPayments: !!paymentProvider && localExecution,
     paymentOperations: localExecution,
-    notifications: localExecution,
+    // In-app only (no email). The pilot needs them so builders hear about requests that fit.
+    notifications: localExecution || pilotConnections,
     recurring: localIdentity,
     workspaceApps: localIdentity,
     driveConnections: localIdentity,

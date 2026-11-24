@@ -83,8 +83,9 @@ test('a pilot with unpaid execution enabled runs supplier-hosted work end to end
   const app = createApplication({ repository, pilotConnections: true, pilotUnpaidExecution: true, resolveActor, resolveOperator: resolveActor });
   assert.equal(app.features.unpaidExecution, true);
   assert.equal(app.features.changeProposals, true);
-  for (const closed of ['localExecution', 'recurring', 'workspaceApps', 'driveConnections', 'attioDelivery', 'notifications'])
+  for (const closed of ['localExecution', 'recurring', 'workspaceApps', 'driveConnections', 'attioDelivery'])
     assert.equal(app.features[closed], false, closed);
+  assert.equal(app.features.notifications, true, 'in-app notifications are on so builders hear about requests');
 
   const { agentId } = await app.marketplace.addAgent(builder, {
     name: 'Pilot CSV supplier', purpose: 'Normalize supplied CSV', kind: 'specialist', domain: 'Data', integration: 'api',

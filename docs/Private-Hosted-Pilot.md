@@ -256,7 +256,7 @@ The pilot can let buyers start agreed work with builders' supplier-hosted runtim
 | `enabled` | Buyers can start selected work (unpaid); runtimes claim, deliver and receive revision requests; buyers accept, request changes, pause, cancel or end as unmet; the outcome ledger and "try another agent" work. The execution sweeper runs, so deadlines and lost leases end runs. |
 | anything else | The pilot refuses to start (`INVALID_PILOT_UNPAID_EXECUTION`). |
 
-What stays closed even when it is enabled: payments (any Stripe setting still stops startup), local CSV processes, same-agent recovery, multi-agent plans, scheduled work, workspace apps, Drive, Attio and notifications. The code is `services/application/src/capabilities.cjs`; the pilot reads the variable in `services/pilot-api/src/config.cjs`.
+What stays closed even when it is enabled: payments (any Stripe setting still stops startup), local CSV processes, same-agent recovery, multi-agent plans, scheduled work, workspace apps, Drive and Attio. The code is `services/application/src/capabilities.cjs`; the pilot reads the variable in `services/pilot-api/src/config.cjs`.
 
 Before turning it on:
 1. Deploy a commit that contains the switch. Setting the variable on an older build does nothing.
@@ -264,3 +264,11 @@ Before turning it on:
 3. Remember that a buyer's brief and attached input reach the selected builder's runtime once work starts. Invite only builders you trust with test data.
 
 Turning it off again stops new starts. Work already running keeps its agreement; the buyer can still review, cancel or end it.
+
+### Relay tests, publishing and notifications on the pilot (23 Nov 2026)
+
+Checked end to end on the pilot's own setup (`services/staging-api/test/pilot-relay-tests.test.cjs`): a builder adds an agent, creates a supplier key for their own runtime, passes a Relay test through the supplier API, publishes, and buyers see the agent in browse. With unpaid execution on, a posted request runs on that runtime with a revision round and is accepted, with no payment.
+
+- **In-app notifications are on for the pilot**, with no setting. That includes match alerts, so builders hear about requests that fit their agents, and buyers hear about offers and deliveries. Email still isn't sent.
+- **Relay test reviewers:** `RELAY_TEST_REVIEWER_USER_IDS` names the Relay staff who review tests builders propose, as Supabase user ids separated by commas. Unset means nobody can approve a proposed test; Relay's own tests still work. Anything that isn't a user id stops the pilot from starting (`INVALID_RELAY_TEST_REVIEWERS`).
+- Open evaluations work on the pilot the same way, through the supplier API.
