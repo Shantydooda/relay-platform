@@ -60,8 +60,7 @@ test('end as unmet: an expired checkout holds no money, so ending is allowed whe
 // it: assertUnfunded treats 'expired' as terminal). With refundOnEnd off (the
 // default locally), "End as unmet" and the lifecycle 'end' action are refused with
 // "it has a held payment", although no money is held.
-test('end as unmet: an expired checkout holds no money, so ending is allowed when refunds-on-end is off',
-  { todo: 'BUG-PAY-1: expired (never-paid) checkout blocks "End as unmet" with a false "held payment" error when refundOnEnd is off' }, () => {
+test('end as unmet: an expired checkout holds no money, so ending is allowed when refunds-on-end is off', () => {
     assert.equal(checkEnd(unpaidTaskWith({ status: 'expired', amountMinor: 500 })), null);
     assert.equal(checkEnd(unpaidTaskWith({ status: 'expired', amountMinor: 500 }), refundsFor()), null);
   });
@@ -181,21 +180,16 @@ async function expiredThenUnpaid(t) {
   assert.equal((await f.get()).settlement.status, 'expired', 'the checkout expired: nothing was paid');
   await f.repository.transaction('qa', async repo => {
     const task = await repo.get('task', f.taskId, true);
-    task.assignment = { id: 'qa-assignment', agentId: 'agent-fixture', operatorId: f.builder.user.id, mode: 'local-unpaid', status: 'buyer_review', offerId: task.selectedOfferId };
+    const offer = task.offers.find(item => item.id === task.selectedOfferId);
+    task.assignment = { id: 'qa-assignment', agentId: offer.agentId, operatorId: f.builder.user.id, mode: 'local-unpaid', status: 'buyer_review', offerId: task.selectedOfferId };
     task.submissions = [{ id: 's1', status: 'revision_requested', files: [] }, { id: 's2', status: 'revision_requested', files: [] }, { id: 's3', status: 'submitted', files: [] }];
+    if (!(await repo.get('agent', offer.agentId))) await repo.save('agent', { id: offer.agentId, ownerId: f.builder.user.id });
     await repo.save('task', task);
   });
   return f;
 }
-test('sqlite: after an expired checkout, unpaid work in review can be ended as unmet',
-  { todo: 'BUG-PAY-1: endUnmet refused with REFUND_REQUIRED "held payment" after a never-paid checkout expired' }, async t => {
+test('sqlite: after an expired checkout, unpaid work in review can be ended as unmet', async t => {
     const f = await expiredThenUnpaid(t);
     const result = await f.app.endUnmet(f.buyer, f.taskId, { expectedVersion: (await f.get()).version, reason: 'Checklist not met', unmetCriteria: [] }, randomUUID());
     assert.equal(result.status, 'failed');
   });
-test('sqlite: the expired-checkout refusal is reproducible (documents the current behaviour behind BUG-PAY-1)', async t => {
-  const f = await expiredThenUnpaid(t);
-  await assert.rejects(f.app.endUnmet(f.buyer, f.taskId, { expectedVersion: (await f.get()).version, reason: 'Checklist not met', unmetCriteria: [] }, randomUUID()),
-    { code: 'REFUND_REQUIRED', message: /held payment/ });
-  assert.equal((await f.get()).settlement.ledger.length, 0, 'no money ever moved');
-});

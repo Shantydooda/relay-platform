@@ -6,7 +6,7 @@
 function parseCsv(input) {
   const source = String(input).replace(/^﻿/, '');
   const records = [];
-  let row = [], field = '', quoted = false, i = 0;
+  let row = [], field = '', quoted = false, touched = false, i = 0;
   while (i < source.length) {
     const ch = source[i];
     if (quoted) {
@@ -14,15 +14,16 @@ function parseCsv(input) {
       if (ch === '"') { quoted = false; i++; continue; }
       field += ch; i++; continue;
     }
-    if (ch === '"' && field === '') { quoted = true; i++; continue; }
+    if (ch === '"' && field === '') { quoted = touched = true; i++; continue; }
     if (ch === ',') { row.push(field); field = ''; i++; continue; }
     if (ch === '\r' && source[i + 1] === '\n') i++;
-    if (ch === '\n' || ch === '\r') { row.push(field); records.push(row); row = []; field = ''; i++; continue; }
+    if (ch === '\n' || ch === '\r') { row.push(field); records.push({ row, touched }); row = []; field = ''; touched = false; i++; continue; }
     field += ch; i++;
   }
   if (quoted) throw new Error('The file ends inside a quoted value.');
-  if (field !== '' || row.length) { row.push(field); records.push(row); }
-  const rows = records.filter(r => !(r.length === 1 && r[0] === ''));
+  if (field !== '' || row.length || touched) { row.push(field); records.push({ row, touched }); }
+  // Only a truly blank line is skipped; a quoted empty value ("") is a real row.
+  const rows = records.filter(r => r.touched || !(r.row.length === 1 && r.row[0] === '')).map(r => r.row);
   if (!rows.length) return [];
   const header = rows[0].map(h => h.trim());
   if (header.some(h => !h) || new Set(header).size !== header.length) throw new Error('The header row needs a unique name for every column.');

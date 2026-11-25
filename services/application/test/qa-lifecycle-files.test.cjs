@@ -61,13 +61,13 @@ test('object storage: extension must match the declared type', async t => {
     await assert.rejects(s.submit([file(name)]), { code: 'INVALID_FILE' }, name);
 });
 
-test('inline storage: delivered filename extension must match the declared type', { todo: 'BUG-LIFE-2: without an object store, submit accepts any extension (e.g. .html, .bat, .exe) for a text/plain file; download serves it as an attachment with that name' }, async t => {
+test('inline storage: delivered filename extension must match the declared type', async t => {
   const s = await setup(t, { stored: false });
   for (const name of ['page.html', 'run.bat', 'invoice.exe'])
     await assert.rejects(s.submit([file(name, '<script>alert(1)</script>')]), { code: 'INVALID_FILE' }, name);
 });
 
-test('a scan request on an already-clean file must not put it back into quarantine', { todo: 'BUG-LIFE-3: scanFile on a clean artifact resets it to quarantined, so the builder (or buyer) can re-block download and acceptance of a cleared delivery' }, async t => {
+test('a scan request on an already-clean file must not put it back into quarantine', async t => {
   const s = await setup(t);
   const { submissionId } = await s.submit([file('result.txt')]);
   const fileId = (await s.app.detail(s.buyer, s.job.taskId)).submissions[0].files[0].id;

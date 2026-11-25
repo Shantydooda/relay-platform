@@ -66,8 +66,7 @@ test('CSV reader: quoting, CRLF/CR, BOM, prototype-like headers and ragged rows'
   assert.deepEqual(parseCsv('a\n"x"y\n'), [{ a: 'xy' }]);
 });
 
-test('BUG-SUP-8 check: a single-column export keeps rows whose value is empty',
-  { todo: 'BUG-SUP-8: parseCsv drops every one-field empty record (even a quoted ""), so single-column exports lose rows and later cursors shift' }, () => {
+test('BUG-SUP-8 check: a single-column export keeps rows whose value is empty', () => {
     assert.deepEqual(parseCsv('email\na@x.com\n""\nb@x.com\n'), [{ email: 'a@x.com' }, { email: '' }, { email: 'b@x.com' }]);
   });
 

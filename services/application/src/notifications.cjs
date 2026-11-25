@@ -77,7 +77,8 @@ async function matchAlerts(repo, actor, current, { now, opportunityView }) {
       agent = agents.find(item => item.id === task.preferredAgentId);
       direct = !!agent;
     } else {
-      agent = agents.find(item => item.listingStatus !== 'paused' && require('./processing-region.cjs').allows(task.requiredRegion, item) && agentFits(item, task));
+      // A "try another agent" request never alerts about the agent it excludes.
+      agent = agents.find(item => item.id !== task.retryOf?.excludedAgentId && item.listingStatus !== 'paused' && require('./processing-region.cjs').allows(task.requiredRegion, item) && agentFits(item, task));
     }
     if (!agent || !require('./processing-region.cjs').allows(task.requiredRegion, agent)) continue;
     items.push({

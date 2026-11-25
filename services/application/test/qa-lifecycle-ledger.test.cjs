@@ -29,17 +29,16 @@ test('baseline: an agent-reported failure is a failed outcome in the ledger', as
   assert.equal(taskOutcome(await s.stored()).outcome, 'failed');
 });
 
-test('a failed run stays countable after the builder gets a change proposal accepted', { todo: 'BUG-LIFE-1: accepting a change proposal on a failed assignment relabels it cancelled and drops it from the ledger (failure laundering)' }, async t => {
+test('a failed run stays countable: a change proposal cannot replace it', async t => {
   const s = await setup(t);
   const { leaseToken } = await s.app.claim(s.principal, s.job.taskId, { assignmentId: s.job.assignmentId }, randomUUID());
   await s.app.failExecution(s.principal, s.job.taskId, { leaseToken, code: 'AGENT_ERROR' }, randomUUID());
   const failedAssignmentId = (await s.stored()).assignment.id;
-  // The builder proposes a same-price "correction" on the failed work; the buyer accepts it.
-  const proposal = await s.app.proposeChange(s.builder, s.job.taskId, {
+  // The builder tries to propose a same-price "correction" on the failed work (BUG-LIFE-1).
+  await assert.rejects(s.app.proposeChange(s.builder, s.job.taskId, {
     expectedVersion: await s.version(), title: 'Release notes', brief: 'Write clear release notes for the new search feature.',
     reason: 'Let us try that again.', amountMinor: 100, retainedMinor: 0, deliveryMinutes: 1, kind: 'correction',
-  }, randomUUID());
-  await s.app.reviewChange(s.buyer, s.job.taskId, { expectedVersion: await s.version(), proposalId: proposal.proposalId, decision: 'accept' }, randomUUID());
+  }, randomUUID()), { code: 'FAILED_RUN_CHANGE_UNAVAILABLE' });
   const task = await s.stored();
   // The failed assignment must still be visible to the ledger as a failure.
   const events = await s.app.supplierEvents(s.principal, '', 100);

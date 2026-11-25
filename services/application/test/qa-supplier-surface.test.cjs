@@ -179,8 +179,7 @@ test('the opportunity feed shows public brief metadata only, and hides reserved,
     await assert.rejects(f.app.supplierOpportunities(s.principal, after, limit), { code: /INVALID_(CURSOR|INPUT)/ });
 });
 
-test('BUG-SUP-3 check: Supplier API opportunities carry `fits` as Supplier-API.md and the sample agent promise',
-  { todo: 'BUG-SUP-3: GET /v1/supplier/opportunities omits the documented `fits` field (only the browser feed computes it)' }, async t => {
+test('BUG-SUP-3 check: Supplier API opportunities carry `fits` as Supplier-API.md and the sample agent promise', async t => {
     const f = await fixture(t);
     const s = await f.connect(f.builder, { task: 'Write release notes from a supplied brief' });
     await f.post('Release notes', 'Write release notes from a supplied brief for our search feature.');
@@ -189,19 +188,21 @@ test('BUG-SUP-3 check: Supplier API opportunities carry `fits` as Supplier-API.m
     assert.ok(Array.isArray(item.fits), `expected a fits array, got ${JSON.stringify(Object.keys(item))}`);
   });
 
-test('BUG-SUP-2 check: resuming the opportunity feed from its nextCursor finds requests posted later',
-  { todo: 'BUG-SUP-2: opportunities are keyset-paged by random task UUID, so a runtime resuming from nextCursor silently misses new requests whose id sorts before it' }, async t => {
+test('BUG-SUP-2 check: resuming the opportunity feed from its nextCursor finds requests posted later', async t => {
     const f = await fixture(t);
     const s = await f.connect(f.builder);
     for (let i = 0; i < 3; i++) await f.post(`Request ${i}`);
     let page = await f.app.supplierOpportunities(s.principal, '', 100);
     assert.equal(page.hasMore, false);
     const cursor = page.nextCursor;
-    // Post until one new request's id sorts before the cursor (each try is a coin flip).
+    const lastId = page.tasks.at(-1).id;
+    // Post later (the clock moves) until one new request's id sorts before the last
+    // one seen: id-ordered paging would skip it (each try is a coin flip).
     let missed = null;
     for (let i = 0; i < 40 && !missed; i++) {
+      f.advance(1000);
       const id = await f.post(`Later ${i}`);
-      if (id < cursor) missed = id;
+      if (id < lastId) missed = id;
     }
     assert.ok(missed, 'fixture produced an id before the cursor');
     page = await f.app.supplierOpportunities(s.principal, cursor, 100);
@@ -265,8 +266,7 @@ test('a data-driven Relay test refuses a capability outside its category', async
   await assert.rejects(f.app.startQualification(f.builder, s.agentId, { expectedVersion: (await s.agent()).version, capabilityId: s.capabilityId, rubric: 'relay-test:5eed0000-0000-4000-8000-000000000001' }, randomUUID()), { code: 'CATEGORY_MISMATCH' });
 });
 
-test('BUG-SUP-1 check: the built-in CSV Relay test only qualifies capabilities in its own category',
-  { todo: 'BUG-SUP-1: csv-normalize-v1 (and the link rubric) qualify a capability of any category, so an unrelated capability shows "qualified" and the agent can publish' }, async t => {
+test('BUG-SUP-1 check: the built-in CSV Relay test only qualifies capabilities in its own category', async t => {
     const f = await fixture(t);
     const s = await f.connect(f.builder, { category: 'Software', task: 'Review pull requests for security issues' });
     assert.notEqual(categoryOf((await s.agent()).capabilities[0]), 'data-cleanup');
@@ -285,8 +285,7 @@ test('BUG-SUP-1 check: the built-in CSV Relay test only qualifies capabilities i
 
 // ---- Notifications ---------------------------------------------------------------
 
-test('BUG-SUP-4 check: no match alert for a “try another agent” request the builder’s agent is excluded from',
-  { todo: 'BUG-SUP-4: matchAlerts ignores retryOf.excludedAgentId, so the failed agent’s builder is alerted to a request they can neither see nor offer on' }, async t => {
+test('BUG-SUP-4 check: no match alert for a “try another agent” request the builder’s agent is excluded from', async t => {
     const f = await fixture(t);
     const s = await f.connect(f.builder, { task: 'Write release notes from a supplied brief' });
     const retry = await f.post('Release notes', 'Write release notes from a supplied brief for search.', { retryOf: { taskId: randomUUID(), version: 1, excludedAgentId: s.agentId } });

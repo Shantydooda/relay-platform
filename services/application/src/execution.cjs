@@ -238,7 +238,7 @@ function createExecution(context) {
       exactKeys(file, ['filename', 'base64', 'mime']);
       if (!(objectStore ? ['text/csv', 'text/plain', 'application/json', 'application/pdf', 'image/png', 'image/jpeg', 'video/mp4', 'application/zip'] : ['text/csv', 'text/plain', 'application/json']).includes(file.mime)) fail(400, 'INVALID_FILE', 'Unsupported delivery file type.');
       const bytes = decode(file.base64, objectStore ? 8 * 1024 * 1024 : MAX_FILE_BYTES, !!objectStore);
-      if (objectStore) require('../../storage/src/types.cjs').validateType(file.filename, file.mime, bytes);
+      require('../../storage/src/types.cjs').validateType(file.filename, file.mime, bytes);
       return { id: randomUUID(), filename: safeName(file.filename), mime: file.mime, size: bytes.length, sha256: hash(bytes), base64: bytes.toString('base64') };
     });
     if (files.reduce((sum, file) => sum + file.size, 0) > 16 * 1024 * 1024) fail(400, 'INVALID_FILE', 'A delivery may contain at most 16 MiB.');
@@ -405,6 +405,14 @@ function createExecution(context) {
       if (!artifact?.objectKey || !objectStore || !fileScanner) fail(409, 'SCAN_UNAVAILABLE', 'This file is not stored in the scanning workflow.');
       if (artifact.scan?.status === 'blocked') fail(409, 'FILE_BLOCKED', 'Blocked files require a replacement delivery.');
       if (artifact.scanLease?.until > now()) return { taskId: id, scan: artifact.scan };
+      // A cleared file stays available while it's checked again; only a "blocked"
+      // verdict takes it away, so a rescan request can't hold up the buyer's review.
+      if (artifact.scan?.status === 'clean') {
+        artifact.scan = file.scan = { ...artifact.scan, rescanRequested: true };
+        await repo.save('artifact', artifact);
+        touch(task, now()); event(task, actor.user.id, 'file.scan_requested', now()); await saveTask(repo, task);
+        return { taskId: id, scan: file.scan };
+      }
       delete artifact.scanLease;
       artifact.scan = file.scan = { status: 'quarantined', reason: 'Queued for automatic scanning.', attempts: artifact.scan?.attempts || 0 };
       await repo.save('artifact', artifact);

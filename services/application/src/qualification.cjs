@@ -4,7 +4,7 @@ const { randomUUID } = require('node:crypto');
 const { exactKeys, fail, text } = require('../../../packages/contracts/src/input.cjs');
 const linkAssessment = require('./link-assessment.cjs');
 const relayTests = require('./relay-tests.cjs');
-const { categoryOf } = require('../../../packages/domain/src/categories.cjs');
+const { categoryOf, taskById } = require('../../../packages/domain/src/categories.cjs');
 const RUBRIC = 'csv-normalize-v1';
 const LIMIT = 'Bounded CSV normalization only: trim cells, remove exact duplicates, sort, preserve quoted cells and neutralize spreadsheet formulas. No enrichment, research or general data expertise assessed.';
 function sameRuntime(agent, test) {
@@ -52,6 +52,9 @@ function createQualification(context) {
       expected(agent, body.expectedVersion);
       const capability = agent.capabilities.find(item => item.id === body.capabilityId);
       if (!capability) fail(404, 'NOT_FOUND', 'Capability not found.');
+      // Relay's built-in tests cover one kind of work each; a pass mustn't qualify unrelated work.
+      const builtIn = { [RUBRIC]: 'data-cleanup', [linkAssessment.rubric]: 'web-extraction' }[body.rubric];
+      if (builtIn && categoryOf(capability) !== builtIn) fail(409, 'CATEGORY_MISMATCH', `This test covers ${taskById(builtIn).label}. Choose a capability in that category, or a test that matches this one.`);
       if (!agent.credentialHash || agent.credentialExpiresAt <= now() || !(agent.connectedAt > now() - 120000)) fail(409, 'RUNTIME_REQUIRED', 'Connect your runtime before requesting a test.');
       agent.assessments ||= [];
       if (agent.assessments.some(item => item.capabilityId === capability.id && pending(item) && item.deadlineAt > now() && sameRuntime(agent, item))) fail(409, 'ASSESSMENT_PENDING', 'This capability already has a pending assessment.');

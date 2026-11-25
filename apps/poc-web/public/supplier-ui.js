@@ -8,7 +8,9 @@ const RelaySupplier = {
   authorship(test) { return test?.proposed ? `<p class="mk-caption">Written by ${test.proposed.byThisBuilder ? 'this agent’s own builder' : `another builder, ${escape(test.proposed.authorName)}`}. Approved by Relay staff.</p>` : ''; },
   // Tests a capability can take: Relay's two, plus approved builder tests in its category.
   testsFor(cap) {
-    const own = [['csv-normalize-v1', 'CSV normalization'], ['link-inventory-v1', 'Offline link inventory']];
+    // Relay's built-in tests each cover one kind of work, the same rule the server applies.
+    const own = [['csv-normalize-v1', 'CSV normalization', 'data-cleanup'], ['link-inventory-v1', 'Offline link inventory', 'web-extraction']]
+      .filter(([, , categoryId]) => !cap.categoryId || cap.categoryId === categoryId).map(([rubric, title]) => [rubric, title]);
     return own.concat((state.relayTests?.approved || []).filter(t => t.categoryId === cap.categoryId).map(t => [t.rubric, t.title]));
   },
   // How long the agent took per round: a person answering by hand is usually much
@@ -32,10 +34,11 @@ const RelaySupplier = {
       <details><summary>Test input and submitted evidence</summary>${this.testInputs(test)}${test.submissions.map(item=>`<section><h4>${item.round===1?'Initial delivery':`Requested revision${many ? '' : `: ${escape(test.revision || 'sort descending')}`}`} · ${item.passed?'Passed':'Failed'}</h4><ul>${item.checks.map(check=>`<li>${check.passed?'Passed':'Failed'}: ${escape(check.name)}</li>`).join('')}</ul>${hidden ? `<p class="hint">The submitted output isn’t shown for ${test.proposed ? 'builder-written tests' : 'this test'}, so it can’t give later agents the answer.</p>` : `<pre>${escape(item.links ? JSON.stringify(item.links, null, 2) : item.csv)}</pre><pre>${escape(JSON.stringify(item.report,null,2))}</pre>`}${item.sha256 ? `<small>SHA-256: ${escape(item.sha256)}</small>` : ''}</section>`).join('')}</details></section>`;
   },
   qualification(agent) {
-    return `<section class="panel"><h2>Relay tests</h2><p>Relay sends your connected agent a test job and a revision, and checks what comes back. A pass is shown on its card and lets you publish.</p><p class="mk-caption">Relay’s CSV clean-up and offline link extraction tests show for every capability. Relay’s B2B data tests, and tests other builders wrote that Relay staff approved, show only for capabilities in their category. Take one only if it matches the capability. A pass covers that test, not everything the capability claims. No test fits? <a href="/build/tests" data-route>Propose one</a>.</p>
+    return `<section class="panel"><h2>Relay tests</h2><p>Relay sends your connected agent a test job and a revision, and checks what comes back. A pass is shown on its card and lets you publish.</p><p class="mk-caption">Every test shows only for capabilities in its category: Relay’s CSV clean-up test for data clean-up, its offline link extraction test for web data extraction, and Relay’s B2B data tests and approved builder tests for theirs. Take one only if it matches the capability. A pass covers that test, not everything the capability claims. No test fits? <a href="/build/tests" data-route>Propose one</a>.</p>
     ${agent.capabilities.map(cap=>`<section class="capability-assessment"><h3>${escape(cap.task)}</h3><span class="tag">${cap.qualification==='qualified'?`${this.assessmentTitle(cap.assessment)} passed`:cap.qualification==='expired'?'Previous pass · retest required':cap.assessment?escape(cap.assessment.status.replaceAll('_',' ')):'No Relay test yet'}</span>
       ${cap.assessment?`<details class="quiet-details"><summary>Test results and evidence</summary>${this.evidence(cap.assessment)}</details>`:''}
       ${cap.assessment&&['test_pending','revision_pending'].includes(cap.assessment.status)?'<p class="hint">Waiting for the connected runtime. Results update here automatically. You have one hour to finish both rounds.</p>':''}
+      ${this.testsFor(cap).length?'':'<p class="hint">No Relay test covers this capability’s category yet.</p>'}
       ${this.testsFor(cap).map(([rubric, label]) => `<button data-action="start-qualification" data-id="${agent.id}" data-capability="${cap.id}" data-rubric="${escape(rubric)}" ${!agent.runtime?.connected||['test_pending','revision_pending'].includes(cap.assessment?.status)?'disabled':''}>Test ${escape(label)}</button>`).join('')}
       <p class="mk-caption">A new test replaces this capability’s current result.</p>
     </section>`).join('')}

@@ -303,7 +303,8 @@ function createPayments(context, provider) {
     plan(task) {
       const p = task.settlement;
       // Switched off, ending keeps the rule it had before refunds were connected.
-      if (!refunds.enabled) return task.assignment?.mode === 'stripe-sandbox' || (p && p.status !== 'refunded') ? 'refuse' : null;
+      // An expired checkout was never paid, so it holds nothing.
+      if (!refunds.enabled) return task.assignment?.mode === 'stripe-sandbox' || (p && !TERMINAL.has(p.status)) ? 'refuse' : null;
       if (!p || TERMINAL.has(p.status)) return task.assignment?.mode === 'stripe-sandbox' && !p ? 'refuse' : null;
       return p.status === 'funded' ? 'refund' : 'refuse';
     },

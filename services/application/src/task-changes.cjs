@@ -38,6 +38,10 @@ function createTaskChanges(context) {
     // An accepted plan changes only through its milestones, and a milestone only once it has started.
     if (task.engagement || (task.milestone && !task.assignment)) require('./engagements.cjs').assertOpen(task);
     assertUnfunded(task);
+    // A failed run stays on the record: the buyer can try again or end the request,
+    // but a change can't replace it (accepting one would relabel the failure as cancelled).
+    if (task.assignment?.status === 'failed')
+      fail(409, 'FAILED_RUN_CHANGE_UNAVAILABLE', 'This run failed. Try it again or end the request; a change can’t replace a failed run.');
     if (task.assignment && task.assignment.mode !== 'local-unpaid')
       fail(
         409,

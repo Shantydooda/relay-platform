@@ -6,6 +6,7 @@ const { readdirSync }=require('node:fs');
 const { resolve } = require('node:path');
 const { supplierApi } = require('./supplier-api.cjs');
 const { HttpError, fail, exactKeys } = require('./security.cjs');
+function decodePathId(value){ try { return decodeURIComponent(value); } catch { fail(400,'INVALID_ID','This address is not valid.'); } }
 const PUBLIC = resolve(__dirname,'../../../apps/poc-web/public');
 const TOKENS = resolve(__dirname,'../../../packages/ui/src/tokens.css');
 const UI = resolve(__dirname,'../../../packages/ui/src');
@@ -230,7 +231,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if (actingFor && !/^\/api\/(me|teams)(\/|$)/.test(path)) {
           if (!store.actAs || !/^[0-9a-f-]{36}$/.test(actingFor)) fail(400, 'ACT_AS_UNAVAILABLE', 'Publishing as an organization is not available here.');
           actor = await store.actAs(actor, actingFor);
-          if (mutation && path.startsWith('/api/payments') && actor.onBehalfOf.role !== 'owner') fail(403, 'OWNER_REQUIRED', `Only an owner of ${actor.user.name} can manage its payouts.`);
+          if (mutation && (path.startsWith('/api/payments') || /^\/api\/tasks\/[^/]+\/payments\/(transfer|payout)$/.test(path)) && actor.onBehalfOf.role !== 'owner') fail(403, 'OWNER_REQUIRED', `Only an owner of ${actor.user.name} can manage its payouts.`);
         }
         if (path === '/api/notifications' && method === 'GET') return send(200, await store.notifications(actor));
         if (path === '/api/notifications/read' && method === 'POST') return send(200, await store.readNotifications(actor, await jsonBody(req)));
@@ -249,14 +250,14 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         if (path === '/api/tool-sources' && method === 'POST') return send(200, await store.saveToolSource(actor, await jsonBody(req), key));
         const appDownload = path.match(/^\/api\/app-runs\/([^/]+)\/download$/);
         if (appDownload && method === 'GET') {
-          const output = await store.downloadAppOutput(actor, decodeURIComponent(appDownload[1]));
+          const output = await store.downloadAppOutput(actor, decodePathId(appDownload[1]));
           res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${output.filename}"`, 'Content-Length': output.bytes.length });
           return res.end(output.bytes);
         }
         const appRoute = path.match(/^\/api\/(workspace-apps|tool-grants|app-runs)\/([^/]+)$/);
-        if (appRoute && method === 'POST') return send(200, await store[{ 'workspace-apps': 'controlApp', 'tool-grants': 'revokeToolGrant', 'app-runs': 'reviewAppRun' }[appRoute[1]]](actor, decodeURIComponent(appRoute[2]), await jsonBody(req), key));
+        if (appRoute && method === 'POST') return send(200, await store[{ 'workspace-apps': 'controlApp', 'tool-grants': 'revokeToolGrant', 'app-runs': 'reviewAppRun' }[appRoute[1]]](actor, decodePathId(appRoute[2]), await jsonBody(req), key));
         const appHostRoute = path.match(/^\/api\/workspace-apps\/([^/]+)\/host$/);
-        if (appHostRoute && method === 'POST') return send(200, await store.controlAppHost(actor, decodeURIComponent(appHostRoute[1]), await jsonBody(req), key));
+        if (appHostRoute && method === 'POST') return send(200, await store.controlAppHost(actor, decodePathId(appHostRoute[1]), await jsonBody(req), key));
         const installRoute = path.match(/^\/api\/tasks\/([0-9a-f-]{36})\/(install-app|tool-grant|context|permission-decline)$/);
         if (installRoute && method === 'POST') return send(200, await store[{'install-app':'installApp','tool-grant':'grantTaskTool','context':'attachTaskContext','permission-decline':'declineToolPermission'}[installRoute[2]]](actor, installRoute[1], await jsonBody(req), key));
 

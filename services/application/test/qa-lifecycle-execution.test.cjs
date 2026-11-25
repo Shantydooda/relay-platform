@@ -289,7 +289,7 @@ test('delivery file boundaries: names, emptiness, duplicates, count and mime', a
   await assert.rejects(files([file('a.txt'), file('b.txt'), file('c.txt'), file('d.txt')]), { code: 'INVALID_FILE' });
   await assert.rejects(files([file('a.html', text('<b>x</b>'), 'text/html')]), { code: 'INVALID_FILE' });
   await assert.rejects(files([file('big.txt', Buffer.alloc(256 * 1024 + 1, 'a').toString('base64'))]), { code: 'INVALID_FILE' });
-  const ok = await files([file('a'.repeat(100)), file('max.txt', Buffer.alloc(256 * 1024, 'a').toString('base64'))]);
+  const ok = await files([file(`${'a'.repeat(96)}.txt`), file('max.txt', Buffer.alloc(256 * 1024, 'a').toString('base64'))]);
   assert.ok(ok.submissionId);
 });
 

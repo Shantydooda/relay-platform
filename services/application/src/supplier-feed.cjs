@@ -66,19 +66,31 @@ function createSupplierFeed({ repository, credentials, opportunityView, now = Da
         submissions: task.submissions.map(item => ({ id: item.id, version: item.version, status: item.status, unmetCriteria: item.unmetCriteria || [] })) };
     });
   }
+  // Ordered by when each request was posted, so a runtime that resumes from
+  // nextCursor still sees requests posted after its last poll. The cursor is
+  // "<postedAt>:<taskId>"; an older id-only cursor restarts from the beginning.
+  const postedAt = task => [...task.events].reverse().find(item => item.type === 'task.posted')?.createdAt || task.createdAt;
   async function opportunities(principal, after = '', limit = 50) {
     const page = pageInput(after, limit);
     return repository.read(async repo => {
       const agent = await credentials.runtimeAgent(repo, principal, 'opportunities:read');
-      const rows = await repo.page('task', 'status', 'posted', page);
-      return { tasks: rows.filter(task =>
+      const cursor = /^(\d{1,16}):([0-9A-Za-z_-]{1,64})$/.exec(page.after);
+      const ordered = (await repo.list('task', 'status', 'posted'))
+        .map(task => ({ task, key: [postedAt(task), task.id] }))
+        .sort((x, y) => x.key[0] - y.key[0] || (x.key[1] < y.key[1] ? -1 : x.key[1] > y.key[1] ? 1 : 0))
+        .filter(({ key }) => !cursor || key[0] > Number(cursor[1]) || (key[0] === Number(cursor[1]) && key[1] > cursor[2]));
+      const rows = ordered.slice(0, page.limit);
+      const mine = (await repo.list('agent', 'owner_id', principal.actor.user.id)).filter(item => item.listingStatus !== 'paused');
+      const fits = task => mine.filter(item => require('./processing-region.cjs').allows(task.requiredRegion, item) && require('./capability-matching.cjs').agentFits(item, task)).map(item => item.name);
+      const last = rows.at(-1);
+      return { tasks: rows.map(({ task }) => task).filter(task =>
         !task.package && !task.engagement && !task.milestone &&
         (!task.preferredAgentId || task.preferredAgentId === principal.agentId) &&
         task.retryOf?.excludedAgentId !== principal.agentId &&
         require('./processing-region.cjs').allows(task.requiredRegion, agent) &&
         (!task.preferredOperatorId || task.preferredOperatorId === principal.actor.user.id)
-      ).map(task => opportunityView(task, principal.actor)).filter(Boolean),
-        nextCursor: rows.at(-1)?.id || after, hasMore: rows.length === limit };
+      ).map(task => { const item = opportunityView(task, principal.actor); return item && { ...item, fits: fits(task) }; }).filter(Boolean),
+        nextCursor: last ? `${last.key[0]}:${last.key[1]}` : page.after, hasMore: ordered.length > page.limit };
     });
   }
   async function assignments(principal, after = '', limit = 50) {

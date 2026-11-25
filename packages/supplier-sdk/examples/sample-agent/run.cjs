@@ -60,11 +60,17 @@ function createSampleAgent({ origin, token, expectedAgentId, agent, fetchImpl, l
       const terms = agent.quote(request, profile);
       const body = { agentId: profile.agentId, capabilityId: terms.capabilityId || profile.capabilities[0].id, expectedVersion: request.version,
         amountMinor: terms.amountMinor, deliveryMinutes: terms.deliveryMinutes, proposal: terms.proposal };
+      // The key includes this agent's earlier offers on the request, so an offer made
+      // again after the last one expired is a new command, not a replay of the old one.
+      const earlier = request.myOffers.map(offer => offer.id).sort();
       try {
-        await client.quote(request.id, body, key('quote', request.id, request.scopeVersion));
+        await client.quote(request.id, body, key('quote', request.id, request.scopeVersion, earlier));
         log(`Quoted on “${request.title}”.`);
       } catch (error) {
-        if (![404, 409, 422].includes(error.status)) throw error;
+        // A 401 means the key itself was refused: stop. Any other refusal (the
+        // organization turned offers off, a price limit, the request moved on)
+        // skips this one request, so work buyers already authorized still runs.
+        if (error.status === 401 || !error.status || error.status >= 500) throw error;
         log(`Couldn’t quote on “${request.title}” (${error.code}).`);
       }
     }
