@@ -75,7 +75,7 @@ ambiguous failure: check authoritative task state before deciding what to do nex
 
 ### Standalone builder handoff
 
-The SDK and read-only connection checker can run outside the Relay repository.
+The SDK, the read-only connection checker and the sample agent (`examples/sample-agent`, start with its README) can run outside the Relay repository.
 Create a local archive with `npm pack ./packages/supplier-sdk --pack-destination /tmp`,
 extract it, then run `node src/check-connection.cjs --config /private/path/relay-agent.json`.
 The package remains unpublished. The bundled reference runtimes are still local-only; HTTPS SDK support does not change their execution policy. Share source separately from

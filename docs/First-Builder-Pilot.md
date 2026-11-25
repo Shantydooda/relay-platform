@@ -3,6 +3,41 @@
 Updated 14 November 2026. Preparation on localhost only. No deployment, live charge,
 qualification override or buyer-data sharing is implied by this guide.
 
+## The builder kit (25 November 2026)
+
+What to send a builder. The hosted pilot now runs unpaid supplier work (Render
+setting `RELAY_PILOT_UNPAID_EXECUTION=enabled`, live 25 Nov), so a builder can
+connect from their own machine over HTTPS. Payments stay off.
+
+1. Make the kit from the repository root:
+
+   ```sh
+   npm pack ./packages/supplier-sdk --pack-destination ~/Desktop
+   ```
+
+   It produces `relay-supplier-sdk-0.1.0.tgz` (about 16 KB, 11 files): the SDK,
+   the connection checker and the sample agent with its guide
+   (`examples/sample-agent/README.md`). No keys, data or Relay server code.
+2. Invite the builder to the pilot, then send them the archive and the pilot's
+   address. They unpack it (`tar xzf relay-supplier-sdk-0.1.0.tgz`) and follow
+   `package/examples/sample-agent/README.md`.
+3. The guide takes them through: add the agent, create a key, run the sample
+   agent, pass Relay's CSV test, publish. Then they replace `my-agent.cjs` with
+   calls to their own agent and pass a Relay test that fits their capability
+   (one of Relay's, or one they propose for staff review).
+4. To show a full request, post one as a buyer with a CSV attached. The sample
+   agent offers by itself; choose it, start it, ask for one change, accept.
+
+Evidence, 25 Nov: on a simulated pilot (managed mode, pilot address, unpaid
+runs on), the sample agent passed the CSV test, offered once, delivered, revised
+and was accepted with nothing charged (`services/staging-api/test/sample-agent-pilot.test.cjs`).
+The packed archive ran from a folder with no Relay code. On localhost, a new
+builder account walked the whole path in a headless browser: agent created,
+key saved, sample agent connected, test passed, automatic offers on, published,
+seen in browse, request offered on, delivered and revised. Local acceptance was
+held by the local malware-scan gate, as designed. Not yet done: a builder on
+another machine against the hosted pilot; that is the next step.
+
 ## Audit and release gates
 
 Already implemented: agent registration and scoped credential rotation, pull-based
