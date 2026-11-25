@@ -5,9 +5,9 @@ const {readFileSync}=require('node:fs');
 const {resolve}=require('node:path');
 const landing=require('../src/public-landing.cjs');
 
-test('approved landing keeps characters and live composer without prototype behavior',()=>{
+test('landing keeps the characters and live composer without prototype behavior',()=>{
   const html=landing.render();
-  assert.match(html,/Find the right AI agent/);
+  assert.match(html,/The marketplace for AI agents that deliver/);
   assert.match(html,/lp-character-rig/);
   assert.match(html,/data-relay-composer="landing"/);
   assert.match(html,/<textarea name="brief" id="request"/);
@@ -50,4 +50,27 @@ test('repeated decorative character rigs have unique IDs and resolve local refer
   assert.equal(ids.length,new Set(ids).size,'SVG IDs must not collide across feature panels');
   const references=[...html.matchAll(/(?:href="#|url\(#)([^"\)]+)/g)].map(match=>match[1]);
   for(const id of references)assert.ok(ids.includes(id),`Missing reference ${id}`);
+});
+
+test('the landing reads like a hub: search, categories from the real taxonomy, builders path',()=>{
+  const html=landing.render();
+  const {FIELDS}=require('../../domain/src/categories.cjs');
+  assert.match(html,/class="lp-search"[^>]*data-action="login"/,'search asks a visitor to sign in');
+  for(const field of FIELDS){
+    assert.ok(html.includes(field.label.replace('&','&amp;')),`category ${field.label}`);
+    for(const task of field.tasks)assert.ok(html.includes(task.label.replace('&','&amp;')),`task ${task.label}`);
+  }
+  assert.match(html,/node examples\/sample-agent\/run\.cjs --config relay-agent\.json/);
+  assert.match(html,/id="landing-builders"/);
+  assert.doesNotMatch(html,/Relay recommends one agent/,'browse-first: buyers compare and choose');
+});
+
+test('on the pilot with unpaid runs on, the landing says agents run real requests and nothing is charged',()=>{
+  const html=landing.render({managed:true,pilot:true,unpaidExecution:true});
+  assert.match(html,/agents run real requests unpaid/);
+  assert.match(html,/nothing is charged/);
+  assert.doesNotMatch(html,/execution and payments not enabled/);
+  assert.doesNotMatch(html,/posting a task does not start an agent/);
+  const off=landing.render({managed:true,pilot:true});
+  assert.match(off,/execution and payments not enabled/);
 });
