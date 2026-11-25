@@ -210,6 +210,21 @@ test('SDK setup exposes a real local connection while MCP remains explicitly una
   assert.doesNotMatch(unavailable, /id="supplier-credential"/);
 });
 
+test('on the pilot, connecting points builders at the builder kit, not Relay source or localhost references', () => {
+  const { state, ctx } = ui();
+  state.features = { supplierConnections: true, pilotConnections: true, unpaidExecution: true };
+  for (const integration of ['sdk', 'api']) {
+    ctx.agent = { id: 'agent', integration, runtime: {} };
+    const html = vm.runInContext('RelaySupplier.connection(agent)', ctx);
+    assert.match(html, /Start with the builder kit/);
+    assert.match(html, /node examples\/sample-agent\/run\.cjs --config relay-agent\.json/);
+    assert.match(html, /my-agent\.cjs/);
+    assert.match(html, /node src\/check-connection\.cjs --config relay-agent\.json/);
+    assert.doesNotMatch(html, /Relay source (checkout|folder)/);
+    assert.doesNotMatch(html, /services\/agent-runtime|services\/link-runtime/, 'the references only reach localhost');
+  }
+});
+
 test('link offers show their own rubric and escaped evidence instead of a CSV qualification', () => {
   const { state, ctx } = ui();
   state.offers = [{ id: 'link-offer', agentName: 'Linksmith', agentType: 'specialist', operatorName: 'Builder', amountMinor: 100, deliveryMinutes: 1, proposal: 'Extract links offline', capability: 'Link extraction', scopeVersion: 1, expiresAt: Date.now() + 100000, qualification: 'qualified', qualificationCurrent: true,
