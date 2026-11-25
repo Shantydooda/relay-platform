@@ -55,7 +55,7 @@ const RelayPayments = {
     const totals = data.totals;
     const range = data.period.from || data.period.to ? `${data.period.from || 'Beginning'} to ${data.period.to || 'Now'} (UTC)` : 'All time';
     const metrics = [
-      ['Released for work', totals.releasedMinor, 'Confirmed transfers to builders for accepted work.'],
+      ['Released for work', totals.releasedMinor, 'Confirmed releases for accepted work: the builder’s transfer plus any Relay fee.'],
       ['Closing held balance', totals.heldMinor, 'Money still held at the end of this period, or the report snapshot if earlier.'],
       ['Refunded', totals.refundedMinor, 'Refunds confirmed by the payment provider.']
     ];
@@ -72,7 +72,7 @@ const RelayPayments = {
         <div><dt>Refunds in period</dt><dd>− ${amount(totals.refundedMinor)}</dd></div>
         <div><dt>Net funding in period</dt><dd>${amount(totals.netMinor)}</dd></div>
         <div><dt>Opening held + funding − refunds − released = closing held</dt><dd>${amount(totals.openingHeldMinor)} + ${amount(totals.fundedMinor)} − ${amount(totals.refundedMinor)} − ${amount(totals.releasedMinor)} = ${amount(totals.heldMinor)}</dd></div>
-      </dl><p class="hint">Builder bank payouts do not charge you again. The current sandbox has no platform fee; this is not a tax invoice.</p>
+      </dl><p class="hint">Builder bank payouts do not charge you again. Any Relay fee is listed as its own line under each task; this is not a tax invoice.</p>
       <details><summary>Pending now · not filtered by dates</summary><p>Awaiting funding confirmation: <strong>${amount(totals.pendingFundingMinor)}</strong></p><p>Awaiting refund confirmation: <strong>${amount(totals.pendingRefundMinor)}</strong> — included in current held funds until confirmed, not necessarily the historical closing balance.</p></details></section>
       <section class="panel"><h2>Work history <span class="tag">${data.itemCount ?? data.items.length}</span></h2><p class="hint">Page ${(data.page ?? 0)+1} of ${data.pageCount ?? 1} · Ordered by task reference. Totals cover every page. Export includes the complete saved report.</p>
       ${data.items.map(item=>`<article class="spending-row"><div class="spending-row-heading"><div><button class="quiet" data-action="task" data-id="${escape(item.id)}">${escape(item.title)}</button><p class="hint">${escape(stamp(item.createdAt))} · ${escape(item.status.replaceAll('_',' '))}</p></div><div><strong>${amount(item.releasedMinor)}</strong><small>Released for work</small></div></div>
@@ -109,10 +109,10 @@ const RelayPayments = {
     if (needsReview) actions = '';
     if (approvalNeeded && !execution) actions += `<p class="hint">${task.approvalStatus === 'pending' ? 'Waiting for your reviewer. Funding and starting stay unavailable until this offer is approved.' : 'Request fresh company approval in the budget card above before funding or starting this offer.'}</p>`;
     return `<section class="panel"><span class="eyebrow">Test money only</span><h3>${needsReview?(payment?.status==='refund_failed'?'Refund needs review':payment?.status==='payout_failed'?'Payout needs review':'Payment needs review'):payment?escape(labels[payment.status]||'Needs review'):'Test funding'}</h3>
-      <p>${payment?money(payment.amountMinor, payment.currency)+' '+escape(payment.currency || 'USD')+' · ':''}No real money moves. A transfer to the operator balance is separate from a payout.</p>
+      <p>${payment?money(builder && Number.isInteger(payment.payoutMinor) ? payment.payoutMinor : payment.amountMinor, payment.currency)+' '+escape(payment.currency || 'USD')+(builder && Number.isInteger(payment.payoutMinor) && payment.payoutMinor !== payment.amountMinor ? ' to you, after Relay’s fee' : '')+' · ':''}No real money moves. A transfer to the operator balance is separate from a payout.</p>
       <p role="status">${needsReview?'Automatic checks paused for operations review. Your task and payment history are saved; no replacement operation will be created.':payment?.reconciliation?.status==='retrying'?'Provider check delayed. Relay will retry automatically; your saved agreement is unchanged.':state.payments?.configured?'Payment status updates automatically. You can leave this page.':'Automatic checks are paused until Stripe sandbox is connected.'}</p>
       <div class="action-row">${actions}</div>${payment?.status?.endsWith('_failed')?'<p>Provider reconciliation is required. Do not create a replacement payment.</p>':''}
-      <p class="hint">Sandbox policy: full refunds before transfer; zero platform fee. Production fees are undecided.</p></section>`;
+      <p class="hint">Sandbox policy: full refunds before transfer. Any Relay fee is shown on the offer and frozen when it’s made.</p></section>`;
   },
   earnings() {
     const tasks = state.work.filter(task => task.payment);

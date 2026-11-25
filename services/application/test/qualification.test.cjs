@@ -7,7 +7,7 @@ const { PGlite } = require('@electric-sql/pglite');
 const { createSqliteRepository, createPostgresRepository } = require('../src/repository.cjs');
 const { createApplication } = require('../src/service.cjs');
 const { normalizeCsv } = require('../../agent-runtime/src/csv.cjs');
-async function fixture(t, adapter = 'sqlite') {
+async function fixture(t, adapter = 'sqlite', capabilities = [{ category: 'Data', task: 'Normalize CSV' }, { category: 'Research', task: 'Research companies' }]) {
   const db = adapter === 'sqlite' ? new DatabaseSync(':memory:') : await PGlite.create();
   t.after(() => db.close());
   const repository = adapter === 'sqlite' ? createSqliteRepository(db) : await createPostgresRepository(db, { initialize: true });
@@ -15,7 +15,7 @@ async function fixture(t, adapter = 'sqlite') {
   let time = Date.now();
   const options = { repository, localExecution: true, now: () => time, resolveOperator: async () => actor };
   const app = createApplication(options);
-  const { agentId } = await app.marketplace.addAgent(actor, { name: 'CSV and research', kind: 'general', purpose: 'Process files and research', integration: 'api', capabilities: [{ category: 'Data', task: 'Normalize CSV' }, { category: 'Research', task: 'Research companies' }] }, randomUUID());
+  const { agentId } = await app.marketplace.addAgent(actor, { name: 'CSV and research', kind: 'general', purpose: 'Process files and research', integration: 'api', capabilities }, randomUUID());
   const credential = await app.issueSupplierCredential(actor, agentId, { expectedVersion: 1, expiresInSeconds: 2592000 }, randomUUID());
   const principal = await app.runtimePrincipal(credential.token);
   await app.heartbeat(principal, { runtimeName: 'Reference', runtimeVersion: '1' });
@@ -112,7 +112,8 @@ test('correct-looking CSV with a false report fails and extra claimed pass field
 
 for (const adapter of ['sqlite', 'postgres']) {
   test(`${adapter}: link assessment rejects fabricated evidence and qualifies only after both exact rounds`, async t => {
-    const f = await fixture(t, adapter);
+    // The link test qualifies link work only, so this agent's first capability is link extraction.
+    const f = await fixture(t, adapter, [{ category: 'Data', task: 'Extract links from text' }, { category: 'Research', task: 'Research companies' }]);
     const { inventory } = require('../../link-runtime/src/inventory.cjs');
     const first = await f.start('link-inventory-v1');
     let job = (await f.app.qualificationJobs(f.principal))[0];

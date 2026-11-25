@@ -12,15 +12,17 @@ function createFileScans({ repository, objectStore, fileScanner, now, hash, touc
     const page = await repository.read(repo => repo.scan('artifact', { after, limit: 20 }));
     after = page.length === 20 ? page.at(-1).id : '';
     for (const candidate of page) {
-      if (!candidate.objectKey || ['clean', 'blocked'].includes(candidate.scan?.status)) continue;
+      const settled = scan => scan?.status === 'blocked' || (scan?.status === 'clean' && !scan.rescanRequested);
+      if (!candidate.objectKey || settled(candidate.scan)) continue;
       const claim = await repository.transaction(`file-scan:${candidate.taskId}`, async repo => {
         const task = await repo.get('task', candidate.taskId, true);
         const artifact = await repo.get('artifact', candidate.id, true);
         const file = task?.submissions.find(s => s.id === artifact?.submissionId)?.files.find(f => f.id === candidate.id);
-        if (!file || !artifact?.objectKey || ['clean', 'blocked'].includes(artifact.scan?.status) || artifact.scanLease?.until > now() || artifact.scan?.retryAt > now()) return null;
+        if (!file || !artifact?.objectKey || settled(artifact.scan) || artifact.scanLease?.until > now() || artifact.scan?.retryAt > now()) return null;
         const token = randomUUID();
         artifact.scanLease = { token, until: now() + leaseMs };
-        artifact.scan = file.scan = { status: 'scanning', reason: 'Checking this file automatically. You can keep working.', attempts: (artifact.scan?.attempts || 0) + 1 };
+        artifact.scan = file.scan = artifact.scan?.status === 'clean' ? { ...artifact.scan, attempts: (artifact.scan.attempts || 0) + 1 }
+          : { status: 'scanning', reason: 'Checking this file automatically. You can keep working.', attempts: (artifact.scan?.attempts || 0) + 1 };
         await repo.save('artifact', artifact);
         touch(task, now()); await saveTask(repo, task);
         return { token, artifact, file };
@@ -39,6 +41,8 @@ function createFileScans({ repository, objectStore, fileScanner, now, hash, touc
         if (artifact?.scanLease?.token !== claim.token || artifact.scanLease.until <= now()) return;
         const file = task?.submissions.find(s => s.id === artifact.submissionId)?.files.find(f => f.id === artifact.id);
         if (!file || file.sha256 !== claim.file.sha256 || artifact.objectKey !== claim.artifact.objectKey) return;
+        // A rescan of a cleared file keeps it cleared unless the scanner blocks it.
+        if (artifact.scan.status === 'clean' && verdict.status !== 'blocked') verdict = { ...artifact.scan, rescanRequested: undefined, checkedAt: undefined };
         const retry = !['clean', 'blocked'].includes(verdict.status);
         artifact.scan = file.scan = { ...verdict, scanner: fileScanner.name, checkedAt: now(), attempts: artifact.scan.attempts,
           ...(retry ? { retryAt: now() + Math.min(300000, 5000 * 2 ** Math.min(artifact.scan.attempts, 6)) } : {}) };

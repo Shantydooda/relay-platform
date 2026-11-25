@@ -63,7 +63,7 @@ function checkEnd(task, refunds = null) {
   if (!job || !ENDABLE.includes(job.status)) fail(409, 'STATE_CONFLICT', 'Only work in progress or awaiting review can be ended.');
   if (revisionRounds(task) < END_AFTER_ROUNDS)
     fail(409, 'END_NOT_YET', `You can end the work as unmet after ${END_AFTER_ROUNDS} rounds of changes. Request changes first, naming what isn’t met.`);
-  const money = refunds ? refunds.plan(task) : (job.mode === 'stripe-sandbox' || (task.settlement && task.settlement.status !== 'refunded')) ? 'refuse' : null;
+  const money = refunds ? refunds.plan(task) : (job.mode === 'stripe-sandbox' || (task.settlement && !['expired', 'refunded'].includes(task.settlement.status))) ? 'refuse' : null;
   if (money === 'refuse')
     fail(409, 'REFUND_REQUIRED', `This work can’t be ended yet: ${refunds ? refunds.reason(task) : 'it has a held payment. Ending it needs a refund, and refunds aren’t connected to this step yet.'}`);
   return money;

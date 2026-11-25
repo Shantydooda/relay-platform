@@ -42,8 +42,10 @@ test('staff see the queue with a checklist and decision buttons', () => {
 test('a capability lists approved tests in its category only, and evidence names who wrote the test', () => {
   const ctx = load({ relayTests: { approved: [approved] } }, ['supplier-ui.js']);
   const tests = cap => JSON.parse(JSON.stringify(vm.runInContext(`RelaySupplier.testsFor(${JSON.stringify(cap)})`, ctx)));
-  assert.equal(tests({ categoryId: 'master-data' }).length, 3);
-  assert.equal(tests({ categoryId: 'lead-lists' }).length, 2);
+  // Relay's two built-in tests cover CSV clean-up and link extraction only (the server refuses others).
+  assert.equal(tests({ categoryId: 'master-data' }).length, 1);
+  assert.equal(tests({ categoryId: 'lead-lists' }).length, 0);
+  assert.deepEqual(tests({ categoryId: 'data-cleanup' }).map(([rubric]) => rubric), ['csv-normalize-v1']);
   const evidence = { rubric: 'relay-test:t1', title: 'Vendor names', limitation: 'Suffixes only.', revision: 'Sort', runtimeName: 'R', runtimeVersion: '1', input: 'x', proposed: { authorName: 'Ana', byThisBuilder: true },
     submissions: [{ round: 1, passed: true, checks: [{ name: 'Output matches', passed: true }], sha256: 'abc' }] };
   const html = vm.runInContext(`RelaySupplier.evidence(${JSON.stringify(evidence)})`, ctx);

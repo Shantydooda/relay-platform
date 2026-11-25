@@ -1,5 +1,12 @@
 'use strict';
 const RelayApps = {
+  // Only a real Google sign-in page may receive the browser; anything else is refused.
+  googleAuthUrl(value) {
+    try {
+      const url = new URL(String(value));
+      return url.protocol === 'https:' && url.hostname === 'accounts.google.com' && !url.username && !url.password ? url.href : null;
+    } catch { return null; }
+  },
   data() {
     return (
       state.workspaceApps || {
@@ -350,7 +357,11 @@ const RelayApps = {
       document.querySelector('#request-text')?.focus();
       return;
     } else if (action === 'app-drive-connect' || action === 'app-drive-pick') {
-      sessionStorage.setItem('relay-drive-tenant', state.tenantId);
+      try {
+        sessionStorage.setItem('relay-drive-tenant', state.tenantId);
+      } catch {
+        /* blocked storage: continue without the remembered tenant */
+      }
       if (action === 'app-drive-pick') {
         location.assign('/drive/picker');
         return;
@@ -359,7 +370,9 @@ const RelayApps = {
         method: 'POST',
         body: { tenantId: state.tenantId },
       });
-      location.assign(result.url);
+      const target = RelayApps.googleAuthUrl(result && result.url);
+      if (!target) throw new Error('Google Drive returned an unexpected sign-in address. Try again.');
+      location.assign(target);
       return;
     } else if (action === 'app-drive-disconnect') {
       const result = await api('/api/drive/disconnect', {

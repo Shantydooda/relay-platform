@@ -27,8 +27,7 @@ test('buyer payment panel shows the all-in amount the buyer was charged', () => 
   assert.match(html, /USD 6\.25/);
 });
 
-test('builder earnings show what the builder is transferred, not the buyer’s total including Relay’s fee',
-  { todo: 'BUG-WEB-1: builder payment/earnings panel renders payment.amountMinor (buyer total incl. fee) instead of payoutMinor' }, () => {
+test('builder earnings show what the builder is transferred, not the buyer’s total including Relay’s fee', () => {
     const ui = load({ payments: { configured: true }, work: [{ ...task, payment: FEE_PAYMENT, execution: { status: 'accepted' } }] });
     const panel = ui.task(task, FEE_PAYMENT, true, { status: 'accepted' });
     assert.match(panel, /USD 5\.00/, 'the builder is transferred $5.00');
@@ -74,8 +73,7 @@ test('history page escapes task titles and labels the fee line as Relay’s fee'
   assert.match(html, /Relay fee/);
 });
 
-test('history page copy does not claim there is no platform fee when a Relay fee was charged',
-  { todo: 'BUG-WEB-2: billing/payment copy says "no platform fee"/"zero platform fee" and "Released… transfers to builders" while the fee schedule charges and releases a Relay fee' }, () => {
+test('history page copy does not claim there is no platform fee when a Relay fee was charged', () => {
     const ui = load({ spendingHistory: billingWithFee(), payments: { configured: true } });
     assert.doesNotMatch(ui.billing(), /no platform fee/i);
     assert.doesNotMatch(ui.task(task, FEE_PAYMENT, false, null), /zero platform fee/i);

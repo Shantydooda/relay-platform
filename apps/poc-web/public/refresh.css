@@ -71,7 +71,8 @@ html[data-appearance] body.market-open #app .mk-build-main .type-cards label:has
 
 /* Actions: black for the main one, soft grey buttons for the rest. */
 html[data-appearance] body.market-open #app :is(.mk-primary, .mk-buy-packages button) { color: var(--mk-on-ink) !important; background: var(--mk-ink); border-radius: 8px; }
-html[data-appearance] body.market-open #app :is(.mk-primary, .mk-buy-packages button):hover { background: var(--mk-ink); opacity: 0.88; }
+html[data-appearance] body.market-open #app :is(.mk-primary, .mk-buy-packages button):hover:not(:disabled) { background: var(--mk-ink); opacity: 0.88; }
+html[data-appearance] body.market-open #app :is(.mk-primary, .mk-buy-packages button):disabled { background: var(--mk-ink); opacity: 0.45; cursor: not-allowed; }
 html[data-appearance] body.market-open #app .mk-publish { border-radius: 8px; }
 html[data-appearance] body.market-open #app .mk-side-primary { color: var(--mk-text) !important; background: linear-gradient(var(--mk-button-top), var(--mk-button-bottom)); border: 1px solid var(--mk-border); }
 html[data-appearance] body.market-open #app .mk-build-main button:not(.primary):not(.quiet):not(.mk-link-button):not(.mk-chip):not(:disabled),

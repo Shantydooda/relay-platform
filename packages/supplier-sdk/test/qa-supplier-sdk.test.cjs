@@ -102,8 +102,7 @@ test('transport: 5xx and lost connections retry with identical bytes and key; 4x
   await assert.rejects(request('/events?after=&limit=1'), { code: 'SUPPLIER_RESPONSE_TOO_LARGE' });
 });
 
-test('BUG-SUP-6 check: the SDK can call the buyer-connection endpoints the Supplier API contract publishes',
-  { todo: 'BUG-SUP-6: transport.cjs endpoint allow-list omits access-requests, access-read and blocked (in supplier-openapi.json), and the client has no methods for them' }, async () => {
+test('BUG-SUP-6 check: the SDK can call the buyer-connection endpoints the Supplier API contract publishes', async () => {
     const request = createTransport({ origin: 'https://relay.example', token: TOKEN, fetchImpl: async () => json(200, {}) });
     const client = createSupplierClient({ origin: 'https://relay.example', token: TOKEN, fetchImpl: async () => json(200, {}) });
     for (const action of ['access-requests', 'access-read', 'blocked'])
@@ -122,8 +121,7 @@ test('sample agent against the real router: quotes once per scope and never twic
   assert.equal((await r.liveOffers(taskId)).length, 1);
 });
 
-test('BUG-SUP-5 check: the sample agent offers again after its earlier offer expired',
-  { todo: 'BUG-SUP-5: run.cjs derives the quote key from (task, scopeVersion) only; after the 24 h offer expiry the retry replays the old receipt, logs "Quoted" and creates no offer' }, async t => {
+test('BUG-SUP-5 check: the sample agent offers again after its earlier offer expired', async t => {
     // Relay's clock starts 25 h behind, so the first offer is already expired by the
     // sample agent's own Date.now() once Relay's clock catches up.
     const r = await relay(t, { startAt: Date.now() - 25 * 3600000 });
@@ -139,8 +137,7 @@ test('BUG-SUP-5 check: the sample agent offers again after its earlier offer exp
     assert.equal((await r.liveOffers(taskId)).length, 1, `a fresh offer exists. Log:\n${log.join('\n')}`);
   });
 
-test('BUG-SUP-7 check: a refused offer doesn’t stop the sample agent from doing work the buyer already authorized',
-  { todo: 'BUG-SUP-7: quotes() rethrows any 400/403 (e.g. 403 ORG_PUBLISHING_OFF), so tick() skips all assignments and run() exits with "Relay refused this key"' }, async t => {
+test('BUG-SUP-7 check: a refused offer doesn’t stop the sample agent from doing work the buyer already authorized', async t => {
     const taskId = randomUUID(), assignmentId = randomUUID(), agentId = randomUUID();
     const calls = [];
     const origin = await listen(t, async (req, res) => {

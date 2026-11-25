@@ -262,7 +262,7 @@ test('act-as header: refused for outsiders, malformed ids and organization-to-bu
   assert.equal((await f.request('/api/payments/operator/refresh', { method: 'POST', as: 'member', body: {}, headers: { 'X-Relay-Act-As': f.companyId } })).json.error.code, 'OWNER_REQUIRED');
 });
 
-test('employee acting for an organization can trigger a task transfer and payout of the organization\'s funds', { todo: 'BUG-AUTH-1: OWNER_REQUIRED guard only covers /api/payments*, not /api/tasks/:id/payments/(transfer|payout)' }, async t => {
+test('employee acting for an organization can trigger a task transfer and payout of the organization\'s funds', async t => {
   const f = await fixture(t, { paymentProvider: paymentDouble() });
   // The owner onboards the organization as a payout operator (owner-only, allowed).
   const asOrgOwner = await f.store.actAs(f.actor('owner'), f.companyId);
@@ -295,7 +295,7 @@ test('employee acting for an organization can trigger a task transfer and payout
   assert.equal(transfer.json.error.code, 'OWNER_REQUIRED');
 });
 
-test('malformed percent-encoding in app-run ids is a client error, not a 500', { todo: 'BUG-AUTH-2: decodeURIComponent URIError in app.cjs app-run/workspace-app routes returns 500 INTERNAL_ERROR' }, async t => {
+test('malformed percent-encoding in app-run ids is a client error, not a 500', async t => {
   const f = await fixture(t);
   const res = await f.request('/api/app-runs/%E0%A4%A/download', { as: 'buyer' });
   assert.equal(res.status, 400, `got ${res.status} ${res.text}`);
@@ -317,7 +317,7 @@ test('auth rate limit keys on the socket address and ignores X-Forwarded-For (ri
   assert.equal(legit.json.error.code, 'AUTH_LIMIT', 'a legitimate user behind the same proxy is locked out');
 });
 
-test('a member acting for an organization cannot offer on their own personal request', { todo: 'BUG-AUTH-3: self-dealing guard (task.ownerId === actor.user.id) checks the organization id, not onBehalfOf, so a member can quote on and win their own request' }, async t => {
+test('a member acting for an organization cannot offer on their own personal request', async t => {
   const f = await fixture(t);
   const mel = f.actor('member');
   const asOrg = await f.store.actAs(mel, f.companyId);
@@ -334,4 +334,18 @@ test('a member acting for an organization cannot offer on their own personal req
   // Through the organization the same person must be refused too.
   assert.equal((await f.store.marketplace.opportunities(asOrg)).some(o => o.id === taskId), false, 'own request listed as an opportunity');
   await assert.rejects(f.store.marketplace.quote(asOrg, taskId, { agentId, capabilityId: agent.capabilities[0].id, expectedVersion: 3, amountMinor: 5000, deliveryMinutes: 60, proposal: 'Self via org.' }, randomUUID()), { code: 'NOT_FOUND' });
+});
+
+test('behind a trusted proxy, sign-in limits key on the proxy-supplied address and ignore forged entries', () => {
+  const { clientAddress } = require('../src/app.cjs');
+  const req = (xff, remote = '10.0.0.5') => ({ socket: { remoteAddress: remote }, headers: xff === undefined ? {} : { 'x-forwarded-for': xff } });
+  // Not trusted (local): always the socket address.
+  assert.equal(clientAddress(req('203.0.113.9')), '10.0.0.5');
+  // Trusted (Render): the last entry, which the proxy appended.
+  assert.equal(clientAddress(req('203.0.113.9'), true), '203.0.113.9');
+  assert.equal(clientAddress(req('1.2.3.4, 198.51.100.7'), true), '198.51.100.7', 'a forged first entry is ignored');
+  assert.equal(clientAddress(req('2001:db8::1'), true), '2001:db8::1');
+  // Missing or malformed header: fall back to the socket address.
+  assert.equal(clientAddress(req(undefined), true), '10.0.0.5');
+  assert.equal(clientAddress(req('not an address'), true), '10.0.0.5');
 });

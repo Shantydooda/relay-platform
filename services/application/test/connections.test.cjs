@@ -50,6 +50,8 @@ for (const adapter of ['sqlite', 'postgres']) {
     assert.equal(read.rows.length, 3);
     assert.equal(read.rows[0].taxId, '12-3456789');
     await assert.rejects(f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'customer' }), { code: 'GRANT_SCOPE' });
+    for (const cursor of [-1, 1.5, '', 'a b', 'x\ny', {}, 'x'.repeat(501)])
+      await assert.rejects(f.app.readAccess(f.principal, f.taskId, { leaseToken: claimed.leaseToken, grantId, object: 'vendor', cursor }), { code: 'INVALID_CURSOR' }, JSON.stringify(cursor));
     const detail = await f.app.detail(f.buyer, f.taskId);
     assert.equal(detail.access.grants[0].reads, 1, 'the buyer sees every read');
     assert.equal(detail.access.grants[0].rowsRead, 3);

@@ -438,12 +438,14 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     return command(actor.user.id, key, ['quote', id, body], async repo => { owner(actor, await repo.get('agent', body.agentId)); }, async repo => {
       const task = await repo.get('task', id, true), agent = await agentFor(repo, actor, body.agentId);
       await context.org.assertCanPublish(repo, actor);
+      // A paused listing doesn't offer automatically; its builder can still offer by hand.
+      if (runtime && agent.listingStatus === 'paused') fail(409, 'AGENT_PAUSED', 'This agent is paused, so it doesn’t offer automatically. Resume its listing, or offer from Relay.');
       if (runtime) {
         await context.credentials.runtimeAgent(repo, runtime, 'offers:write');
         if (agent.connectedAt <= now() - 120000) fail(409, 'RUNTIME_REQUIRED', 'Send a fresh heartbeat before bidding.');
       }
       // An organization never offers on its own requests.
-      if (!task || task.status !== 'posted' || actor.memberships.some(member => member.id === task.tenantId) || task.tenantId === actor.user.id || task.ownerId === actor.user.id) notFound();
+      if (!task || task.status !== 'posted' || actor.memberships.some(member => member.id === task.tenantId) || task.tenantId === actor.user.id || task.ownerId === actor.user.id || task.ownerId === actor.onBehalfOf?.id) notFound();
       require('./orchestration.cjs').ready(task);
       if (currency !== 'USD' && (task.companyApprovalRequired || task.orchestrationStep || task.scheduleId || task.recurringScheduleId || (task.workPlan?.cadence && task.workPlan.cadence !== 'once'))) fail(409, 'CURRENCY_UNSUPPORTED', 'Budgets and recurring or coordinated work currently use USD.');
       require('./orchestration.cjs').withinBudget(task, pricing.price(body.amountMinor).totalMinor);
@@ -536,7 +538,7 @@ function createApplication({ repository, now = Date.now, localExecution = false,
   function opportunityView(task, actor) {
     if (task.assignment || task.engagement || task.milestone ||
       (task.preferredOperatorId && task.preferredOperatorId !== actor.user.id) ||
-      actor.memberships.some(member => member.id === task.tenantId) || task.tenantId === actor.user.id ||
+      actor.memberships.some(member => member.id === task.tenantId) || task.tenantId === actor.user.id || task.ownerId === actor.onBehalfOf?.id ||
       task.offers.some(offer => offer.id === task.selectedOfferId && offer.expiresAt > now())) return null;
     return { id: task.id, title: task.title, brief: task.brief, version: task.version, scopeVersion: task.scopeVersion, acceptanceCriteria: task.acceptanceCriteria || [],
       input: task.input ? { filename: task.input.filename, size: task.input.size, sha256: task.input.sha256, notes: task.input.notes, operation: task.input.operation } : null,

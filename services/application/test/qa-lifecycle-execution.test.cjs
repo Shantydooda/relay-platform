@@ -289,7 +289,7 @@ test('delivery file boundaries: names, emptiness, duplicates, count and mime', a
   await assert.rejects(files([file('a.txt'), file('b.txt'), file('c.txt'), file('d.txt')]), { code: 'INVALID_FILE' });
   await assert.rejects(files([file('a.html', text('<b>x</b>'), 'text/html')]), { code: 'INVALID_FILE' });
   await assert.rejects(files([file('big.txt', Buffer.alloc(256 * 1024 + 1, 'a').toString('base64'))]), { code: 'INVALID_FILE' });
-  const ok = await files([file('a'.repeat(100)), file('max.txt', Buffer.alloc(256 * 1024, 'a').toString('base64'))]);
+  const ok = await files([file(`${'a'.repeat(96)}.txt`), file('max.txt', Buffer.alloc(256 * 1024, 'a').toString('base64'))]);
   assert.ok(ok.submissionId);
 });
 
@@ -369,4 +369,18 @@ test('another buyer cannot pause, resume, cancel or review someone else\'s work'
     () => s.app.reviewDelivery(s.other, s.job.taskId, 'accept-delivery', { expectedVersion, submissionId }, randomUUID()),
     () => s.app.endUnmet(s.other, s.job.taskId, { expectedVersion, reason: 'Not mine.' }, randomUUID()),
   ]) await assert.rejects(call(), { code: 'NOT_FOUND' });
+});
+
+test('a claim after the connection window closes records the run as failed, as the sweeper would', async t => {
+  const s = await setup(t);
+  await s.repository.transaction('qa-window', async repo => {
+    const task = await repo.get('task', s.job.taskId, true);
+    task.assignment.queueDeadlineAt = Date.now() - 1000;
+    await repo.save('task', task);
+  });
+  const result = await s.claim();
+  assert.equal(result.exhausted, true);
+  const job = (await s.stored()).assignment;
+  assert.equal(job.status, 'failed');
+  assert.equal(job.error, 'SUPPLIER_UNAVAILABLE');
 });

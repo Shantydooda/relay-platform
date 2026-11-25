@@ -39,7 +39,7 @@ test('an export swapped for a link after start-up is refused, including a siblin
   assert.equal(realpathSync(config.root), config.root);
 });
 
-test('paging: pages are capped at 500 rows, cursors are numeric offsets, and a bad cursor restarts at the top', t => {
+test('paging: pages are capped at 500 rows, cursors are numeric offsets, and a bad cursor is refused', t => {
   const f = folder(t);
   writeFileSync(join(f.dir, 'exports', 'vendors.csv'), 'id\n' + Array.from({ length: 1203 }, (_, i) => `V-${i}`).join('\n') + '\n');
   const source = createFolderSource(f.config());
@@ -50,8 +50,8 @@ test('paging: pages are capped at 500 rows, cursors are numeric offsets, and a b
   assert.equal(last.rows.length, 203);
   assert.equal(last.nextCursor, null);
   assert.deepEqual(source.read('vendor', { cursor: '5000' }), { rows: [], nextCursor: null });
-  // Documented risk, not a leak: a non-numeric or negative cursor silently reads from row 0.
-  for (const cursor of ['-1', 'abc', '1e3', '0x10']) assert.equal(source.read('vendor', { cursor, limit: 1 }).rows[0].id, 'V-0', cursor);
+  // A malformed cursor is refused (see the regression tests below), never read from row 0.
+  for (const cursor of ['-1', 'abc', '1e3', '0x10']) assert.throws(() => source.read('vendor', { cursor, limit: 1 }), { code: 'INVALID_CURSOR' }, cursor);
 });
 
 test('CSV reader: quoting, CRLF/CR, BOM, prototype-like headers and ragged rows', () => {
@@ -66,8 +66,7 @@ test('CSV reader: quoting, CRLF/CR, BOM, prototype-like headers and ragged rows'
   assert.deepEqual(parseCsv('a\n"x"y\n'), [{ a: 'xy' }]);
 });
 
-test('BUG-SUP-8 check: a single-column export keeps rows whose value is empty',
-  { todo: 'BUG-SUP-8: parseCsv drops every one-field empty record (even a quoted ""), so single-column exports lose rows and later cursors shift' }, () => {
+test('BUG-SUP-8 check: a single-column export keeps rows whose value is empty', () => {
     assert.deepEqual(parseCsv('email\na@x.com\n""\nb@x.com\n'), [{ email: 'a@x.com' }, { email: '' }, { email: 'b@x.com' }]);
   });
 

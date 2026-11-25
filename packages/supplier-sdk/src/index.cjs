@@ -40,6 +40,10 @@ function createSupplierClient(options) {
     message: (taskId, body, key) => taskCommand('messages', taskId, body, key),
     proposeChange: (taskId, body, key) => taskCommand('change-proposals', taskId, body, key),
     readTool: (taskId, body, key) => taskCommand('tool-read', taskId, body, key),
+    // Buyer connections: ask for read access, read through Relay, or end as blocked.
+    requestAccess: (taskId, body, key) => taskCommand('access-requests', taskId, body, key),
+    readAccess: (taskId, body, key) => taskCommand('access-read', taskId, body, key),
+    endBlocked: (taskId, body, key) => taskCommand('blocked', taskId, body, key),
     claim: (taskId, body, key) => taskCommand('claim', taskId, body, key),
     progress: (taskId, body, key) => taskCommand('progress', taskId, body, key),
     submit: (taskId, body, key) => taskCommand('submit', taskId, body, key),

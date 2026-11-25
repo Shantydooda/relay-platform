@@ -141,6 +141,10 @@ function createApprovals(context) {
     if (!a || approvalView(task, now())?.status !== 'pending') fail(409, 'APPROVAL_STALE', 'This request changed or expired. Ask for a fresh request.');
     // A removed requester cannot obtain a new allocation through an old queue entry.
     if (resolveOperator) await member(await resolveOperator(a.requestedBy), task.tenantId, ['owner', 'employee']);
+    // Separation of duties: a project lead's authority is delegated, so a lead can't
+    // approve spend they asked for. An approver or owner decides it instead.
+    if (decision === 'approved' && decidedAs === 'lead' && a.requestedBy === actor.user.id)
+      fail(403, 'SELF_APPROVAL', 'You asked for this spend, so a company approver or owner must approve it.');
     if (decision === 'approved') {
       const budget = await repo.get('company-budget', task.tenantId, true);
       if (!budget) fail(409, 'BUDGET_REQUIRED', 'An administrator must set the company allowance first.');

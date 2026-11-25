@@ -69,7 +69,7 @@ function createTransport({ origin, token, fetchImpl = fetch, signal, timeoutMs =
 
   return async function request(path, body, key, method = body === undefined ? 'GET' : 'POST') {
     // Never allow a caller-controlled origin, redirect or URL to receive a key.
-    if (!/^\/(?:heartbeat|qualifications(?:\/[a-f0-9-]{36})?|evaluations(?:\/[a-f0-9-]{36})?|events|opportunities|assignments|tasks\/[a-f0-9-]{36}(?:\/(?:offers|claim|progress|submit|fail|permission-requests|tool-read|messages|change-proposals))?)(?:\?after=[A-Za-z0-9_%:-]*&limit=\d+)?$/.test(path)) {
+    if (!/^\/(?:heartbeat|qualifications(?:\/[a-f0-9-]{36})?|evaluations(?:\/[a-f0-9-]{36})?|events|opportunities|assignments|tasks\/[a-f0-9-]{36}(?:\/(?:offers|claim|progress|submit|fail|permission-requests|tool-read|messages|change-proposals|access-requests|access-read|blocked))?)(?:\?after=[A-Za-z0-9_%:-]*&limit=\d+)?$/.test(path)) {
       throw new SupplierError('INVALID_ENDPOINT');
     }
     if (!['GET', 'POST'].includes(method)) throw new SupplierError('INVALID_METHOD');
