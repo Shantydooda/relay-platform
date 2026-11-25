@@ -22,6 +22,7 @@ const assets = {
   '/agent-market-ui.js':['agent-market-ui.js','text/javascript; charset=utf-8'],
   '/marketplace-ui.js':['marketplace-ui.js','text/javascript; charset=utf-8'],
   '/marketplace-ui.css':['marketplace-ui.css','text/css; charset=utf-8'],
+  '/refresh.css':['refresh.css','text/css; charset=utf-8'],
   '/recurring-ui.js':['recurring-ui.js','text/javascript; charset=utf-8'],
   '/buyer-flow.js':['buyer-flow.js','text/javascript; charset=utf-8'],
   '/marketplace.js':['marketplace.js','text/javascript; charset=utf-8'],
@@ -61,7 +62,7 @@ const assets = {
 };
 
 // Fixed local font assets only; no user-controlled filesystem lookup.
-for(const file of readdirSync(resolve(PUBLIC,'assets/fonts')).filter(name=>/^[a-z0-9-]+\.ttf$/.test(name)))assets[`/assets/fonts/${file}`]=[`assets/fonts/${file}`,'font/ttf'];
+for(const file of readdirSync(resolve(PUBLIC,'assets/fonts')).filter(name=>/^[a-z0-9-]+\.(ttf|woff2)$/.test(name)))assets[`/assets/fonts/${file}`]=[`assets/fonts/${file}`,file.endsWith('.woff2')?'font/woff2':'font/ttf'];
 
 async function rawBody(req, maximumBytes = 32768) {
   if ((req.headers['content-type']||'').split(';')[0].trim()!=='application/json') fail(415,'JSON_REQUIRED','Send application/json.');
