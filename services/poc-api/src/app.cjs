@@ -92,7 +92,17 @@ async function jsonBody(req, maximumBytes = 32768) {
 function cookieToken(req,name) {
   return (req.headers.cookie||'').split(';').map(p=>p.trim()).find(p=>p.startsWith(`${name}=`))?.slice(name.length+1);
 }
-function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now,logger=console,runtimeManager,paymentWebhookVerifier,getWorkerHealth}) {
+// The client address for sign-in limits. Behind a trusted proxy (Render), the
+// proxy appends the address it saw as the last X-Forwarded-For entry; earlier
+// entries come from the client and could be forged, so only the last is used.
+function clientAddress(req, trustProxy = false) {
+  const socket = req.socket?.remoteAddress || 'unknown';
+  if (!trustProxy) return socket;
+  const header = req.headers['x-forwarded-for'];
+  const last = String(Array.isArray(header) ? header.at(-1) : header || '').split(',').at(-1).trim();
+  return /^[0-9a-fA-F:.]{2,45}$/.test(last) ? last : socket;
+}
+function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now,logger=console,runtimeManager,paymentWebhookVerifier,getWorkerHealth,trustProxy=false}) {
   const expected = new URL(origin);
   if (!['http:','https:'].includes(expected.protocol)||expected.pathname!=='/'||expected.search||expected.hash||expected.username||expected.password) throw new Error('Invalid application origin');
   const managed=['managed-staging','managed-pilot'].includes(mode);
@@ -195,7 +205,7 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
         fail(404, 'NOT_FOUND', 'Runtime endpoint not found.');
       }
       if(mutation&&req.headers.origin!==expected.origin) fail(403,'ORIGIN_REQUIRED','This request must come from the Relay POC.');
-      const raw=cookieToken(req,cookieName), ip=req.socket.remoteAddress||'unknown';
+      const raw=cookieToken(req,cookieName), ip=clientAddress(req,trustProxy);
       if(method==='POST'&&(path==='/api/auth/register'||path==='/api/auth/login')) {
         const body=await jsonBody(req);
         const token=path.endsWith('register')?await store.register(body,ip,raw):await store.login(body,ip,raw);
@@ -500,4 +510,4 @@ function createApp({db,origin,store:providedStore,mode='local-only',now=Date.now
   server.keepAliveTimeout=5000;
   return server;
 }
-module.exports={createApp};
+module.exports={createApp,clientAddress};

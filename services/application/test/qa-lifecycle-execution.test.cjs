@@ -370,3 +370,17 @@ test('another buyer cannot pause, resume, cancel or review someone else\'s work'
     () => s.app.endUnmet(s.other, s.job.taskId, { expectedVersion, reason: 'Not mine.' }, randomUUID()),
   ]) await assert.rejects(call(), { code: 'NOT_FOUND' });
 });
+
+test('a claim after the connection window closes records the run as failed, as the sweeper would', async t => {
+  const s = await setup(t);
+  await s.repository.transaction('qa-window', async repo => {
+    const task = await repo.get('task', s.job.taskId, true);
+    task.assignment.queueDeadlineAt = Date.now() - 1000;
+    await repo.save('task', task);
+  });
+  const result = await s.claim();
+  assert.equal(result.exhausted, true);
+  const job = (await s.stored()).assignment;
+  assert.equal(job.status, 'failed');
+  assert.equal(job.error, 'SUPPLIER_UNAVAILABLE');
+});

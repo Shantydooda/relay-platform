@@ -18,7 +18,9 @@ async function start() {
     if (objectStore) await objectStore.verifyBucket();
     pilot = composePilot({ ...config, objectStore, provider, repository: database.repository, pool: database.pool });
     await pilot.start();
-    const server = createApp({ origin: config.origin, store: pilot.store, mode: 'managed-pilot' });
+    const server = createApp({ origin: config.origin, store: pilot.store, mode: 'managed-pilot',
+    // Render sets RENDER=true on its services; its proxy supplies the client address.
+    trustProxy: process.env.RENDER === 'true' });
     await new Promise((resolve, reject) => {
       server.once('error', reject);
       server.listen(config.port, '0.0.0.0', resolve);

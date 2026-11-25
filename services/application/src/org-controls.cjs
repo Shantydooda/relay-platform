@@ -104,6 +104,14 @@ function createOrgControls(context) {
       }
       if (region !== undefined && region !== (policy.requiredRegion || null)) {
         saved.requiredRegion = region; changes.push(`Agents must process data in: ${region ? REGIONS[region].replace('the ', '') : 'any region'}`);
+        // Open requests follow the new rule at once, so builders only see what they can offer on.
+        for (const task of await repo.list('task', 'tenant_id', tenantId)) {
+          if (!['draft', 'posted'].includes(task.status)) continue;
+          const next = region || task.regionChoice || null;
+          if ((task.requiredRegion || null) === next) continue;
+          const locked = await repo.get('task', task.id, true);
+          locked.requiredRegion = next; await repo.save('task', locked);
+        }
       }
       await repo.save('org-policy', saved);
       for (const detail of changes) await repo.save('audit-entry', { id: entryId(time), ownerId: actor.user.id, tenantId, at: time, actorId: actor.user.id, type: 'policy.changed', detail });

@@ -438,6 +438,8 @@ function createApplication({ repository, now = Date.now, localExecution = false,
     return command(actor.user.id, key, ['quote', id, body], async repo => { owner(actor, await repo.get('agent', body.agentId)); }, async repo => {
       const task = await repo.get('task', id, true), agent = await agentFor(repo, actor, body.agentId);
       await context.org.assertCanPublish(repo, actor);
+      // A paused listing doesn't offer automatically; its builder can still offer by hand.
+      if (runtime && agent.listingStatus === 'paused') fail(409, 'AGENT_PAUSED', 'This agent is paused, so it doesn’t offer automatically. Resume its listing, or offer from Relay.');
       if (runtime) {
         await context.credentials.runtimeAgent(repo, runtime, 'offers:write');
         if (agent.connectedAt <= now() - 120000) fail(409, 'RUNTIME_REQUIRED', 'Send a fresh heartbeat before bidding.');

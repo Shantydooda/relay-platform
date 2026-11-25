@@ -44,7 +44,11 @@ function loadPicker() {
   });
 }
 async function initialize() {
-  tenantId = sessionStorage.getItem('relay-drive-tenant');
+  try {
+    tenantId = sessionStorage.getItem('relay-drive-tenant');
+  } catch {
+    tenantId = null;
+  }
   const response = await fetch('/api/me');
   if (!response.ok)
     throw new Error(

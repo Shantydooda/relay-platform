@@ -47,7 +47,7 @@ test('a failed run stays countable: a change proposal cannot replace it', async 
   assert.equal(taskOutcome(task)?.outcome, 'failed', 'the failed run must still count');
 });
 
-test('risk (current behaviour): a buyer retry after a failure lets the final acceptance count as first-time', async t => {
+test('a buyer retry after a failure means the final acceptance does not count as first-time', async t => {
   const s = await setup(t);
   let { leaseToken } = await s.app.claim(s.principal, s.job.taskId, { assignmentId: s.job.assignmentId }, randomUUID());
   await s.app.failExecution(s.principal, s.job.taskId, { leaseToken, code: 'AGENT_ERROR' }, randomUUID());
@@ -59,6 +59,12 @@ test('risk (current behaviour): a buyer retry after a failure lets the final acc
   const task = await s.stored();
   assert.equal(task.assignment.recoveryHistory.length, 1);
   assert.equal(task.assignment.recoveryHistory[0].error, 'AGENT_ERROR');
-  // The earlier failure is kept only in recoveryHistory; the ledger sees a first-time acceptance.
-  assert.equal(taskOutcome(task).outcome, 'accepted_first_time');
+  // The earlier failure is in recoveryHistory, so the acceptance isn't first-time.
+  assert.equal(taskOutcome(task).outcome, 'accepted_after_revision');
+});
+
+test('a superseded orchestration step still counts when it failed', () => {
+  const base = { id: 't', offers: [{ id: 'o', capabilityId: 'c' }], submissions: [], orchestrationStep: { supersededBy: 'newer' } };
+  assert.equal(taskOutcome({ ...base, assignment: { id: 'a', offerId: 'o', status: 'failed', endedAt: 1 } })?.outcome, 'failed');
+  assert.equal(taskOutcome({ ...base, assignment: { id: 'a', offerId: 'o', status: 'accepted', acceptedAt: 1 } }), null);
 });

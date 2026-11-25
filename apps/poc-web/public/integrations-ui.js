@@ -240,6 +240,13 @@ relay-connector --config relay-connector.json</pre><span class="mk-caption">Or w
   },
 
   // ---- Actions -----------------------------------------------------------
+  // Only a real Google sign-in page may receive the browser; anything else is refused.
+  googleAuthUrl(value) {
+    try {
+      const url = new URL(String(value));
+      return url.protocol === 'https:' && url.hostname === 'accounts.google.com' && !url.username && !url.password ? url.href : null;
+    } catch { return null; }
+  },
   async click(button) {
     const action = button.dataset.action, data = state.integrations;
     if (action === 'integration-open') {
@@ -256,10 +263,12 @@ relay-connector --config relay-connector.json</pre><span class="mk-caption">Or w
     if (action === 'integration-drive') {
       const op = button.dataset.operation;
       if (op === 'connect' || op === 'pick') {
-        sessionStorage.setItem('relay-drive-tenant', data.tenantId);
+        try { sessionStorage.setItem('relay-drive-tenant', data.tenantId); } catch { /* blocked storage: continue without the remembered tenant */ }
         if (op === 'pick') { location.assign('/drive/picker'); return true; }
         const result = await api('/api/drive/begin', { method: 'POST', body: { tenantId: data.tenantId } });
-        location.assign(result.url); return true;
+        const target = RelayIntegrations.googleAuthUrl(result && result.url);
+        if (!target) throw new Error('Google Drive returned an unexpected sign-in address. Try again.');
+        location.assign(target); return true;
       }
       const result = await api('/api/drive/disconnect', { method: 'POST', body: { tenantId: data.tenantId, expectedVersion: data.drive.version } });
       notice.textContent = result.providerRevoked ? 'Google Drive disconnected.' : 'Disconnected from Relay. Remove Relay in your Google account permissions to finish revoking Google access.';

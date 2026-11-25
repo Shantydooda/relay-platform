@@ -173,3 +173,17 @@ test('a company’s rule wins over a member’s choice for one request', async t
   assert.equal((await f.app.detail(f.member, taskId)).task.requiredRegion, 'eu');
   await assert.rejects(f.offer(f.us, usAgent, taskId), { code: 'REGION_REQUIRED' });
 });
+
+test('a company rule set after posting applies to open requests at once, in every builder view', async t => {
+  const f = setup(t);
+  const usAgent = await f.agent(f.us, 'US dedupe', 'us');
+  const taskId = await f.draft(f.member); await f.post(f.member, taskId);
+  await f.require('eu', 0);
+  const [seen] = (await f.app.marketplace.opportunities(f.us)).filter(o => o.id === taskId);
+  assert.equal(seen.requiredRegion, 'eu', 'the open request now shows the company rule');
+  assert.deepEqual([...seen.fits], [], 'a US agent no longer fits it');
+  await assert.rejects(f.offer(f.us, usAgent, taskId), { code: 'REGION_REQUIRED' });
+  // Lifting the rule lifts it on the open request too.
+  await f.require(null, 1);
+  assert.equal((await f.app.marketplace.opportunities(f.us)).find(o => o.id === taskId).requiredRegion, null);
+});

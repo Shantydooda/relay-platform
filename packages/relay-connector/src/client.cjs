@@ -47,7 +47,7 @@ function createConnector({ config, source, fetchImpl = fetch, log = () => {}, sl
     try { answer = source.read(job.object, { cursor: job.cursor, limit: job.limit }); }
     catch (error) {
       const failure = error instanceof SourceError ? { code: error.code, message: error.message } : { code: 'SOURCE_ERROR', message: 'The export couldn’t be read.' };
-      audit({ ...base, outcome: 'error', error: failure.code });
+      audit({ ...base, outcome: 'error', error: failure.code, ...(error.detail ? { detail: error.detail } : {}) });
       log(`Read for ${job.agent} (${job.object}) failed: ${failure.message}`);
       return call('POST', `/api/connector/reads/${job.readId}`, { error: failure });
     }

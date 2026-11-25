@@ -328,6 +328,10 @@ function createConnections(context) {
     if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).length > 5 ||
       Object.entries(params).some(([k, v]) => !/^[a-z]{1,20}$/.test(k) || typeof v !== 'string' || v.length > 300))
       fail(400, 'INVALID_INPUT', 'Read parameters must be a few short text values.');
+    // A cursor is what an earlier read returned: a row offset or a provider's page token.
+    const cursor = body.cursor ?? 0;
+    if (!(Number.isSafeInteger(cursor) && cursor >= 0) && !(typeof cursor === 'string' && /^[A-Za-z0-9_.:=+/-]{1,500}$/.test(cursor)))
+      fail(400, 'INVALID_CURSOR', 'Use the cursor an earlier read returned, or leave it out to start at the beginning.');
     // Three steps, so a slow system never holds the work's lock while it answers:
     // 1. check the lease, grant and connection, and open the credential;
     // 2. call the provider with no transaction open;
@@ -346,7 +350,7 @@ function createConnections(context) {
         agent: c.mode === 'connector' ? (await repo.get('agent', task.assignment.agentId))?.name || 'Agent' : null, request: task.title,
         credentials: c.mode === 'connector' ? null : connectionVault.open(c.secret, `connection:${c.id}`) };
     });
-    const ask = { object: body.object, cursor: body.cursor ?? 0, limit: READ_LIMIT, params };
+    const ask = { object: body.object, cursor, limit: READ_LIMIT, params };
     const result = before.credentials === null
       ? await bridge.read(before.connectionId, { ...ask, grantId: before.grantId, agent: before.agent, request: before.request })
       : await provider(before.kind).read(before.credentials, ask);

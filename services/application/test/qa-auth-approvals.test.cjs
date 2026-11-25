@@ -83,17 +83,15 @@ test('a demoted approver\'s approval no longer funds work', async t => {
   assert.ok(await f.fund(f.employee), 'control: restored role funds');
 });
 
-test('risk: a project lead who posted the request can approve their own spend', async t => {
-  // docs/specs/Enterprise-and-Projects.md lets the lead approve project work, but says nothing
-  // about separation of duties. Today the lead can be requester and approver of the same request.
+test('a project lead cannot approve spend they asked for; an approver can', async t => {
+  // Separation of duties: the lead's authority is delegated, so their own request goes to an approver or owner.
   const f = await setup(t);
   const { projectId } = await f.app.createProject(f.buyer, f.tenantId, { name: 'Wave 2', description: '', leadId: f.lead.user.id, memberIds: [], capMinor: 1000 }, randomUUID());
   await f.own(f.lead);
   await f.app.moveTask(f.lead, f.taskId, { expectedVersion: await f.version(), projectId }, randomUUID());
   await f.request(f.lead);
-  const result = await f.decide(f.lead);
-  assert.equal(result.status, 'approved', 'self-approval by the lead is currently allowed');
+  await assert.rejects(f.decide(f.lead), { code: 'SELF_APPROVAL' });
+  assert.equal((await f.decide(f.approver)).status, 'approved');
   const task = await f.repository.read(r => r.get('task', f.taskId));
-  assert.equal(task.approval.requestedBy, task.approval.decidedBy);
-  assert.equal(task.approval.decidedAs, 'lead');
+  assert.notEqual(task.approval.requestedBy, task.approval.decidedBy);
 });

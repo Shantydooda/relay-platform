@@ -568,10 +568,10 @@ root.addEventListener('submit',event=>{
     }else if(form.id==='end-unmet'){
       await RelayAcceptance.endUnmet(form, data);
     }else if(form.id==='agent'){
-      if(state.agentIntroPart!=='capabilities'){captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();return;}
+      if(state.agentIntroPart!=='capabilities'){captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';saveAgentDraft();render();return;}
       const rows=[...form.querySelectorAll('.capability-row')];
       const result=await command('/api/agents','POST',{name:data.get('name'),purpose:data.get('purpose'),domain:data.get('domain'),kind:data.get('kind'),integration:'api',capabilities:rows.map(r=>{const pick=r.querySelector('[name=categoryId]')?.value;return {...(pick?{categoryId:pick}:{}),...(!pick||pick==='other'?{category:r.querySelector('[name=category]')?.value||''}:{}),task:r.querySelector('[name=capability]').value,metadata:capabilityMetadata(r)};})});
-      state.addingAgent=false;state.agentDraft=null;sessionStorage.removeItem(agentDraftKey());state.setupAgentId=result.agentId;state.setupStage=2;state.agentTab='connection';location.hash=`agent=${result.agentId}&step=2`;await refresh();render();notice.textContent='Profile saved. Choose how your runtime will connect.';
+      state.addingAgent=false;state.agentDraft=null;try{sessionStorage.removeItem(agentDraftKey());}catch{}state.setupAgentId=result.agentId;state.setupStage=2;state.agentTab='connection';location.hash=`agent=${result.agentId}&step=2`;await refresh();render();notice.textContent='Profile saved. Choose how your runtime will connect.';
     }else if(['agent-connection','agent-rules','agent-profile'].includes(form.id)){
       const agent = state.agents.find(item => item.id === form.dataset.id);
       const configuration = RelaySupplier.configuration(agent, form, data);
@@ -850,7 +850,7 @@ root.addEventListener('click',event=>{
     else if(action==='task'){state.reviewStart=false;state.editing=false;await refresh(button.dataset.id);state.buyerTab=state.detail.task.status==='draft'?'request':'tasks';if(typeof RelayMarketplace!=='object')location.hash=`${state.detail.task.status==='draft'?'chat':'task'}=${button.dataset.id}`;render();}
     else if(action==='builder-tab'){state.setupAgentId=null;state.addingAgent=false;location.hash='';state.builderTab=button.dataset.tab;await refresh();render();}
     else if(action==='add-agent'){state.setupAgentId=null;state.addingAgent=true;state.agentIntroPart='profile';location.hash='agent-new';try{state.agentDraft=JSON.parse(sessionStorage.getItem(agentDraftKey()))||null;state.agentIntroPart=state.agentDraft?.part||'profile';}catch{state.agentDraft=null;}render();}
-    else if(action==='continue-capabilities'){const form=document.getElementById('agent');if(!form.reportValidity())return;captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));render();}
+    else if(action==='continue-capabilities'){const form=document.getElementById('agent');if(!form.reportValidity())return;captureAgentDraft(form);state.agentIntroPart='capabilities';state.agentDraft.part='capabilities';saveAgentDraft();render();}
     else if(action==='edit-introduction'){state.agentIntroPart='profile';render();}
     else if((action==='stop-agent'||action==='close-agent')&&typeof RelayBuild==='object'&&typeof RelayMarketplace==='object'&&!RelayBuild.isBuilder()){state.addingAgent=false;await RelayMarketplace.go('/');}
     else if(action==='stop-agent'||action==='close-agent'){state.addingAgent=false;state.setupAgentId=null;state.builderTab='agents';location.hash='';render();}
@@ -1115,6 +1115,8 @@ async function pollWorkspace() {
 setInterval(pollWorkspace,2000);
 
 function agentDraftKey(){return `relay-agent-draft:${state.account?.user.id||'visitor'}`;}
+// Browser storage can be blocked (private windows); the draft then lives only on this page.
+function saveAgentDraft(){try{sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));}catch{}}
 function captureAgentDraft(form){
  const data=new FormData(form);state.agentDraft={name:data.get('name'),kind:data.get('kind'),purpose:data.get('purpose'),domain:data.get('domain'),part:state.agentIntroPart,capabilities:form.querySelectorAll('.capability-row').length?[...form.querySelectorAll('.capability-row')].map(row=>({categoryId:row.querySelector('[name=categoryId]')?.value||'',category:row.querySelector('[name=category]')?.value||'',task:row.querySelector('[name=capability]').value,metadata:capabilityMetadata(row)})):state.agentDraft?.capabilities||[]};
  try{sessionStorage.setItem(agentDraftKey(),JSON.stringify(state.agentDraft));}catch{notice.textContent='Draft cannot be saved in this browser. Keep the page open until you save the agent.';}

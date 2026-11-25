@@ -166,6 +166,14 @@ function createExecution(context) {
       if (assignment.permissionWait) fail(409, 'PERMISSION_PENDING', 'Wait for the user to approve access before claiming work.');
       if (assignment.buyerPause) fail(409, 'PAUSED_BY_BUYER', 'The buyer paused this work. Keep polling and claim again after it is resumed.');
       if (assignment.status === 'running' && assignment.leaseUntil > now()) fail(409, 'LEASE_BUSY', 'Another worker holds the lease.');
+      // Same rule as the sweeper: a queued run not started within its connection window
+      // has failed, even if the sweeper hasn't reached it yet. Recorded durably.
+      if (assignment.status === 'queued' && assignment.queueDeadlineAt && assignment.queueDeadlineAt <= now()) {
+        assignment.status = 'failed'; assignment.error = 'SUPPLIER_UNAVAILABLE'; assignment.endedAt = now();
+        assignment.progress = 'The runtime did not start within the connection window.'; assignment.leaseHash = null;
+        touch(task, now()); event(task, 'system', 'execution.failed', now()); await saveTask(repo, task);
+        return { taskId: id, exhausted: true };
+      }
       if (assignment.attempt >= (assignment.attemptLimit || 3)) {
         // Return a durable failure rather than throwing and rolling it back.
         assignment.status = 'failed'; assignment.error = 'RETRY_EXHAUSTED'; assignment.endedAt = now();

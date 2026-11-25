@@ -17,7 +17,8 @@ const OUTCOMES = Object.freeze([
 
 function taskOutcome(task) {
   const job = task?.assignment;
-  if (!job || task.orchestrationStep?.supersededBy) return null;
+  // A superseded step drops out of the record, except a failure: failures always count.
+  if (!job || (task.orchestrationStep?.supersededBy && job.status !== 'failed')) return null;
   const offer = (task.offers || []).find(item => item.id === job.offerId);
   const revisions = (task.submissions || []).filter(item => item.status === 'revision_requested').length;
   let outcome = null;
@@ -28,7 +29,8 @@ function taskOutcome(task) {
     outcome = 'refunded';
     at = task.settlement.updatedAt ?? job.endedAt ?? job.acceptedAt;
   } else if (job.status === 'accepted') {
-    outcome = revisions ? 'accepted_after_revision' : 'accepted_first_time';
+    // A run the buyer had to restart after a failure isn't accepted first time.
+    outcome = revisions || (job.recoveryHistory || []).length ? 'accepted_after_revision' : 'accepted_first_time';
     at = job.acceptedAt;
   } else if (job.status === 'failed') {
     outcome = 'failed';

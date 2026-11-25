@@ -294,3 +294,12 @@ test('BUG-SUP-4 check: no match alert for a “try another agent” request the 
     const alerts = (await f.app.notifications(f.builder)).items.filter(item => item.destination === 'opportunity');
     assert.ok(!alerts.some(item => item.taskId === retry), 'no alert for a request this builder is excluded from');
   });
+
+test('a paused agent doesn’t offer automatically, but its builder can still offer by hand', async t => {
+  const f = await fixture(t);
+  const s = await f.connect(f.builder);
+  const taskId = await f.post('Release notes');
+  await f.repository.transaction('pause-fixture', async repo => { const a = await repo.get('agent', s.agentId); a.listingStatus = 'paused'; await repo.save('agent', a); });
+  await assert.rejects(f.app.marketplace.quote(f.builder, taskId, f.offerBody(s), randomUUID(), s.principal), { code: 'AGENT_PAUSED' });
+  assert.ok((await f.app.marketplace.quote(f.builder, taskId, f.offerBody(s), randomUUID())).offerId);
+});
