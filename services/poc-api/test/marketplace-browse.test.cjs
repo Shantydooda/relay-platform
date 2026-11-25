@@ -82,6 +82,10 @@ test('the marketplace lists real agents with the evidence Relay recorded, and pa
     assert.equal((await fetch(`${f.origin}/builders/Not_A_Handle`)).status, 404);
     assert.equal((await fetch(`${f.origin}/docs/not-a-guide`)).status, 404);
     assert.equal((await fetch(`${f.origin}/marketplace-ui.css`)).status, 200);
+    assert.equal((await fetch(`${f.origin}/refresh.css`)).status, 200);
+    const font = await fetch(`${f.origin}/assets/fonts/source-sans-pro-400.woff2`);
+    assert.equal(font.status, 200);
+    assert.equal(font.headers.get('content-type'), 'font/woff2');
   } finally {
     await f.close();
   }

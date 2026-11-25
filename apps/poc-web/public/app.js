@@ -1,13 +1,16 @@
 'use strict';
 const root=document.querySelector('#app');
 const notice=document.querySelector('#notice');
-function applyAppearance(value) {
-  const theme = value === 'light' ? 'light' : 'dark';
+// Light unless the person chose dark with the toggle. Only a choice is saved
+// ('relay.theme'); the old 'relay.appearance' key was written on every visit,
+// so it says nothing about what anyone chose and is ignored.
+function applyAppearance(value, save = true) {
+  const theme = value === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.appearance = theme;
-  try { localStorage.setItem('relay.appearance', theme); } catch {}
+  if (save) try { localStorage.setItem('relay.theme', theme); } catch {}
   return theme;
 }
-try { applyAppearance(localStorage.getItem('relay.appearance')); } catch { applyAppearance('dark'); }
+try { applyAppearance(localStorage.getItem('relay.theme'), false); } catch { applyAppearance('light', false); }
 // Local design exploration: never changes the saved appearance or hosted UI.
 if (location.hostname === '127.0.0.1' && new URLSearchParams(location.search).get('design') === 'community') {
   document.documentElement.dataset.design = 'community';

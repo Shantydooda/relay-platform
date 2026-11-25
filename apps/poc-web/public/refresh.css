@@ -1,0 +1,103 @@
+/* Relay's look, 25 Nov 2026: light by default; quiet, dense and neutral.
+   White pages and thin grey dividers; grey for selection, black for the main
+   action, blue only for links, one warm accent for "new" and highlights.
+   Loaded after marketplace-ui.css; the dark appearance keeps its own tokens. */
+
+@font-face { font-family: 'Relay Sans'; font-style: normal; font-weight: 400; font-display: swap; src: url('/assets/fonts/source-sans-pro-400.woff2') format('woff2'); }
+@font-face { font-family: 'Relay Sans'; font-style: normal; font-weight: 600; font-display: swap; src: url('/assets/fonts/source-sans-pro-600.woff2') format('woff2'); }
+@font-face { font-family: 'Relay Sans'; font-style: normal; font-weight: 700; font-display: swap; src: url('/assets/fonts/source-sans-pro-700.woff2') format('woff2'); }
+
+body.market-open {
+  --mk-bg: #ffffff;
+  --mk-rail: #f9fafb;
+  --mk-text: #111827;
+  --mk-muted: #6b7280;
+  --mk-border: #e5e7eb;
+  --mk-row-border: #eef0f3;
+  --mk-good: #15803d;
+  --mk-accent: #2563eb;
+  --mk-accent-hover: #1d4ed8;
+  --mk-accent-soft: #eff6ff;
+  --mk-ink: #111827;
+  --mk-on-ink: #ffffff;
+  --mk-shadow: none;
+  --mk-select: #f3f4f6;
+  --mk-select-line: #d1d5db;
+  --mk-button-top: #ffffff;
+  --mk-button-bottom: #f3f4f6;
+  --mk-warm: #fef3c7;
+  --mk-warm-ink: #92400e;
+  --mk-hover: #f9fafb;
+  --mk-sans: 'Relay Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--mk-sans);
+}
+html[data-appearance='dark'] body.market-open {
+  --mk-bg: #0b0f19;
+  --mk-rail: #101623;
+  --mk-text: #e5e7eb;
+  --mk-muted: #9ca3af;
+  --mk-border: #1f2937;
+  --mk-row-border: #1a2232;
+  --mk-good: #4ade80;
+  --mk-accent: #60a5fa;
+  --mk-accent-hover: #93c5fd;
+  --mk-accent-soft: #172036;
+  --mk-ink: #f3f4f6;
+  --mk-on-ink: #0b0f19;
+  --mk-select: #1f2937;
+  --mk-select-line: #374151;
+  --mk-button-top: #1f2937;
+  --mk-button-bottom: #151c2a;
+  --mk-warm: #3b2f12;
+  --mk-warm-ink: #fcd34d;
+  --mk-hover: #111827;
+}
+
+/* Type: one family everywhere, a touch larger to suit it. */
+html[data-appearance] body.market-open, html[data-appearance] body.market-open #app :is(button, input, select, textarea, h1, h2, h3, h4) { font-family: var(--mk-sans); }
+html[data-appearance] body.market-open #app { font-size: 15px; }
+html[data-appearance] body.market-open #app :is(h1, h2, h3) { letter-spacing: -0.01em; }
+.mk-brand { font-weight: 700; letter-spacing: -0.03em; }
+.mk-nav { font-size: 15px; }
+
+/* Selection is a pale grey, never a solid black block. */
+html[data-appearance] body.market-open #app :is(.mk-rail-tabs button[aria-pressed='true'], .mk-segments button[aria-pressed='true'], .mk-docs-nav a[aria-current='page'], .mk-build-nav a.active) {
+  background: var(--mk-select); color: var(--mk-text); font-weight: 600;
+}
+html[data-appearance] body.market-open #app .mk-chip[aria-pressed='true'] { background: var(--mk-select); color: var(--mk-text); border-color: var(--mk-select-line); font-weight: 600; }
+html[data-appearance] body.market-open #app .mk-chip { border-radius: 8px; padding: 5px 10px; font-size: 14px; background: var(--mk-bg); }
+html[data-appearance] body.market-open #app .mk-chip:hover:not(:disabled) { background: var(--mk-hover); border-color: var(--mk-select-line); }
+html[data-appearance] body.market-open #app .mk-build-main .type-cards label:has(input:checked) { border-color: var(--mk-select-line); background: var(--mk-select); }
+
+/* Actions: black for the main one, soft grey buttons for the rest. */
+html[data-appearance] body.market-open #app :is(.mk-primary, .mk-buy-packages button) { color: var(--mk-on-ink) !important; background: var(--mk-ink); border-radius: 8px; }
+html[data-appearance] body.market-open #app :is(.mk-primary, .mk-buy-packages button):hover { background: var(--mk-ink); opacity: 0.88; }
+html[data-appearance] body.market-open #app .mk-publish { border-radius: 8px; }
+html[data-appearance] body.market-open #app .mk-side-primary { color: var(--mk-text) !important; background: linear-gradient(var(--mk-button-top), var(--mk-button-bottom)); border: 1px solid var(--mk-border); }
+html[data-appearance] body.market-open #app .mk-build-main button:not(.primary):not(.quiet):not(.mk-link-button):not(.mk-chip):not(:disabled),
+html[data-appearance] body.market-open #app .mk-shell .panel button:not(.primary):not(.quiet):not(.mk-link-button):not(.mk-chip):not(:disabled) {
+  background: linear-gradient(var(--mk-button-top), var(--mk-button-bottom)); border: 1px solid var(--mk-border); color: var(--mk-text); border-radius: 8px;
+}
+html[data-appearance] body.market-open #app .mk-build-main button:not(.primary):not(.quiet):not(.mk-link-button):not(.mk-chip):not(:disabled):hover,
+html[data-appearance] body.market-open #app .mk-shell .panel button:not(.primary):not(.quiet):not(.mk-link-button):not(.mk-chip):not(:disabled):hover { background: var(--mk-button-bottom); }
+html[data-appearance] body.market-open #app .mk-build-main button.primary { border-radius: 8px; }
+
+/* Tags: small grey pills; "new" gets the one warm accent. */
+.mk-tag { color: var(--mk-muted); background: var(--mk-select); border-radius: 6px; font-weight: 600; }
+.mk-new { color: var(--mk-warm-ink); background: var(--mk-warm); border-radius: 6px; }
+.mk-tag-good { color: var(--mk-good); background: transparent; border: 1px solid currentColor; }
+.mk-eyebrow { color: var(--mk-muted); }
+
+/* Lists: flat rows, a soft hover, nothing floating. */
+.mk-row-link { border-color: var(--mk-border); border-radius: 10px; box-shadow: none; }
+.mk-row-link:hover { box-shadow: none; border-color: var(--mk-select-line); background: linear-gradient(to right, var(--mk-hover), var(--mk-bg)); }
+.mk-meta { font-size: 13px; }
+.mk-desc { font-size: 14px; }
+.mk-rail h2 { color: var(--mk-text); font-weight: 600; font-size: 14px; }
+.mk-results-head h1 { font-size: 22px; }
+.mk-filter-name input { border-radius: 8px; padding: 7px 12px; }
+.mk-search { border-radius: 8px; }
+html[data-appearance] body.market-open #app .mk-search input { background: transparent; border: 0; box-shadow: none; }
+.mk-search input::-webkit-search-decoration, .mk-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.mk-post-card { border-radius: 10px; background: var(--mk-rail); }
+.mk-org-avatar { background: linear-gradient(135deg, #fde68a, #fca5a5); color: #111827; }
